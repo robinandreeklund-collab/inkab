@@ -1,6 +1,6 @@
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
-import { TRUCK_AISLE_MM, type SolveOutput } from "./solver";
+import type { SolveOutput } from "./solver";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
 
 const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
@@ -11,6 +11,10 @@ const PORT_LEVEL_TOLERANCE_MM = 20;
 const TOUCH_TOLERANCE_MM = 30;
 /** Hur nära slutpunkten linjen måste sluta innan det räknas som avvikelse, mm. */
 const END_POINT_TOLERANCE_MM = 500;
+/** Minsta rimliga bredd på en truckgata, mm. */
+const MIN_TRUCK_WIDTH_MM = 3500;
+/** Hur nära en port truckgatan ska ligga för att räknas som ansluten, mm. */
+const DOOR_REACH_MM = 1500;
 
 function hallBox(config: Configuration): Box {
   return { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
@@ -135,6 +139,7 @@ export function runRules(
     }
 
     for (const obj of config.drawn) {
+      if (obj.kind === "door" || obj.kind === "truck") continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
       if (!boxesOverlap(clearance.box, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
@@ -149,41 +154,56 @@ export function runRules(
   }
 
   /* ── R-105 Skyddszon skär truckgatan ────────────────────────────────── */
-  if (layout.aisle) {
+  for (const aisle of layout.aisles) {
     for (const p of all) {
       for (const zone of p.zones.filter((z) => z.type === "safety")) {
-        if (!boxesOverlap(zone.box, layout.aisle.box, TOUCH_TOLERANCE_MM)) continue;
+        if (!boxesOverlap(zone.box, aisle.box, TOUCH_TOLERANCE_MM)) continue;
         out.push({
           code: "R-105",
           severity: "error",
           title: "Skyddszon ligger i truckgatan",
-          detail: `Skyddszonen kring ${p.machine.name} skär truckgatan. Trucken kan inte passera en aktiv skyddszon.`,
+          detail: `Skyddszonen kring ${p.machine.name} skär ${aisle.label.toLowerCase()}. Trucken kan inte passera en aktiv skyddszon.`,
           instanceIds: [p.instanceId],
           anchor: boxCenter(zone.box),
-          fix: {
-            kind: "flow",
-            patch: { truckPickupSide: config.flow.truckPickupSide === "right" ? "left" : "right" },
-            label: "Byt trucksida",
-          },
         });
       }
     }
   }
 
   /* ── R-201 Truckgatan får inte plats ────────────────────────────────── */
-  if (layout.aisle && !boxContains(hall, layout.aisle.box, 1)) {
+  for (const aisle of layout.aisles) {
+    if (!boxContains(hall, aisle.box, 1)) {
+      out.push({
+        code: "R-201",
+        severity: "error",
+        title: "Truckgatan ligger utanför hallen",
+        detail: `${aisle.label} sträcker sig utanför hallens ${m(config.hall.lengthMm)} × ${m(config.hall.widthMm)} m.`,
+        instanceIds: [],
+        anchor: boxCenter(aisle.box),
+      });
+    }
+    if (aisle.widthMm < MIN_TRUCK_WIDTH_MM) {
+      out.push({
+        code: "R-201",
+        severity: "warning",
+        title: "Truckgatan är smal",
+        detail: `${aisle.label} är ${m(aisle.widthMm)} m på sitt smalaste ställe. En motviktstruck med paket behöver normalt minst ${m(MIN_TRUCK_WIDTH_MM)} m.`,
+        instanceIds: [],
+        anchor: boxCenter(aisle.box),
+      });
+    }
+  }
+
+  /* ── R-205 Ingen truckgata ritad ────────────────────────────────────── */
+  if (layout.aisles.length === 0 && line.length > 0) {
     out.push({
-      code: "R-201",
-      severity: "error",
-      title: "Truckgatan får inte plats i hallen",
-      detail: `Truckgatan behöver ${m(TRUCK_AISLE_MM)} m fri bredd men hamnar utanför hallens ${m(config.hall.widthMm)} m. Byt trucksida eller bredda hallen.`,
+      code: "R-205",
+      severity: "warning",
+      title: "Ingen truckgata eller hämtzon",
+      detail:
+        "Rita ut var trucken kör och hämtar färdiga paket. Utan den kan varken utrymme eller åtkomst kontrolleras.",
       instanceIds: [],
-      anchor: boxCenter(layout.aisle.box),
-      fix: {
-        kind: "flow",
-        patch: { truckPickupSide: config.flow.truckPickupSide === "right" ? "left" : "right" },
-        label: "Byt trucksida",
-      },
+      anchor: boxCenter(layout.lineBounds),
     });
   }
 
@@ -209,15 +229,15 @@ export function runRules(
   }
 
   /* ── R-203 Hjälpobjekt står i truckgatan ────────────────────────────── */
-  if (layout.aisle) {
+  for (const aisle of layout.aisles) {
     for (const p of aux) {
-      if (!boxesOverlap(p.bbox, layout.aisle.box, TOUCH_TOLERANCE_MM)) continue;
+      if (!boxesOverlap(p.bbox, aisle.box, TOUCH_TOLERANCE_MM)) continue;
       const isDesk = p.machine.category === "control";
       out.push({
         code: "R-203",
         severity: "error",
         title: `${p.machine.name} står i truckgatan`,
-        detail: `${p.machine.name} ligger på samma sida som trucken hämtar. Trucken kan inte passera.`,
+        detail: `${p.machine.name} står i ${aisle.label.toLowerCase()}. Trucken kan inte passera.`,
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
         fix: isDesk
@@ -238,9 +258,17 @@ export function runRules(
   }
 
   /* ── R-204 Magasinet nås inte utan att korsa flödet ─────────────────── */
-  const magazine = aux.find((p) => p.machine.id === "sf3");
-  if (magazine && layout.aisle && line.length > 0) {
-    const from = boxCenter(layout.aisle.box);
+  const magazine = aux.find((p) => p.machine.category === "stickers" && p.aux);
+  if (magazine && layout.aisles.length > 0 && line.length > 0) {
+    // Närmaste truckzon är den trucken realistiskt kör från.
+    const magazineCenter = boxCenter(magazine.bbox);
+    const nearest = layout.aisles.reduce((best, a) => {
+      const c = boxCenter(a.box);
+      const d = Math.hypot(c.x - magazineCenter.x, c.y - magazineCenter.y);
+      const bc = boxCenter(best.box);
+      return d < Math.hypot(bc.x - magazineCenter.x, bc.y - magazineCenter.y) ? a : best;
+    });
+    const from = boxCenter(nearest.box);
     const to = boxCenter(magazine.bbox);
     const blocking = line.filter((p) => segmentIntersectsBox(from, to, p.bbox));
     if (blocking.length > 0) {
@@ -256,7 +284,7 @@ export function runRules(
           patch: {
             stickerMagazineSide: config.flow.stickerMagazineSide === "right" ? "left" : "right",
           },
-          label: "Flytta magasinet till trucksidan",
+          label: "Flytta magasinet till andra sidan",
         },
       });
     }
@@ -278,6 +306,25 @@ export function runRules(
         fix: config.flow.fitToEndPoint
           ? undefined
           : { kind: "flow", patch: { fitToEndPoint: true }, label: "Anpassa längden automatiskt" },
+      });
+    }
+  }
+
+  /* ── R-207 Truckgatan når ingen port ────────────────────────────────── */
+  const doors = config.drawn.filter((d) => d.kind === "door");
+  if (doors.length > 0 && layout.aisles.length > 0) {
+    for (const aisle of layout.aisles) {
+      const reaches = doors.some((door) =>
+        boxesOverlap(aisle.box, { x: door.x, y: door.y, l: door.l, w: door.w }, -DOOR_REACH_MM),
+      );
+      if (reaches) continue;
+      out.push({
+        code: "R-207",
+        severity: "warning",
+        title: "Truckgatan når ingen port",
+        detail: `${aisle.label} ansluter inte till någon av hallens portar. Kontrollera hur trucken tar sig in och ut.`,
+        instanceIds: [],
+        anchor: boxCenter(aisle.box),
       });
     }
   }
@@ -372,6 +419,9 @@ export function runRules(
   /* ── R-403 Kollision med ritad vägg eller no-go-zon ─────────────────── */
   for (const p of all) {
     for (const obj of config.drawn) {
+      // Portar är öppningar och truckzoner hanteras av R-203; varken eller
+      // är ett hinder som maskinen kan "krocka" med.
+      if (obj.kind === "door" || obj.kind === "truck") continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
       if (!boxesOverlap(p.bbox, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
@@ -379,6 +429,21 @@ export function runRules(
         severity: "error",
         title: obj.kind === "wall" ? "Maskinen krockar med en vägg" : "Maskinen står i en no-go-zon",
         detail: `${p.machine.name} överlappar ${obj.name}.`,
+        instanceIds: [p.instanceId],
+        anchor: boxCenter(p.bbox),
+      });
+    }
+  }
+
+  /* ── R-404 Maskin i truckgatan ──────────────────────────────────────── */
+  for (const aisle of layout.aisles) {
+    for (const p of line) {
+      if (!boxesOverlap(p.bbox, aisle.box, TOUCH_TOLERANCE_MM)) continue;
+      out.push({
+        code: "R-404",
+        severity: "error",
+        title: "Maskinen står i truckgatan",
+        detail: `${p.machine.name} ligger i ${aisle.label.toLowerCase()}. Flytta maskinen eller rita om zonen.`,
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });

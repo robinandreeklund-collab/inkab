@@ -35,7 +35,7 @@ const bootSecret = randomBytes(32).toString("hex");
 
 /** E-postadresser som blir admin automatiskt vid registrering. */
 export function adminEmails(): string[] {
-  return (process.env.ADMIN_EMAILS ?? "robin@inkab.nu")
+  return (process.env.ADMIN_EMAILS ?? "robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);

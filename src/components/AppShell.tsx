@@ -119,6 +119,12 @@ export function AppShell() {
         case "w":
           setTool("wall");
           break;
+        case "d":
+          setTool("door");
+          break;
+        case "t":
+          setTool("truck");
+          break;
         case "n":
           setTool("nogo");
           break;
@@ -249,6 +255,8 @@ function ToolRail() {
         [
           ["select", "Markera och flytta (V)", "m4 3 7 17 2.5-6.5L20 11z"],
           ["wall", "Rita vägg (W)", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
+          ["door", "Rita port (D)", "M4 21V4h10v17M14 12h1M4 21h16"],
+          ["truck", "Rita truckgata (T)", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
           ["nogo", "Rita no-go-zon (N)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
           ["measure", "Mät avstånd (M)", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
         ] as const

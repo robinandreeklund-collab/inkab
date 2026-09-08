@@ -16,7 +16,7 @@ export const lineItemSchema = z.object({
 
 export const drawnSchema = z.object({
   id: z.string().min(1).max(64),
-  kind: z.enum(["wall", "nogo"]),
+  kind: z.enum(["wall", "door", "truck", "nogo"]),
   name: z.string().max(120),
   x: z.number().finite(),
   y: z.number().finite(),

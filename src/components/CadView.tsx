@@ -4,7 +4,8 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
-import type { Box, DrawnObject, Placement, Vec2 } from "@/lib/types";
+import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
+import type { Tool } from "@/store/useConfigStore";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -12,10 +13,59 @@ const GRID_MM = 1000;
 const SNAP_MM = 250;
 const PAD_MM = 4000;
 
-type Draft = { kind: "wall" | "nogo"; box: Box } | null;
+type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
+
+/** Väggens och portens tjocklek, mm. */
+const WALL_THICKNESS_MM = 300;
 type Measure = { from: Vec2; to: Vec2 } | null;
 
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
+
+/**
+ * Väggar och portar låses till närmaste axel så att de alltid blir raka —
+ * man drar i grova drag åt det håll man menar och får en ren linje.
+ * Truckzoner och no-go-zoner ritas som fria rektanglar.
+ */
+function draftBox(kind: Exclude<Tool, "select" | "measure">, from: Vec2, to: Vec2): Box {
+  if (kind === "wall" || kind === "door") {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const half = WALL_THICKNESS_MM / 2;
+    return Math.abs(dx) >= Math.abs(dy)
+      ? {
+          x: snap(Math.min(from.x, to.x)),
+          y: snap(from.y) - half,
+          l: Math.max(0, snap(Math.abs(dx))),
+          w: WALL_THICKNESS_MM,
+        }
+      : {
+          x: snap(from.x) - half,
+          y: snap(Math.min(from.y, to.y)),
+          l: WALL_THICKNESS_MM,
+          w: Math.max(0, snap(Math.abs(dy))),
+        };
+  }
+  return {
+    x: snap(Math.min(from.x, to.x)),
+    y: snap(Math.min(from.y, to.y)),
+    l: Math.max(0, snap(Math.abs(to.x - from.x))),
+    w: Math.max(0, snap(Math.abs(to.y - from.y))),
+  };
+}
+
+const KIND_LABEL: Record<DrawnKind, string> = {
+  wall: "Vägg",
+  door: "Port",
+  truck: "Truckzon",
+  nogo: "No-go-zon",
+};
+
+/** Namnger nästa objekt av samma slag: Port A, Port B, Vägg 1, Vägg 2 … */
+function nextName(kind: DrawnKind, existing: DrawnObject[]): string {
+  const count = existing.filter((d) => d.kind === kind).length;
+  if (kind === "door") return `Port ${String.fromCharCode(65 + count)}`;
+  return `${KIND_LABEL[kind]} ${count + 1}`;
+}
 
 export function CadView() {
   const {
@@ -42,14 +92,13 @@ export function CadView() {
   const hallBox: Box = { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
   const contentBox: Box = useMemo(() => {
     const boxes = [hallBox, layout.bounds];
-    if (layout.aisle) boxes.push(layout.aisle.box);
     for (const d of config.drawn) boxes.push({ x: d.x, y: d.y, l: d.l, w: d.w });
     const minX = Math.min(...boxes.map((b) => b.x));
     const minY = Math.min(...boxes.map((b) => b.y));
     const maxX = Math.max(...boxes.map((b) => b.x + b.l));
     const maxY = Math.max(...boxes.map((b) => b.y + b.w));
     return { x: minX, y: minY, l: maxX - minX, w: maxY - minY };
-  }, [hallBox.l, hallBox.w, layout.bounds, layout.aisle, config.drawn]);
+  }, [hallBox.l, hallBox.w, layout.bounds, config.drawn]);
 
   const maxHeight = Math.max(config.hall.clearHeightMm, ...layout.placements.map((p) => p.size.heightMm), 1);
 
@@ -149,42 +198,21 @@ export function CadView() {
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
       if (!now) return;
-      if (kind === "wall") {
-        const dx = now.x - start.x;
-        const dy = now.y - start.y;
-        // Väggar dras alltid axelparallellt, 300 mm tjocka.
-        setDraft({
-          kind,
-          box:
-            Math.abs(dx) >= Math.abs(dy)
-              ? { x: Math.min(start.x, now.x), y: start.y - 150, l: Math.abs(dx), w: 300 }
-              : { x: start.x - 150, y: Math.min(start.y, now.y), l: 300, w: Math.abs(dy) },
-        });
-      } else {
-        setDraft({
-          kind,
-          box: {
-            x: Math.min(start.x, now.x),
-            y: Math.min(start.y, now.y),
-            l: Math.abs(now.x - start.x),
-            w: Math.abs(now.y - start.y),
-          },
-        });
-      }
+      setDraft({ kind, box: draftBox(kind, start, now) });
     };
 
     const up = () => {
       setDraft((current) => {
-        if (current && current.box.l > 300 && current.box.w > 150) {
+        if (current && current.box.l >= 200 && current.box.w >= 100) {
           const object: DrawnObject = {
             id: `${current.kind}-${Date.now().toString(36)}`,
             kind: current.kind,
-            name: current.kind === "wall" ? "Vägg" : "No-go-zon",
+            name: nextName(current.kind, config.drawn),
             x: Math.round(current.box.x),
             y: Math.round(current.box.y),
             l: Math.round(current.box.l),
             w: Math.round(current.box.w),
-            h: current.kind === "wall" ? 3000 : 0,
+            h: current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
           };
           addDrawn(object);
           setTool("select");
@@ -284,6 +312,7 @@ export function CadView() {
             hallBox={hallBox}
             config={config}
             layout={layout}
+            onSelectDrawn={select}
             showZones={showZones}
             showPorts={showPorts}
             strokeUnit={strokeUnit}
@@ -306,28 +335,7 @@ export function CadView() {
           />
         )}
 
-        {draft ? (
-          view === "2d" ? (
-            <rect
-              x={draft.box.x}
-              y={draft.box.y}
-              width={draft.box.l}
-              height={draft.box.w}
-              fill="none"
-              stroke="#5980a6"
-              strokeWidth={strokeUnit * 2}
-              strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
-            />
-          ) : (
-            <polygon
-              points={isoBox(draft.box, 1).top}
-              fill="none"
-              stroke="#5980a6"
-              strokeWidth={strokeUnit * 2}
-              strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
-            />
-          )
-        ) : null}
+        {draft ? <DraftShape draft={draft} view={view} strokeUnit={strokeUnit} /> : null}
 
         <FlowMarkers
           start={config.flow.startPoint}
@@ -369,6 +377,7 @@ function Plan2D({
   strokeFor,
   labelFor,
   onMachineDown,
+  onSelectDrawn,
   selectedId,
 }: {
   hallBox: Box;
@@ -381,6 +390,7 @@ function Plan2D({
   strokeFor: (p: Placement) => string;
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
+  onSelectDrawn: (id: string) => void;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
@@ -410,43 +420,13 @@ function Plan2D({
         {meters(config.hall.clearHeightMm)} m
       </text>
 
-      {layout.aisle ? (
-        <g>
-          <rect
-            x={layout.aisle.box.x}
-            y={layout.aisle.box.y}
-            width={layout.aisle.box.l}
-            height={layout.aisle.box.w}
-            fill="url(#aisleHatch)"
-            stroke="#1d1f20"
-            strokeOpacity="0.25"
-            strokeWidth={strokeUnit}
-          />
-          <text
-            x={layout.aisle.box.x + 600}
-            y={layout.aisle.box.y + layout.aisle.box.w / 2}
-            fontSize={strokeUnit * 18}
-            letterSpacing={strokeUnit * 2}
-            fill="#1d1f20"
-            fillOpacity="0.6"
-            className="num"
-          >
-            {layout.aisle.label.toUpperCase()}
-          </text>
-        </g>
-      ) : null}
-
       {config.drawn.map((d) => (
-        <rect
+        <DrawnShape
           key={d.id}
-          x={d.x}
-          y={d.y}
-          width={d.l}
-          height={d.w}
-          fill={d.kind === "wall" ? "#d4d4d7" : "url(#nogoHatch)"}
-          stroke={d.id === selectedId ? "#5980a6" : "#1d1f20"}
-          strokeWidth={strokeUnit * (d.id === selectedId ? 2.2 : 1.1)}
-          strokeDasharray={d.kind === "nogo" ? `${strokeUnit * 5} ${strokeUnit * 3}` : undefined}
+          object={d}
+          selected={d.id === selectedId}
+          strokeUnit={strokeUnit}
+          onSelect={onSelectDrawn}
         />
       ))}
 
@@ -600,31 +580,33 @@ function Iso3D({
         ))}
       </g>
 
-      {layout.aisle ? (
-        <polygon
-          points={isoBox(layout.aisle.box, 1).top}
-          fill="#e4e4e6"
-          stroke="#1d1f20"
-          strokeOpacity="0.22"
-          strokeWidth={strokeUnit}
-        />
-      ) : null}
-
       {config.drawn.map((d) => {
         const faces = isoBox({ x: d.x, y: d.y, l: d.l, w: d.w }, d.h || 1);
-        return d.kind === "wall" ? (
-          <g key={d.id}>
-            <polygon points={faces.right} fill="#bdbdc0" stroke="#1d1f20" strokeWidth={strokeUnit} />
-            <polygon points={faces.left} fill="#cfcfd2" stroke="#1d1f20" strokeWidth={strokeUnit} />
-            <polygon points={faces.top} fill="#e7e7ea" stroke="#1d1f20" strokeWidth={strokeUnit} />
-          </g>
-        ) : (
+        if (d.kind === "wall") {
+          return (
+            <g key={d.id}>
+              <polygon points={faces.right} fill="#bdbdc0" stroke="#1d1f20" strokeWidth={strokeUnit} />
+              <polygon points={faces.left} fill="#cfcfd2" stroke="#1d1f20" strokeWidth={strokeUnit} />
+              <polygon points={faces.top} fill="#e7e7ea" stroke="#1d1f20" strokeWidth={strokeUnit} />
+            </g>
+          );
+        }
+        if (d.kind === "door") {
+          return (
+            <g key={d.id}>
+              <polygon points={faces.right} fill="#5980a6" fillOpacity="0.35" stroke="#5980a6" strokeWidth={strokeUnit} />
+              <polygon points={faces.left} fill="#5980a6" fillOpacity="0.25" stroke="#5980a6" strokeWidth={strokeUnit} />
+              <polygon points={faces.top} fill="#5980a6" fillOpacity="0.15" stroke="#5980a6" strokeWidth={strokeUnit} />
+            </g>
+          );
+        }
+        return (
           <polygon
             key={d.id}
             points={faces.top}
-            fill="url(#nogoHatch)"
-            stroke="#9f1239"
-            strokeOpacity="0.6"
+            fill={d.kind === "truck" ? "url(#aisleHatch)" : "url(#nogoHatch)"}
+            stroke={d.kind === "truck" ? "#1d1f20" : "#9f1239"}
+            strokeOpacity="0.5"
             strokeWidth={strokeUnit}
             strokeDasharray={`${strokeUnit * 5} ${strokeUnit * 3}`}
           />
@@ -733,6 +715,149 @@ function DiagnosticBadges({
           </g>
         );
       })}
+    </g>
+  );
+}
+
+/** Ett ritat objekt i planvyn. Varje typ har sitt eget uttryck. */
+function DrawnShape({
+  object,
+  selected,
+  strokeUnit,
+  onSelect,
+}: {
+  object: DrawnObject;
+  selected: boolean;
+  strokeUnit: number;
+  onSelect: (id: string) => void;
+}) {
+  const style = {
+    wall: { fill: "#d4d4d7", stroke: "#1d1f20", dash: undefined as string | undefined },
+    door: { fill: "#ffffff", stroke: "#5980a6", dash: undefined },
+    truck: { fill: "url(#aisleHatch)", stroke: "#1d1f20", dash: `${strokeUnit * 6} ${strokeUnit * 4}` },
+    nogo: { fill: "url(#nogoHatch)", stroke: "#9f1239", dash: `${strokeUnit * 5} ${strokeUnit * 3}` },
+  }[object.kind];
+
+  const cx = object.x + object.l / 2;
+  const cy = object.y + object.w / 2;
+  const alongX = object.l >= object.w;
+
+  return (
+    <g
+      style={{ cursor: "pointer" }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onSelect(object.id);
+      }}
+    >
+      <rect
+        x={object.x}
+        y={object.y}
+        width={object.l}
+        height={object.w}
+        fill={style.fill}
+        stroke={selected ? "#5980a6" : style.stroke}
+        strokeOpacity={object.kind === "truck" ? 0.45 : 1}
+        strokeWidth={strokeUnit * (selected ? 2.4 : 1.2)}
+        strokeDasharray={style.dash}
+      />
+
+      {/* Porten ritas som en öppning: streckad tröskel tvärs väggen. */}
+      {object.kind === "door" ? (
+        <path
+          d={
+            alongX
+              ? `M${object.x} ${cy}h${object.l}`
+              : `M${cx} ${object.y}v${object.w}`
+          }
+          stroke="#5980a6"
+          strokeWidth={strokeUnit * 2}
+          strokeDasharray={`${strokeUnit * 4} ${strokeUnit * 3}`}
+        />
+      ) : null}
+
+      {object.kind === "truck" || object.kind === "door" ? (
+        <text
+          x={cx}
+          y={object.kind === "door" ? object.y - strokeUnit * 5 : cy + strokeUnit * 6}
+          textAnchor="middle"
+          fontSize={strokeUnit * (object.kind === "door" ? 13 : 16)}
+          letterSpacing={strokeUnit}
+          fill={object.kind === "door" ? "#5980a6" : "#1d1f20"}
+          fillOpacity={object.kind === "door" ? 1 : 0.6}
+          className="num"
+          pointerEvents="none"
+        >
+          {object.name.toUpperCase()}
+        </text>
+      ) : null}
+    </g>
+  );
+}
+
+/** Utkastet medan man drar, med måttet utskrivet. */
+function DraftShape({
+  draft,
+  view,
+  strokeUnit,
+}: {
+  draft: NonNullable<Draft>;
+  view: "2d" | "3d";
+  strokeUnit: number;
+}) {
+  const { box } = draft;
+  const alongX = box.l >= box.w;
+  const label =
+    draft.kind === "wall" || draft.kind === "door"
+      ? `${meters(alongX ? box.l : box.w)} m`
+      : `${meters(box.l)} × ${meters(box.w)} m`;
+  const center = view === "2d"
+    ? { x: box.x + box.l / 2, y: box.y + box.w / 2 }
+    : isoProject(box.x + box.l / 2, box.y + box.w / 2, 0);
+
+  return (
+    <g pointerEvents="none">
+      {view === "2d" ? (
+        <rect
+          x={box.x}
+          y={box.y}
+          width={box.l}
+          height={box.w}
+          fill="#5980a6"
+          fillOpacity="0.12"
+          stroke="#5980a6"
+          strokeWidth={strokeUnit * 2}
+          strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
+        />
+      ) : (
+        <polygon
+          points={isoBox(box, 1).top}
+          fill="#5980a6"
+          fillOpacity="0.12"
+          stroke="#5980a6"
+          strokeWidth={strokeUnit * 2}
+          strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
+        />
+      )}
+      <rect
+        x={center.x - strokeUnit * 32}
+        y={center.y - strokeUnit * 12}
+        width={strokeUnit * 64}
+        height={strokeUnit * 20}
+        fill="#ffffff"
+        stroke="#5980a6"
+        strokeWidth={strokeUnit}
+      />
+      <text
+        x={center.x}
+        y={center.y + strokeUnit * 2}
+        textAnchor="middle"
+        fontSize={strokeUnit * 13}
+        fill="#1d1f20"
+        className="num"
+      >
+        {label}
+      </text>
     </g>
   );
 }

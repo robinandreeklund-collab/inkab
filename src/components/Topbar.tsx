@@ -54,7 +54,15 @@ export function Topbar({
         />
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <a
+        href="tel:+46705701760"
+        className="ml-auto hidden items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
+      >
+        <span className="kicker text-paper/50">Frågor</span>
+        <span className="num text-sm">+46 70-570 17 60</span>
+      </a>
+
+      <div className="flex items-center gap-2 lg:ml-0">
         <button
           onClick={undo}
           disabled={past.length === 0}

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
+import { suggestTruckZone } from "@/lib/solver";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
 import type { Machine, MachineCategory, Side } from "@/lib/types";
 
@@ -26,6 +27,7 @@ export function Sidebar() {
     setTool,
     clearDrawn,
     removeDrawn,
+    addDrawn,
     setScreen,
     library,
     layout,
@@ -391,26 +393,65 @@ export function Sidebar() {
         </div>
 
         <span className="kicker mb-1 block">Ritverktyg</span>
-        <Segmented
-          ariaLabel="Ritverktyg"
-          value={tool}
-          options={[
-            { value: "select", label: "Markera" },
-            { value: "wall", label: "Vägg" },
-            { value: "nogo", label: "No-go" },
-            { value: "measure", label: "Mät" },
-          ]}
-          onChange={setTool}
-        />
-        <p className="mt-2 text-[11px] text-muted">
+        <div className="grid grid-cols-3 gap-1">
+          {(
+            [
+              ["select", "Markera"],
+              ["wall", "Vägg"],
+              ["door", "Port"],
+              ["truck", "Truckgata"],
+              ["nogo", "No-go"],
+              ["measure", "Mät"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              onClick={() => setTool(value)}
+              className={`border px-2 py-1 text-xs transition-colors ${
+                tool === value
+                  ? "border-accent bg-accent text-white"
+                  : "border-divider bg-white hover:border-accent"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
           {tool === "select"
-            ? "Dra maskiner i vyn för att finjustera. Snapp 250 mm."
+            ? "Dra maskiner och zoner i vyn. Snapp 250 mm."
             : tool === "wall"
-              ? "Dra en linje i vyn för att resa en vägg, 3 m hög."
-              : tool === "nogo"
-                ? "Dra en rektangel för att spärra en yta."
-                : "Dra mellan två punkter för att mäta avståndet."}
+              ? "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir 300 mm tjock."
+              : tool === "door"
+                ? "Dra där porten sitter, i x- eller y-led. Låses till närmaste axel."
+                : tool === "truck"
+                  ? "Dra en rektangel där trucken kör eller hämtar. Kan vara en hel gata eller bara en hämtzon."
+                  : tool === "nogo"
+                    ? "Dra en rektangel för att spärra en yta."
+                    : "Dra mellan två punkter för att mäta avståndet."}
         </p>
+
+        <div className="mt-2 flex flex-wrap gap-1">
+          <Button
+            size="sm"
+            onClick={() => {
+              const zone = suggestTruckZone(
+                layout.bounds,
+                "x+",
+                config.flow.truckPickupSide,
+              );
+              addDrawn({
+                id: `truck-${Date.now().toString(36)}`,
+                kind: "truck",
+                name: "Hämtzon",
+                ...zone,
+                h: 0,
+              });
+            }}
+          >
+            + Hämtzon vid utlastningen
+          </Button>
+        </div>
 
         {config.drawn.length > 0 ? (
           <div className="mt-2">

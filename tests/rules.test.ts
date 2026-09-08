@@ -86,12 +86,60 @@ describe("regelmotorn", () => {
     expect(codes(config)).toContain("R-103");
   });
 
-  it("R-203 när pulpeten hamnar i truckgatan", () => {
+  it("R-203 när pulpeten hamnar i en ritad truckzon", () => {
     const config = defaultConfig();
-    config.flow.truckPickupSide = config.flow.controlDeskSide;
+    const desk = computeLayout(config).placements.find((p) => p.machine.category === "control")!;
+    config.drawn.push({
+      id: "truck-over-desk",
+      kind: "truck",
+      name: "Hämtzon",
+      x: desk.bbox.x - 500,
+      y: desk.bbox.y - 500,
+      l: desk.bbox.l + 1000,
+      w: desk.bbox.w + 1000,
+      h: 0,
+    });
     const diag = computeLayout(config).diagnostics.find((d) => d.code === "R-203");
     expect(diag).toBeDefined();
     expect(diag!.fix).toMatchObject({ kind: "flow" });
+  });
+
+  it("R-205 när ingen truckgata är ritad", () => {
+    const config = defaultConfig();
+    config.drawn = config.drawn.filter((d) => d.kind !== "truck");
+    expect(codes(config)).toContain("R-205");
+  });
+
+  it("R-404 när en maskin står i truckzonen", () => {
+    const config = defaultConfig();
+    const machine = computeLayout(config).placements.find((p) => !p.aux)!;
+    config.drawn.push({
+      id: "truck-over-machine",
+      kind: "truck",
+      name: "Hämtzon",
+      x: machine.bbox.x,
+      y: machine.bbox.y,
+      l: machine.bbox.l,
+      w: machine.bbox.w,
+      h: 0,
+    });
+    expect(codes(config)).toContain("R-404");
+  });
+
+  it("portar är öppningar och räknas inte som hinder", () => {
+    const config = defaultConfig();
+    const machine = computeLayout(config).placements.find((p) => !p.aux)!;
+    config.drawn.push({
+      id: "door-over-machine",
+      kind: "door",
+      name: "Port B",
+      x: machine.bbox.x,
+      y: machine.bbox.y,
+      l: 300,
+      w: 4000,
+      h: 5000,
+    });
+    expect(codes(config)).not.toContain("R-403");
   });
 
   it("åtgärdsförslag går att applicera och tar bort felet", () => {
@@ -137,5 +185,28 @@ describe("hjälpobjekt", () => {
       (d) => d.code === "R-103" && d.instanceIds.length === 2,
     );
     expect(overlaps).toHaveLength(0);
+  });
+});
+
+describe("serverns validering", () => {
+  it("godkänner alla ritade objekttyper", async () => {
+    const { configurationSchema } = await import("@/lib/schema");
+    const config = defaultConfig();
+    config.drawn.push(
+      { id: "w", kind: "wall", name: "Vägg", x: 0, y: 0, l: 5000, w: 300, h: 3000 },
+      { id: "d", kind: "door", name: "Port B", x: 0, y: 0, l: 300, w: 4000, h: 5000 },
+      { id: "t", kind: "truck", name: "Hämtzon", x: 0, y: 0, l: 9000, w: 5000, h: 0 },
+      { id: "n", kind: "nogo", name: "No-go", x: 0, y: 0, l: 2000, w: 2000, h: 0 },
+    );
+    const result = configurationSchema.safeParse(config);
+    expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
+  });
+
+  it("godkänner en färsk mallkonfiguration precis som klienten skickar den", async () => {
+    const { configurationSchema } = await import("@/lib/schema");
+    for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
+      const result = configurationSchema.safeParse(templateConfig(id));
+      expect(result.success, `${id}: ${JSON.stringify(result.error?.issues)}`).toBe(true);
+    }
   });
 });

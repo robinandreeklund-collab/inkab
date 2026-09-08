@@ -28,9 +28,9 @@ Vid deployen frågar Render om två miljövariabler:
 
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
-| `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
+| `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. Läggs in i Render under **din tjänst → Environment → Environment Variables**. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
 | `DATABASE_URL` | Nej | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton och admins ändringar bara så länge servern gör det — admin-vyn säger det rakt ut och erbjuder export till JSON. **Sätt den om du vill mata in maskindata som består.** |
-| `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu`. |
+| `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu`. |
 | `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
 
 ### Första inloggningen
@@ -96,6 +96,8 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
 | **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
 | **Start- och slutpunkt** | Dras direkt i ritningen eller skrivs in i meter. Slås "anpassa längden automatiskt" på sätter solvern sista kedjetransportörens längd så att linjen slutar exakt i punkten. |
+| **Ritade objekt** | Väggar, portar, truckgator och no-go-zoner. Väggar och portar låses till närmaste axel så att de blir raka i både x- och y-led, med måttet utskrivet medan du drar. Allt går också att skriva in exakt i inspektorn, vrida 90° och namnge. |
+| **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
 | **Övrigt** | Ångra/gör om, autospar, delningslänk med konfigurationen i URL:en, offertunderlag med utskrift till PDF, fyra startmallar, tangentbordsgenvägar. |
@@ -202,11 +204,13 @@ src/
 | R-104 | Servicezon blockerad av annan maskin | varning |
 | R-105 | Skyddszon skär truckgatan | fel |
 | R-106 | Maskinzonen inkräktad av annan maskin eller ritat objekt | fel |
-| R-201 | Truckgatan får inte plats i hallen | fel |
+| R-201 | Truckgatan ligger utanför hallen, eller är smalare än 3,5 m | fel / varning |
 | R-202 | Sista transportören rymmer inte två pakets buffert | varning |
 | R-203 | Pulpet eller magasin står i truckgatan | fel |
 | R-204 | Trucken måste korsa flödet för att nå magasinet | varning |
+| R-205 | Ingen truckgata eller hämtzon är ritad | varning |
 | R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
+| R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |
 | R-303 | Paketet är för tungt | fel |
@@ -214,10 +218,11 @@ src/
 | R-401 | Maskinen hamnar utanför hallen | fel |
 | R-402 | Maskinen är högre än fri höjd | fel |
 | R-403 | Kollision med ritad vägg eller no-go-zon | fel |
+| R-404 | Maskinen står i en truckgata | fel |
 | R-501 | Beroende saknas eller maskiner kan inte kombineras | fel |
 | R-601 | Ovanlig ordning i kedjan | info |
 
-17 regler. 
+20 regler. 
 
 Reglerna bor i `src/lib/rules.ts`, en funktion per grupp. Att lägga till en
 regel är att lägga till ett block som returnerar `Diagnostic[]`.
@@ -268,7 +273,7 @@ valideras mot regelverket, så ett felaktigt portpar upptäcks direkt.
 | Tangent | Gör |
 |---|---|
 | `1` / `2` | Planvy / isometrisk vy |
-| `V` `W` `N` `M` | Markera · vägg · no-go · mät |
+| `V` `W` `D` `T` `N` `M` | Markera · vägg · port · truckgata · no-go · mät |
 | `Z` / `P` | Visa zoner / portar |
 | `F` | Fäll in inspektorn |
 | `Delete` | Ta bort markerat objekt |
@@ -314,7 +319,8 @@ kopplar maskinen efter en annan i motorn och rapporterar om det fungerar.
 **Prisbok.** Montagepåslag per kategori, el- och styrpåslag, frakt och det
 intervall som visas publikt.
 
-**Konton.** Roller och borttagning. Adresser i `ADMIN_EMAILS` är låsta som admin.
+**Konton.** Roller och borttagning. Adresser i `ADMIN_EMAILS` är låsta som admin —
+som standard robin@, daniel@ och lars@inkab.nu.
 
 **Export och import.** *Exportera JSON* laddar ner hela biblioteket. Lägg filen
 som `data/library.json` i repot och committa den — då blir den det

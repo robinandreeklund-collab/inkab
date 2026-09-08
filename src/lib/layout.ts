@@ -15,7 +15,7 @@ export function computeLayout(
   const diagnostics = runRules(config, solved, library);
   return {
     placements: solved.placements,
-    aisle: solved.aisle,
+    aisles: solved.aisles,
     bounds: solved.bounds,
     metrics: solved.metrics,
     diagnostics,

@@ -65,11 +65,34 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
     expect(magA.bbox.y).toBeGreaterThan(magB.bbox.y);
   });
 
-  it("truckPickupSide flyttar truckgatan", () => {
-    const a = defaultConfig();
-    const b = defaultConfig();
-    b.flow.truckPickupSide = "right";
-    expect(solveLayout(a).aisle!.box.y).toBeLessThan(solveLayout(b).aisle!.box.y);
+  it("truckgatan kommer från det kunden ritat, inte från linjens längd", () => {
+    const config = defaultConfig();
+    const before = solveLayout(config);
+    expect(before.aisles).toHaveLength(1);
+
+    // Fler maskiner ska inte ändra truckzonen.
+    config.line.splice(1, 0, lineItem("rullbana"));
+    const after = solveLayout(config);
+    expect(after.aisles[0].box).toEqual(before.aisles[0].box);
+
+    // Tas zonen bort finns ingen truckgata alls.
+    config.drawn = config.drawn.filter((d) => d.kind !== "truck");
+    expect(solveLayout(config).aisles).toHaveLength(0);
+  });
+
+  it("flera hämtzoner hanteras samtidigt", () => {
+    const config = defaultConfig();
+    config.drawn.push({
+      id: "truck-2",
+      kind: "truck",
+      name: "Hämtzon 2",
+      x: 2000,
+      y: 200,
+      l: 6000,
+      w: 4500,
+      h: 0,
+    });
+    expect(solveLayout(config).aisles).toHaveLength(2);
   });
 
   it("finalConveyorLengthMm ändrar både geometri och totallängd", () => {
@@ -145,7 +168,6 @@ describe("tom och trasig indata", () => {
   it("klarar en tom linje", () => {
     const layout = computeLayout({ ...defaultConfig(), line: [] });
     expect(layout.placements).toHaveLength(0);
-    expect(layout.aisle).toBeNull();
     expect(layout.metrics.throughputPerHour).toBe(0);
   });
 

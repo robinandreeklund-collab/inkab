@@ -1,4 +1,4 @@
-import { defaultStartPoint } from "./solver";
+import { defaultStartPoint, solveLayout, suggestTruckZone } from "./solver";
 import type { Configuration, Flow, Hall, LineItem, Product } from "./types";
 
 let counter = 0;
@@ -134,6 +134,32 @@ export function templateConfig(templateId: string): Configuration {
   Object.assign(config.flow, template.flow ?? {});
   // Startpunkten följer hallen och inmatningsriktningen om mallen ändrat dem.
   config.flow.startPoint = defaultStartPoint(config);
+
+  /*
+   * Mallen ritar in en hämtzon vid utlastningen och en port i gaveln, som
+   * utgångspunkt. Båda är vanliga ritade objekt som kunden flyttar, ändrar
+   * eller tar bort — truckgatan hänger inte ihop med linjens längd.
+   */
+  const solved = solveLayout(config);
+  const suggestion = suggestTruckZone(solved.lineBounds, solved.outDir, config.flow.truckPickupSide);
+  config.drawn.push({
+    id: "truck-1",
+    kind: "truck",
+    name: "Hämtzon utlastning",
+    ...suggestion,
+    h: 0,
+  });
+  config.drawn.push({
+    id: "door-1",
+    kind: "door",
+    name: "Port A",
+    x: config.hall.lengthMm - 300,
+    y: Math.max(0, Math.min(config.hall.widthMm - 4500, suggestion.y + suggestion.w / 2 - 2250)),
+    l: 300,
+    w: 4500,
+    h: 5000,
+  });
+
   return config;
 }
 

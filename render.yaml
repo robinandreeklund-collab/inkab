@@ -15,12 +15,12 @@ services:
       # åtgärdsförslag — verktyget fungerar fullt ut ändå.
       - key: ANTHROPIC_API_KEY
         sync: false
-      # Lösenord för säljläget som visar listpriser. Byt efter första deployen.
-      - key: SALES_PASSWORD
-        value: inkab
-      # Lösenord för adminläget där maskinbibliotek och priser redigeras.
-      - key: ADMIN_PASSWORD
-        value: inkab-admin
+      # Adresser som blir admin automatiskt vid registrering.
+      - key: ADMIN_EMAILS
+        value: robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu
+      # Signeringsnyckel för sessionscookien. Utan den loggas alla ut vid omstart.
+      - key: AUTH_SECRET
+        generateValue: true
       # Valfri. Utan den lever admins ändringar bara så länge servern gör det;
       # admin-vyn säger det rakt ut och erbjuder export till JSON.
       # Klistra in en Postgres-URL från Render, Neon eller Supabase.

@@ -18,7 +18,7 @@ import type {
 const HISTORY_LIMIT = 60;
 const STORAGE_KEY = "inkab.config.v1";
 
-export type Tool = "select" | "wall" | "nogo" | "measure";
+export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 export type ViewMode = "2d" | "3d";
 export type Unit = "m" | "mm";
 
@@ -71,6 +71,7 @@ type Actions = {
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
   addDrawn: (obj: DrawnObject) => void;
+  updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
   removeDrawn: (id: string) => void;
   clearDrawn: () => void;
   applyPatch: (patch: ConfigPatch) => void;
@@ -243,6 +244,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       });
       set({ selectedId: obj.id });
     },
+
+    updateDrawn: (id, patch) =>
+      get().update((d) => {
+        const object = d.drawn.find((o) => o.id === id);
+        if (object) Object.assign(object, patch);
+      }),
 
     removeDrawn: (id) => {
       get().update((d) => {

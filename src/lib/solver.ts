@@ -34,8 +34,10 @@ const TOUCH_EPSILON_MM = 30;
 export const AUX_GAP_MM = 1500;
 /** Fritt utrymme mellan linjen och truckgatan, mm. */
 export const AISLE_GAP_MM = 1200;
-/** Truckgatans bredd, mm. */
+/** Förslagen bredd på en truckgata, mm. Kunden ändrar den fritt. */
 export const TRUCK_AISLE_MM = 5000;
+/** Förslagen längd på en hämtzon vid utlastningen, mm. */
+export const TRUCK_PICKUP_LENGTH_MM = 9000;
 /** Marginal från hallens vägg till linjens start, mm. */
 export const HALL_INSET_MM = 2000;
 /** Hjälpobjekt får nudda varandra men inte överlappa, mm. */
@@ -426,7 +428,31 @@ function placeAux(
   };
 }
 
-function buildAisle(lineBounds: Box, outDir: Dir, side: Side): Aisle {
+/**
+ * Truckgatorna är det kunden ritat — inte något som härleds ur linjens längd.
+ * Ibland är det en hel gata längs anläggningen, ibland bara en hämtzon vid
+ * utlastningen. Båda är samma sak för motorn: en yta som ska hållas fri.
+ */
+function drawnAisles(config: Configuration): Aisle[] {
+  return config.drawn
+    .filter((d) => d.kind === "truck")
+    .map((d) => ({
+      id: d.id,
+      box: { x: d.x, y: d.y, l: d.l, w: d.w },
+      label: d.name,
+      widthMm: Math.min(d.l, d.w),
+    }));
+}
+
+/**
+ * Ett rimligt förslag på truckgata bredvid utlastningen, som kunden sedan
+ * flyttar och ändrar. Används av knappen i sidopanelen och av mallarna.
+ */
+export function suggestTruckZone(
+  lineBounds: Box,
+  outDir: Dir,
+  side: Side,
+): { x: number; y: number; l: number; w: number } {
   const r = rightOf(outDir);
   const s: Vec2 = side === "right" ? r : { x: -r.x, y: -r.y };
 
@@ -436,26 +462,28 @@ function buildAisle(lineBounds: Box, outDir: Dir, side: Side): Aisle {
         ? lineBounds.y + lineBounds.w + AISLE_GAP_MM
         : lineBounds.y - AISLE_GAP_MM - TRUCK_AISLE_MM;
     return {
-      box: { x: lineBounds.x, y: Math.round(y), l: lineBounds.l, w: TRUCK_AISLE_MM },
-      label: `Truckgata ${(TRUCK_AISLE_MM / 1000).toFixed(1).replace(".", ",")} m`,
-      side,
-      widthMm: TRUCK_AISLE_MM,
+      x: Math.round(lineBounds.x + lineBounds.l - TRUCK_PICKUP_LENGTH_MM),
+      y: Math.round(y),
+      l: TRUCK_PICKUP_LENGTH_MM,
+      w: TRUCK_AISLE_MM,
     };
   }
 
   const x =
-    s.x > 0 ? lineBounds.x + lineBounds.l + AISLE_GAP_MM : lineBounds.x - AISLE_GAP_MM - TRUCK_AISLE_MM;
+    s.x > 0
+      ? lineBounds.x + lineBounds.l + AISLE_GAP_MM
+      : lineBounds.x - AISLE_GAP_MM - TRUCK_AISLE_MM;
   return {
-    box: { x: Math.round(x), y: lineBounds.y, l: TRUCK_AISLE_MM, w: lineBounds.w },
-    label: `Truckgata ${(TRUCK_AISLE_MM / 1000).toFixed(1).replace(".", ",")} m`,
-    side,
-    widthMm: TRUCK_AISLE_MM,
+    x: Math.round(x),
+    y: Math.round(lineBounds.y + lineBounds.w - TRUCK_PICKUP_LENGTH_MM),
+    l: TRUCK_AISLE_MM,
+    w: TRUCK_PICKUP_LENGTH_MM,
   };
 }
 
 function computeMetrics(
   placements: Placement[],
-  aisle: Aisle | null,
+  aisles: Aisle[],
   bounds: Box,
   endPointGapMm: number | null,
 ): Metrics {
@@ -466,9 +494,7 @@ function computeMetrics(
     null,
   );
 
-  const area = aisle
-    ? unionBox([bounds, aisle.box])
-    : bounds;
+  const area = aisles.length ? unionBox([bounds, ...aisles.map((a) => a.box)]) : bounds;
 
   return {
     totalLengthMm: Math.round(bounds.l),
@@ -492,6 +518,8 @@ function computeMetrics(
 }
 
 export type SolveOutput = Omit<LayoutResult, "diagnostics"> & {
+  /** Enbart produktionskedjans omslutande box, utan hjälpobjekt. */
+  lineBounds: Box;
   /** Maskiner som inte gick att koppla in i kedjan. */
   unplaced: { instanceId: string; machineId: string; reason: string }[];
   /** Flödesriktning ut ur sista maskinen. */
@@ -671,9 +699,7 @@ export function solveLayout(
 
   const bounds = unionBox(placements.map((p) => p.bbox));
   const outDir = chain.cursor.dir;
-  const aisle = linePlacements.length
-    ? buildAisle(lineBounds, outDir, config.flow.truckPickupSide)
-    : null;
+  const aisles = drawnAisles(config);
 
   const lineEnd = linePlacements.length ? chain.cursor.point : null;
   const endPointGapMm =
@@ -688,9 +714,10 @@ export function solveLayout(
 
   return {
     placements,
-    aisle,
+    aisles,
     bounds,
-    metrics: computeMetrics(placements, aisle, bounds, endPointGapMm),
+    lineBounds,
+    metrics: computeMetrics(placements, aisles, bounds, endPointGapMm),
     unplaced: chain.unplaced,
     outDir,
     neverTurnedToMainAxis: !chain.turnedToMainAxis,

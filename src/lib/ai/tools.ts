@@ -38,6 +38,18 @@ export type ToolContext = {
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
+/** Hallens portar, som assistenten behöver för att resonera om truckens väg. */
+function doorSummary(config: Configuration) {
+  return config.drawn
+    .filter((d) => d.kind === "door")
+    .map((d) => ({
+      name: d.name,
+      xM: Number(meters(d.x).replace(",", ".")),
+      yM: Number(meters(d.y).replace(",", ".")),
+      widthM: Number(meters(Math.max(d.l, d.w)).replace(",", ".")),
+    }));
+}
+
 export function layoutSummary(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
@@ -63,12 +75,14 @@ export function layoutSummary(
       lengthM: Number(meters(p.size.lengthMm).replace(",", ".")),
       widthM: Number(meters(p.size.widthMm).replace(",", ".")),
     })),
-    truckAisle: layout.aisle
-      ? {
-          side: layout.aisle.side,
-          widthM: Number(meters(layout.aisle.widthMm).replace(",", ".")),
-        }
-      : null,
+    truckZones: layout.aisles.map((a) => ({
+      label: a.label,
+      xM: Number(meters(a.box.x).replace(",", ".")),
+      yM: Number(meters(a.box.y).replace(",", ".")),
+      lengthM: Number(meters(a.box.l).replace(",", ".")),
+      widthM: Number(meters(a.box.w).replace(",", ".")),
+    })),
+    doors: doorSummary(config),
     diagnostics: layout.diagnostics.map((d) => ({
       code: d.code,
       severity: d.severity,

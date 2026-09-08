@@ -179,9 +179,18 @@ export type LineItem = {
   manualOffset?: Vec2;
 };
 
+/**
+ * Objekt kunden ritar i hallen.
+ *  wall  — vägg, alltid axelparallell
+ *  door  — port i en vägg; truckens väg in och ut
+ *  truck — truckgata eller hämtzon. Definieras av kunden, inte av linjen.
+ *  nogo  — spärrad yta
+ */
+export type DrawnKind = "wall" | "door" | "truck" | "nogo";
+
 export type DrawnObject = {
   id: string;
-  kind: "wall" | "nogo";
+  kind: DrawnKind;
   name: string;
   /** Världsbox, mm. */
   x: number;
@@ -268,7 +277,8 @@ export type Placement = {
   powerKw: number;
 };
 
-export type Aisle = { box: Box; label: string; side: Side; widthMm: number };
+/** En truckgata eller hämtzon, härledd ur det kunden ritat. */
+export type Aisle = { id: string; box: Box; label: string; widthMm: number };
 
 export type Severity = "error" | "warning" | "info";
 
@@ -305,7 +315,8 @@ export type Metrics = {
 
 export type LayoutResult = {
   placements: Placement[];
-  aisle: Aisle | null;
+  /** Truckgator och hämtzoner. Tomt tills kunden ritat någon. */
+  aisles: Aisle[];
   bounds: Box;
   metrics: Metrics;
   diagnostics: Diagnostic[];

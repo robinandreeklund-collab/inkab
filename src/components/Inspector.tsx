@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { meters } from "@/lib/format";
-import { Button, Row, Tag } from "./ui";
+import { meters, parseMeters } from "@/lib/format";
+import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
@@ -17,6 +17,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleOption,
     removeItem,
     removeDrawn,
+    updateDrawn,
     resetOffset,
     nudge,
   } = useConfigStore();
@@ -43,13 +44,66 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
       {drawn ? (
         <div>
-          <div className="kicker">{drawn.kind === "wall" ? "Ritat objekt · vägg" : "Ritat objekt · no-go"}</div>
-          <h3 className="mb-3 text-lg">{drawn.name}</h3>
-          <Row label="Mått L×B" value={`${meters(drawn.l)} × ${meters(drawn.w)} m`} />
-          <Row label="Position X, Y" value={`${meters(drawn.x)} , ${meters(drawn.y)} m`} />
-          <Button className="mt-3 w-full" variant="ghost" onClick={() => removeDrawn(drawn.id)}>
-            Ta bort
-          </Button>
+          <div className="kicker">
+            Ritat objekt ·{" "}
+            {{ wall: "vägg", door: "port", truck: "truckgata", nogo: "no-go" }[drawn.kind]}
+          </div>
+          <input
+            value={drawn.name}
+            onChange={(e) => updateDrawn(drawn.id, { name: e.target.value })}
+            aria-label="Namn"
+            className="mb-3 w-full border-b border-transparent bg-transparent text-lg outline-none hover:border-divider focus:border-accent"
+          />
+
+          {/* Allt går att skriva in exakt, inte bara dras. */}
+          <div className="grid grid-cols-2 gap-2">
+            {(
+              [
+                ["Position X", "x"],
+                ["Position Y", "y"],
+                ["Längd (X)", "l"],
+                ["Bredd (Y)", "w"],
+              ] as const
+            ).map(([label, key]) => (
+              <Field key={key} label={`${label} m`}>
+                <NumberInput
+                  value={meters(drawn[key])}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) updateDrawn(drawn.id, { [key]: Math.max(0, mm) });
+                  }}
+                />
+              </Field>
+            ))}
+          </div>
+
+          {drawn.kind !== "truck" && drawn.kind !== "nogo" ? (
+            <div className="mt-2">
+              <Field label="Höjd m">
+                <NumberInput
+                  value={meters(drawn.h)}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) updateDrawn(drawn.id, { h: Math.max(0, mm) });
+                  }}
+                />
+              </Field>
+            </div>
+          ) : null}
+
+          <div className="mt-3 space-y-2">
+            <Button
+              className="w-full"
+              onClick={() =>
+                updateDrawn(drawn.id, { l: drawn.w, w: drawn.l })
+              }
+            >
+              Vrid 90°
+            </Button>
+            <Button className="w-full" variant="ghost" onClick={() => removeDrawn(drawn.id)}>
+              Ta bort
+            </Button>
+          </div>
         </div>
       ) : null}
 

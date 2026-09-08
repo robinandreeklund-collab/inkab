@@ -13,7 +13,8 @@ import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
 import { Button } from "./ui";
-import type { PriceResult } from "@/lib/server/pricing";
+import type { PriceResult, Role } from "@/lib/server/pricing";
+import type { SessionUser } from "./AuthDialog";
 
 export function AppShell() {
   const {
@@ -35,7 +36,10 @@ export function AppShell() {
     removeDrawn,
   } = useConfigStore();
 
-  const [role, setRole] = useState<"guest" | "sales">("guest");
+  const [user, setUser] = useState<SessionUser | null>(null);
+  const role: Role = user?.role ?? "guest";
+  // /admin skickar hit besökare som saknar behörighet; öppna inloggningen direkt.
+  const [askLogin, setAskLogin] = useState(false);
   const [price, setPrice] = useState<PriceResult | null>(null);
   const priceRequest = useRef(0);
 
@@ -44,10 +48,25 @@ export function AppShell() {
   }, [hydrate]);
 
   useEffect(() => {
-    fetch("/api/session")
-      .then((r) => r.json())
-      .then((data) => setRole(data.role === "sales" ? "sales" : "guest"))
-      .catch(() => setRole("guest"));
+    if (new URLSearchParams(window.location.search).has("admin")) setAskLogin(true);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/library")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.machines?.length) useConfigStore.getState().setLibrary(data.machines);
+      })
+      .catch(() => {
+        // Servern är inte nåbar — det inbyggda biblioteket duger.
+      });
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => setUser(data?.user ?? null))
+      .catch(() => setUser(null));
   }, []);
 
   /* Priset räknas alltid på servern. Debounce så att varje knapptryck inte
@@ -69,7 +88,7 @@ export function AppShell() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [config, role]);
+  }, [config, user]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -152,7 +171,12 @@ export function AppShell() {
   if (screen === "onboarding") {
     return (
       <div className="flex h-dvh flex-col">
-        <Topbar role={role} onRoleChange={setRole} />
+        <Topbar
+          user={user}
+          onUserChange={setUser}
+          autoOpenLogin={askLogin}
+          onLoginHandled={() => setAskLogin(false)}
+        />
         <div className="min-h-0 flex-1">
           <Onboarding />
         </div>
@@ -163,7 +187,12 @@ export function AppShell() {
   if (screen === "quote") {
     return (
       <div className="flex h-dvh flex-col">
-        <Topbar role={role} onRoleChange={setRole} />
+        <Topbar
+          user={user}
+          onUserChange={setUser}
+          autoOpenLogin={askLogin}
+          onLoginHandled={() => setAskLogin(false)}
+        />
         <div className="min-h-0 flex-1">
           <QuoteView price={price} role={role} />
         </div>
@@ -173,7 +202,12 @@ export function AppShell() {
 
   return (
     <div className="flex h-dvh flex-col">
-      <Topbar role={role} onRoleChange={setRole} />
+      <Topbar
+          user={user}
+          onUserChange={setUser}
+          autoOpenLogin={askLogin}
+          onLoginHandled={() => setAskLogin(false)}
+        />
 
       <div className="flex min-h-0 flex-1">
         <Sidebar />

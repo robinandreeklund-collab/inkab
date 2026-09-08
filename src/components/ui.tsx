@@ -119,12 +119,16 @@ export function NumberInput({
   max?: number;
   step?: string;
 }) {
+  // Värdena formateras med svenskt decimalkomma i gränssnittet, men
+  // <input type="number"> accepterar bara punkt och renderar tomt annars.
+  const normalized = value.replace(",", ".");
+
   return (
     <div className="flex items-center gap-2">
       <input
         type="number"
-        defaultValue={value}
-        key={value}
+        defaultValue={normalized}
+        key={normalized}
         min={min}
         max={max}
         step={step}

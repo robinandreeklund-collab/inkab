@@ -1,43 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { AuthDialog, type SessionUser } from "./AuthDialog";
 import { Button, Segmented } from "./ui";
 
+const ROLE_LABEL: Record<string, string> = {
+  customer: "Kund",
+  sales: "Säljare",
+  admin: "Admin",
+};
+
 export function Topbar({
-  role,
-  onRoleChange,
+  user,
+  onUserChange,
+  autoOpenLogin = false,
+  onLoginHandled,
 }: {
-  role: "guest" | "sales";
-  onRoleChange: (role: "guest" | "sales") => void;
+  user: SessionUser | null;
+  onUserChange: (user: SessionUser | null) => void;
+  autoOpenLogin?: boolean;
+  onLoginHandled?: () => void;
 }) {
   const { config, view, unit, past, future, setView, setUnit, undo, redo, update, setScreen } =
     useConfigStore();
-  const [loginOpen, setLoginOpen] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+
+  useEffect(() => {
+    if (autoOpenLogin && !user) setAuthOpen(true);
+  }, [autoOpenLogin, user]);
 
   return (
-    <header className="flex h-[52px] flex-none items-center gap-4 border-b border-divider bg-white px-3">
-      <button onClick={() => setScreen("onboarding")} className="flex items-center gap-2">
-        <span className="h-4 w-4 bg-accent" />
-        <span className="text-[15px] font-medium tracking-tight">INKAB</span>
+    <header className="flex h-[56px] flex-none items-center gap-4 border-b border-steel bg-steel px-3 text-paper">
+      <button onClick={() => setScreen("onboarding")} className="flex flex-none items-center">
+        <Image
+          src="/inkab-logo.png"
+          alt="INKAB"
+          width={459}
+          height={96}
+          priority
+          className="h-5 w-auto"
+        />
       </button>
 
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="kicker">Projekt</span>
+        <span className="kicker text-paper/50">Projekt</span>
         <input
           value={config.projectName}
           onChange={(e) => update((d) => void (d.projectName = e.target.value))}
-          className="min-w-0 max-w-[280px] border-b border-transparent bg-transparent text-sm outline-none hover:border-divider focus:border-accent"
+          aria-label="Projektnamn"
+          className="min-w-0 max-w-[280px] border-b border-transparent bg-transparent text-sm text-paper outline-none hover:border-paper/30 focus:border-accent"
         />
       </div>
 
       <div className="ml-auto flex items-center gap-2">
-        <Button size="sm" variant="ghost" onClick={undo} disabled={past.length === 0} title="Ångra (Ctrl+Z)">
+        <button
+          onClick={undo}
+          disabled={past.length === 0}
+          title="Ångra (Ctrl+Z)"
+          className="px-2 py-1 text-sm text-paper/70 hover:text-paper disabled:opacity-30"
+        >
           ↶
-        </Button>
-        <Button size="sm" variant="ghost" onClick={redo} disabled={future.length === 0} title="Gör om (Ctrl+Y)">
+        </button>
+        <button
+          onClick={redo}
+          disabled={future.length === 0}
+          title="Gör om (Ctrl+Shift+Z)"
+          className="px-2 py-1 text-sm text-paper/70 hover:text-paper disabled:opacity-30"
+        >
           ↷
-        </Button>
+        </button>
+
         <Segmented
           ariaLabel="Vy"
           value={view}
@@ -56,83 +90,56 @@ export function Topbar({
           ]}
           onChange={setUnit}
         />
-        {role === "sales" ? (
-          <Button
-            active
-            onClick={async () => {
-              await fetch("/api/session", { method: "POST", body: "{}" , headers: { "Content-Type": "application/json" }});
-              onRoleChange("guest");
-            }}
+
+        {user?.role === "admin" ? (
+          <a
+            href="/admin"
+            className="inline-flex items-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent"
           >
-            Säljläge · logga ut
-          </Button>
+            Admin
+          </a>
+        ) : null}
+
+        {user ? (
+          <div className="flex items-center gap-2">
+            <span className="hidden text-right leading-tight sm:block">
+              <span className="block text-xs text-paper">{user.name || user.email}</span>
+              <span className="kicker text-paper/50">{ROLE_LABEL[user.role] ?? user.role}</span>
+            </span>
+            <button
+              onClick={async () => {
+                await fetch("/api/auth/logout", { method: "POST" });
+                onUserChange(null);
+              }}
+              className="border border-paper/30 px-3 py-1.5 text-sm hover:border-accent hover:bg-accent"
+            >
+              Logga ut
+            </button>
+          </div>
         ) : (
-          <Button onClick={() => setLoginOpen(true)}>Logga in</Button>
+          <button
+            onClick={() => setAuthOpen(true)}
+            className="border border-paper/30 px-3 py-1.5 text-sm hover:border-accent hover:bg-accent"
+          >
+            Logga in
+          </button>
         )}
       </div>
 
-      {loginOpen ? (
-        <LoginDialog
-          onClose={() => setLoginOpen(false)}
-          onSuccess={() => {
-            setLoginOpen(false);
-            onRoleChange("sales");
+      {authOpen ? (
+        <AuthDialog
+          onClose={() => {
+            setAuthOpen(false);
+            onLoginHandled?.();
+          }}
+          onSuccess={(nextUser) => {
+            setAuthOpen(false);
+            onLoginHandled?.();
+            onUserChange(nextUser);
+            if (nextUser.role === "admin" && autoOpenLogin) window.location.href = "/admin";
           }}
         />
       ) : null}
     </header>
-  );
-}
-
-function LoginDialog({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const [password, setPassword] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const submit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    setBusy(true);
-    setError(null);
-    const response = await fetch("/api/session", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ password }),
-    });
-    setBusy(false);
-    if (response.ok) onSuccess();
-    else setError("Fel lösenord.");
-  };
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-ink/40 p-4" onClick={onClose}>
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={submit}
-        className="blueprint w-[380px] bg-white p-4"
-      >
-        <h2 className="kicker mb-1">Säljläge</h2>
-        <p className="mb-3 text-xs leading-relaxed text-muted">
-          Visar listpriser, marginal och radpriser. Prototypen använder ett delat lösenord — i skarpt
-          läge ersätts det av Auth.js med magisk länk för kund och Entra ID internt.
-        </p>
-        <input
-          autoFocus
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder="Lösenord"
-          className="mb-2 w-full border border-divider px-3 py-2 text-sm outline-none focus:border-accent"
-        />
-        {error ? <p className="mb-2 text-xs text-danger">{error}</p> : null}
-        <div className="flex gap-2">
-          <Button type="submit" variant="primary" disabled={busy || !password}>
-            {busy ? "Loggar in…" : "Logga in"}
-          </Button>
-          <Button variant="ghost" onClick={onClose}>
-            Avbryt
-          </Button>
-        </div>
-      </form>
-    </div>
   );
 }

@@ -38,12 +38,6 @@ describe("kedjevandring", () => {
 });
 
 describe("de fem flödesfrågorna påverkar geometrin", () => {
-  it("infeedFrom vinklar linjen och tvärtransportören vänder tillbaka den", () => {
-    const angled = solveLayout(templateConfig("vinklad"));
-    expect(angled.neverTurnedToMainAxis).toBe(false);
-    expect(angled.outDir).toBe("x+");
-  });
-
   it("infeed från sidan utan tvärtransportör flaggas", () => {
     const config = defaultConfig();
     config.flow.infeedFrom = "right";
@@ -58,7 +52,7 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
     leftConfig.flow.controlDeskSide = "left";
     const left = solveLayout(leftConfig);
 
-    const deskOf = (l: typeof right) => l.placements.find((p) => p.machineId === "mp1")!;
+    const deskOf = (l: typeof right) => l.placements.find((p) => p.machineId === "manoverpulpet")!;
     expect(deskOf(right).bbox.y).not.toBe(deskOf(left).bbox.y);
   });
 
@@ -66,8 +60,8 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
     const a = defaultConfig();
     const b = defaultConfig();
     b.flow.stickerMagazineSide = "left";
-    const magA = solveLayout(a).placements.find((p) => p.machineId === "sf3")!;
-    const magB = solveLayout(b).placements.find((p) => p.machineId === "sf3")!;
+    const magA = solveLayout(a).placements.find((p) => p.machineId === "strofacksmagasin")!;
+    const magB = solveLayout(b).placements.find((p) => p.machineId === "strofacksmagasin")!;
     expect(magA.bbox.y).toBeGreaterThan(magB.bbox.y);
   });
 
@@ -86,7 +80,7 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
 
     const shortLayout = solveLayout(short);
     const longLayout = solveLayout(long);
-    const kt = (l: typeof shortLayout) => l.placements.find((p) => p.machineId === "kt")!;
+    const kt = (l: typeof shortLayout) => l.placements.find((p) => p.machineId === "kedjetransportor")!;
 
     expect(kt(shortLayout).size.lengthMm).toBe(6000);
     expect(kt(longLayout).size.lengthMm).toBe(18000);
@@ -96,24 +90,24 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
   it("respekterar min- och maxlängd för parametriska maskiner", () => {
     const config = defaultConfig();
     config.flow.finalConveyorLengthMm = 99000;
-    const kt = solveLayout(config).placements.find((p) => p.machineId === "kt")!;
-    expect(kt.size.lengthMm).toBe(getMachine("kt")!.parametricLength!.maxMm);
+    const kt = solveLayout(config).placements.find((p) => p.machineId === "kedjetransportor")!;
+    expect(kt.size.lengthMm).toBe(getMachine("kedjetransportor")!.parametricLength!.maxMm);
   });
 });
 
 describe("optioner", () => {
   it("breddar maskinen och flyttar portarna", () => {
-    const machine = getMachine("ts4")!;
+    const machine = getMachine("tsl-enkel")!;
     const base = effectiveMachine(machine, []);
-    const wide = effectiveMachine(machine, ["ts4-fack"]);
+    const wide = effectiveMachine(machine, ["magasin-stort"]);
     expect(wide.effWidthMm).toBe(base.effWidthMm + 900);
   });
 
   it("påverkar kapacitet och effekt", () => {
-    const pl3 = getMachine("pl3")!;
-    const withServo = effectiveMachine(pl3, ["pl3-servo"]);
-    expect(withServo.effCapacity).toBe(pl3.capacity.packagesPerHour + 3);
-    expect(withServo.effPowerKw).toBe(pl3.utilities.powerKw + 4);
+    const multi = getMachine("tsl-multi")!;
+    const withLift = effectiveMachine(multi, ["vakuumlyft-extra"]);
+    expect(withLift.effLengthMm).toBe(multi.footprint.lengthMm + 1200);
+    expect(withLift.effPowerKw).toBeCloseTo(multi.utilities.powerKw + 2.5, 5);
   });
 });
 

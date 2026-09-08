@@ -1,3 +1,4 @@
+import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
 import { runRules } from "./rules";
 import { solveLayout } from "./solver";
 import type { Configuration, LayoutResult } from "./types";
@@ -6,9 +7,12 @@ import type { Configuration, LayoutResult } from "./types";
  * Enda ingången till geometri + validering. Ren funktion: samma konfiguration
  * ger alltid exakt samma resultat, på klienten och på servern.
  */
-export function computeLayout(config: Configuration): LayoutResult {
-  const solved = solveLayout(config);
-  const diagnostics = runRules(config, solved);
+export function computeLayout(
+  config: Configuration,
+  library: MachineLibrary = BUILTIN_LIBRARY,
+): LayoutResult {
+  const solved = solveLayout(config, library);
+  const diagnostics = runRules(config, solved, library);
   return {
     placements: solved.placements,
     aisle: solved.aisle,

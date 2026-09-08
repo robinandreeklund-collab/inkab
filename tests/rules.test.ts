@@ -43,14 +43,14 @@ describe("regelmotorn", () => {
 
   it("R-501 när en maskin saknar sitt beroende", () => {
     const config = defaultConfig();
-    config.line = config.line.filter((i) => i.machineId !== "sr2");
+    config.line = config.line.filter((i) => i.machineId !== "strofacksmagasin");
     const diagnostics = computeLayout(config).diagnostics;
     const missing = diagnostics.find((d) => d.code === "R-501");
     expect(missing).toBeDefined();
     expect(missing!.fix).toEqual({
       kind: "addMachine",
-      machineId: "sr2",
-      label: "Lägg till Ströretur SR2",
+      machineId: "strofacksmagasin",
+      label: "Lägg till Ströfacksmagasin",
     });
   });
 
@@ -119,7 +119,7 @@ describe("regelmotorn", () => {
   });
 
   it("alla mallar är giltiga", () => {
-    for (const id of ["strolinje", "paketlinje", "komplett", "vinklad"]) {
+    for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
       const layout = computeLayout(templateConfig(id));
       const errors = layout.diagnostics.filter((d) => d.severity === "error");
       expect(errors, `${id}: ${JSON.stringify(errors, null, 2)}`).toHaveLength(0);

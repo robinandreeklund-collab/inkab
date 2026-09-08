@@ -1,5 +1,5 @@
 import "server-only";
-import { CATEGORY_LABEL, MACHINES } from "@/lib/library";
+import { BUILTIN_LIBRARY, CATEGORY_LABEL, type MachineLibrary } from "@/lib/library";
 import { AISLE_GAP_MM, AUX_GAP_MM, TRUCK_AISLE_MM } from "@/lib/solver";
 
 /**
@@ -64,12 +64,14 @@ DE FEM FLÖDESFRÅGORNA
 4. Från vilken sida hämtar trucken färdiga paket?
 5. Hur lång ska sista kedjetransportören vara?`;
 
-export const MACHINE_DIGEST = `MASKINBIBLIOTEK (${MACHINES.length} maskiner, mått i meter)
+export function machineDigest(library: MachineLibrary): string {
+  return `MASKINBIBLIOTEK (${library.machines.length} maskiner, mått i meter)
 
-${MACHINES.map((m) => {
+${library.machines.map((m) => {
   const parts = [
     `${m.id} · ${m.sku} · ${m.name}`,
     `  ${CATEGORY_LABEL[m.category]}${m.aux ? " (hjälpobjekt, ingår ej i kedjan)" : ""} — ${m.summary}`,
+    ...(m.aiDescription ? [`  ${m.aiDescription.trim().replace(/\n+/g, "\n  ")}`] : []),
     `  ${m.footprint.lengthMm / 1000} × ${m.footprint.widthMm / 1000} × ${m.footprint.heightMm / 1000} m` +
       (m.capacity.packagesPerHour > 0 ? `, ${m.capacity.packagesPerHour} paket/h` : "") +
       `, ${m.utilities.powerKw} kW`,
@@ -82,6 +84,20 @@ ${MACHINES.map((m) => {
   if (m.ports.some((p) => p.role === "out" && p.allowsDirectionChange)) {
     parts.push("  Kan vinkla flödet 90°.");
   }
+  if (m.clearance) {
+    const c = m.clearance;
+    parts.push(
+      `  Maskinzon (fritt utrymme): fram ${c.frontMm / 1000} m, bak ${c.backMm / 1000} m, ` +
+        `vänster ${c.leftMm / 1000} m, höger ${c.rightMm / 1000} m.`,
+    );
+  }
+  if (m.parameters?.length) {
+    parts.push(
+      `  Kundens inställningar: ${m.parameters
+        .map((param) => `${param.id} — ${param.label}${param.unit ? ` (${param.unit})` : ""}`)
+        .join(", ")}.`,
+    );
+  }
   if (m.requires?.length) parts.push(`  Kräver: ${m.requires.join(", ")}.`);
   if (m.options.length) {
     parts.push(`  Optioner: ${m.options.map((o) => `${o.id} (${o.name})`).join(", ")}.`);
@@ -89,15 +105,16 @@ ${MACHINES.map((m) => {
   return parts.join("\n");
 }).join("\n\n")}
 
-Detta är placeholder-data i prototypen och ska ersättas med INKAB:s verkliga maskindata.`;
+Biblioteket underhålls i admin-vyn. Föreslå aldrig en maskin som inte står i listan ovan.`;
+}
 
-export function buildSystem() {
+export function buildSystem(library: MachineLibrary = BUILTIN_LIBRARY) {
   return [
     { type: "text" as const, text: ROLE_AND_DOMAIN },
     { type: "text" as const, text: RULE_BOOK },
     {
       type: "text" as const,
-      text: MACHINE_DIGEST,
+      text: machineDigest(library),
       // Cache-brytpunkt: allt ovanför är stabilt mellan anrop och sessioner.
       cache_control: { type: "ephemeral" as const },
     },

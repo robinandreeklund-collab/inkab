@@ -2,10 +2,10 @@
 
 import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { CATEGORY_LABEL, MACHINES } from "@/lib/library";
+import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
-import type { MachineCategory, Side } from "@/lib/types";
+import type { Machine, MachineCategory, Side } from "@/lib/types";
 
 const SIDE_OPTIONS: { value: Side; label: string }[] = [
   { value: "right", label: "Höger" },
@@ -15,7 +15,6 @@ const SIDE_OPTIONS: { value: Side; label: string }[] = [
 export function Sidebar() {
   const {
     config,
-    layout,
     selectedId,
     tool,
     addMachine,
@@ -28,6 +27,9 @@ export function Sidebar() {
     clearDrawn,
     removeDrawn,
     setScreen,
+    library,
+    layout,
+    setFlowPoint,
   } = useConfigStore();
 
   const [search, setSearch] = useState("");
@@ -35,13 +37,15 @@ export function Sidebar() {
 
   const hasStickerStacker = config.line.some((i) => i.machineId === "ts4");
 
-  const grouped = MACHINES.filter((m) => {
-    const q = search.trim().toLowerCase();
-    return !q || m.name.toLowerCase().includes(q) || m.sku.toLowerCase().includes(q);
-  }).reduce<Record<string, typeof MACHINES>>((acc, machine) => {
-    (acc[machine.category] ??= []).push(machine);
-    return acc;
-  }, {});
+  const grouped = library.machines
+    .filter((m) => {
+      const q = search.trim().toLowerCase();
+      return !q || m.name.toLowerCase().includes(q) || m.sku.toLowerCase().includes(q);
+    })
+    .reduce<Record<string, Machine[]>>((acc, machine) => {
+      (acc[machine.category] ??= []).push(machine);
+      return acc;
+    }, {});
 
   return (
     <aside className="scroll-thin flex h-full w-[280px] flex-none flex-col overflow-y-auto border-r border-divider bg-white">
@@ -223,6 +227,143 @@ export function Sidebar() {
               }}
             />
           </Field>
+        </div>
+
+        {/* Start- och slutpunkt: kan också dras direkt i ritningen. */}
+        <div className="mt-4 border-t border-divider pt-3">
+          <span className="kicker mb-1 block">Linjens start och slut</span>
+          <p className="mb-2 text-[11px] text-muted">Dra markörerna i ritningen, eller skriv måtten här.</p>
+
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <Field label="Start X">
+              <NumberInput
+                value={meters(config.flow.startPoint.x)}
+                onCommit={(raw) => {
+                  const mm = parseMeters(raw);
+                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, x: mm });
+                }}
+              />
+            </Field>
+            <Field label="Start Y">
+              <NumberInput
+                value={meters(config.flow.startPoint.y)}
+                onCommit={(raw) => {
+                  const mm = parseMeters(raw);
+                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, y: mm });
+                }}
+              />
+            </Field>
+          </div>
+
+          {config.flow.endPoint ? (
+            <>
+              <div className="mb-2 grid grid-cols-2 gap-2">
+                <Field label="Slut X">
+                  <NumberInput
+                    value={meters(config.flow.endPoint.x)}
+                    onCommit={(raw) => {
+                      const mm = parseMeters(raw);
+                      if (mm !== null && config.flow.endPoint)
+                        setFlowPoint("endPoint", { ...config.flow.endPoint, x: mm });
+                    }}
+                  />
+                </Field>
+                <Field label="Slut Y">
+                  <NumberInput
+                    value={meters(config.flow.endPoint.y)}
+                    onCommit={(raw) => {
+                      const mm = parseMeters(raw);
+                      if (mm !== null && config.flow.endPoint)
+                        setFlowPoint("endPoint", { ...config.flow.endPoint, y: mm });
+                    }}
+                  />
+                </Field>
+              </div>
+              <label className="mb-2 flex cursor-pointer items-start gap-2">
+                <input
+                  type="checkbox"
+                  checked={config.flow.fitToEndPoint}
+                  onChange={(e) => setFlow({ fitToEndPoint: e.target.checked })}
+                  className="mt-0.5 accent-accent"
+                />
+                <span>
+                  <span className="text-[13px]">Anpassa längden automatiskt</span>
+                  <span className="block text-[11px] leading-relaxed text-muted">
+                    Sätter sista kedjetransportörens längd så att linjen slutar i punkten.
+                  </span>
+                </span>
+              </label>
+              <Button size="sm" variant="ghost" onClick={() => setFlowPoint("endPoint", null)}>
+                Ta bort slutpunkt
+              </Button>
+            </>
+          ) : (
+            <Button
+              size="sm"
+              className="w-full"
+              onClick={() =>
+                setFlowPoint("endPoint", {
+                  x: Math.max(0, layout.bounds.x + layout.bounds.l),
+                  y: config.flow.startPoint.y,
+                })
+              }
+            >
+              Sätt slutpunkt
+            </Button>
+          )}
+          {layout.metrics.endPointGapMm !== null ? (
+            <p className="mt-2 text-[11px] text-muted">
+              Linjen slutar {meters(layout.metrics.endPointGapMm)} m från slutpunkten.
+            </p>
+          ) : null}
+        </div>
+
+        {/* Virkesbredd som intervall — maskinernas portar måste täcka hela spannet. */}
+        <div className="mt-4 border-t border-divider pt-3">
+          <span className="kicker mb-1 block">Virke</span>
+          <div className="mb-2 grid grid-cols-2 gap-2">
+            <Field label="Minsta virkesbredd">
+              <NumberInput
+                value={meters(config.product.packageWidthMinMm)}
+                onCommit={(raw) => {
+                  const mm = parseMeters(raw);
+                  if (mm !== null) update((d) => void (d.product.packageWidthMinMm = mm));
+                }}
+              />
+            </Field>
+            <Field label="Största virkesbredd">
+              <NumberInput
+                value={meters(config.product.packageWidthMaxMm)}
+                onCommit={(raw) => {
+                  const mm = parseMeters(raw);
+                  if (mm !== null) update((d) => void (d.product.packageWidthMaxMm = mm));
+                }}
+              />
+            </Field>
+          </div>
+          <div className="grid grid-cols-2 gap-2">
+            <Field label="Paketlängd">
+              <NumberInput
+                value={meters(config.product.packageLengthMm)}
+                onCommit={(raw) => {
+                  const mm = parseMeters(raw);
+                  if (mm !== null) update((d) => void (d.product.packageLengthMm = mm));
+                }}
+              />
+            </Field>
+            <Field label="Målkapacitet">
+              <NumberInput
+                value={String(config.product.targetPackagesPerHour)}
+                suffix="pkt/h"
+                step="1"
+                onCommit={(raw) => {
+                  const value = Math.round(Number(raw.replace(",", ".")));
+                  if (Number.isFinite(value) && value > 0)
+                    update((d) => void (d.product.targetPackagesPerHour = value));
+                }}
+              />
+            </Field>
+          </div>
         </div>
       </section>
 

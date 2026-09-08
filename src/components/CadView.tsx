@@ -30,6 +30,7 @@ export function CadView() {
     nudge,
     addDrawn,
     setTool,
+    setFlowPoint,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -95,6 +96,22 @@ export function CadView() {
       if (delta.x === 0 && delta.y === 0) return;
       last = target;
       nudge(placement.instanceId, delta);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /* ── Dra start- och slutpunkt ────────────────────────────────────────── */
+  const dragFlowPoint = (which: "startPoint" | "endPoint", event: React.PointerEvent) => {
+    event.stopPropagation();
+    if (tool !== "select") return;
+    const move = (e: PointerEvent) => {
+      const p = toWorld(e);
+      if (p) setFlowPoint(which, { x: snap(p.x), y: snap(p.y) });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -311,6 +328,15 @@ export function CadView() {
             />
           )
         ) : null}
+
+        <FlowMarkers
+          start={config.flow.startPoint}
+          end={config.flow.endPoint}
+          lineEnd={layout.metrics.endPointGapMm !== null ? config.flow.endPoint : null}
+          view={view}
+          strokeUnit={strokeUnit}
+          onDrag={dragFlowPoint}
+        />
 
         {measure ? <MeasureLine measure={measure} view={view} strokeUnit={strokeUnit} /> : null}
       </svg>
@@ -707,6 +733,86 @@ function DiagnosticBadges({
           </g>
         );
       })}
+    </g>
+  );
+}
+
+/** Start- och slutpunkt som dragbara markörer i ritningen. */
+function FlowMarkers({
+  start,
+  end,
+  view,
+  strokeUnit,
+  onDrag,
+}: {
+  start: Vec2;
+  end: Vec2 | null;
+  lineEnd: Vec2 | null;
+  view: "2d" | "3d";
+  strokeUnit: number;
+  onDrag: (which: "startPoint" | "endPoint", event: React.PointerEvent) => void;
+}) {
+  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
+  const a = project(start);
+  const r = strokeUnit * 9;
+
+  return (
+    <g>
+      <g
+        style={{ cursor: "grab" }}
+        onPointerDown={(e) => onDrag("startPoint", e)}
+      >
+        <circle cx={a.x} cy={a.y} r={r} fill="#5980a6" fillOpacity="0.18" stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
+        <circle cx={a.x} cy={a.y} r={strokeUnit * 2.4} fill="#5980a6" />
+        <text
+          x={a.x}
+          y={a.y - r - strokeUnit * 4}
+          textAnchor="middle"
+          fontSize={strokeUnit * 12}
+          fill="#5980a6"
+          className="num"
+          pointerEvents="none"
+        >
+          START
+        </text>
+      </g>
+
+      {end ? (
+        <g style={{ cursor: "grab" }} onPointerDown={(e) => onDrag("endPoint", e)}>
+          {(() => {
+            const b = project(end);
+            return (
+              <>
+                <circle
+                  cx={b.x}
+                  cy={b.y}
+                  r={r}
+                  fill="#1d2d3d"
+                  fillOpacity="0.12"
+                  stroke="#1d2d3d"
+                  strokeWidth={strokeUnit * 1.6}
+                />
+                <path
+                  d={`M${b.x - r} ${b.y}h${r * 2}M${b.x} ${b.y - r}v${r * 2}`}
+                  stroke="#1d2d3d"
+                  strokeWidth={strokeUnit * 1.4}
+                />
+                <text
+                  x={b.x}
+                  y={b.y - r - strokeUnit * 4}
+                  textAnchor="middle"
+                  fontSize={strokeUnit * 12}
+                  fill="#1d2d3d"
+                  className="num"
+                  pointerEvents="none"
+                >
+                  SLUT
+                </text>
+              </>
+            );
+          })()}
+        </g>
+      ) : null}
     </g>
   );
 }

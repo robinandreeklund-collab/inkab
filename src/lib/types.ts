@@ -26,7 +26,7 @@ export type MachineCategory =
   | "outfeed"
   | "control";
 
-export type ZoneType = "service" | "safety" | "pit";
+export type ZoneType = "service" | "safety" | "pit" | "clearance";
 
 export type Port = {
   id: string;
@@ -50,6 +50,38 @@ export type Zone = {
   label: string;
 };
 
+/**
+ * Kundvända parametrar som admin definierar per maskin. Kunden ser dem när
+ * maskinen är markerad, t.ex. "önskad virkestakt".
+ */
+export type ParameterValue = string | number | boolean;
+
+export type MachineParameter = {
+  id: string;
+  label: string;
+  help?: string;
+  type: "number" | "select" | "boolean";
+  /** Vad parametern styr i motorn. Utelämnas om den bara ska dokumenteras. */
+  affects?: "capacity" | "lengthMm" | "widthMm" | "heightMm";
+
+  /** type: "number" */
+  unit?: string;
+  min?: number;
+  max?: number;
+  step?: number;
+  /** Pris per enhet av värdet, SEK. */
+  pricePerUnit?: number;
+
+  /** type: "select" */
+  choices?: { value: string; label: string; priceDelta?: number }[];
+
+  defaultNumber?: number;
+  defaultText?: string;
+  defaultBoolean?: boolean;
+  /** Pristillägg när en boolean är påslagen. */
+  priceWhenTrue?: number;
+};
+
 export type MachineOption = {
   id: string;
   name: string;
@@ -65,7 +97,15 @@ export type Machine = {
   sku: string;
   name: string;
   category: MachineCategory;
+  /** Kort beskrivning i gränssnittet. */
   summary: string;
+  /**
+   * Utförlig beskrivning för assistenten: vad maskinen gör, vad den är till
+   * för, vad den klarar och inte klarar, när den ska väljas. Läggs in i
+   * systemprompten i sin helhet — det är härifrån assistenten vet vad
+   * maskinen faktiskt är.
+   */
+  aiDescription?: string;
   /** Hjälpobjekt (pulpet, magasin) ingår inte i produktionskedjan. */
   aux?: boolean;
   /** Ankarmaskin som hjälpobjektet placeras intill. */
@@ -81,6 +121,17 @@ export type Machine = {
   operatorPriority?: number;
 
   zones: Zone[];
+  /**
+   * Maskinzon: fritt utrymme som måste hållas runt maskinen. Avstånden anges
+   * per sida i maskinens egen orientering — fram är i flödesriktningen.
+   * Inget får placeras innanför.
+   */
+  clearance?: {
+    frontMm: number;
+    backMm: number;
+    leftMm: number;
+    rightMm: number;
+  };
 
   capacity: {
     packagesPerHour: number;
@@ -98,7 +149,22 @@ export type Machine = {
 
   stepFile?: string;
   leadTimeWeeks: number;
+  /** Nummer i INKAB:s produktkatalog. "—" för poster utanför katalogen. */
+  catalogueNumber?: string;
+  /**
+   * Sant när fotavtryck och portlägen är kontrollerade mot verklig ritning.
+   * Falskt betyder uppskattade mått som inte får visas för kund utan förbehåll.
+   */
+  dimensionsVerified?: boolean;
   options: MachineOption[];
+
+  /** Kundvända inställningar, definierade av admin. */
+  parameters?: MachineParameter[];
+  /** Id på bilder i biblioteksdokumentets assets. */
+  images?: string[];
+  /** Länkar till produktkatalog och datablad. */
+  productUrl?: string;
+  datasheetUrl?: string;
 };
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
@@ -107,6 +173,8 @@ export type LineItem = {
   instanceId: string;
   machineId: string;
   selectedOptions: string[];
+  /** Kundens värden på maskinens parametrar. */
+  parameters?: Record<string, ParameterValue>;
   /** Manuell justering av den genererade placeringen, mm. */
   manualOffset?: Vec2;
 };
@@ -134,6 +202,16 @@ export type Flow = {
   truckPickupSide: Side;
   /** "Längd på sista kedjetransportören" */
   finalConveyorLengthMm: number;
+
+  /** Var linjen börjar i hallen. Kan dras i ritningen. */
+  startPoint: Vec2;
+  /** Önskad slutpunkt för linjen. Null = ingen målpunkt angiven. */
+  endPoint: Vec2 | null;
+  /**
+   * Sätter sista kedjetransportörens längd automatiskt så att linjen slutar
+   * vid slutpunkten. Kräver att endPoint är satt.
+   */
+  fitToEndPoint: boolean;
 };
 
 export type Hall = {
@@ -144,7 +222,10 @@ export type Hall = {
 
 export type Product = {
   packageLengthMm: number;
-  packageWidthMm: number;
+  /** Minsta virkesbredd (paketbredd) som ska kunna köras. */
+  packageWidthMinMm: number;
+  /** Största virkesbredd (paketbredd) som ska kunna köras. */
+  packageWidthMaxMm: number;
   packageHeightMm: number;
   packageWeightKg: number;
   targetPackagesPerHour: number;
@@ -218,6 +299,8 @@ export type Metrics = {
   totalAirNlPerMin: number;
   pitCount: number;
   leadTimeWeeks: number;
+  /** Avstånd mellan linjens faktiska slut och önskad slutpunkt, mm. */
+  endPointGapMm: number | null;
 };
 
 export type LayoutResult = {

@@ -1,4 +1,4 @@
-import { getMachine } from "./library";
+import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "./library";
 import {
   DIR_VEC,
   ROTATIONS,
@@ -13,8 +13,10 @@ import {
 import type {
   Aisle,
   Box,
+  Zone,
   Configuration,
   Dir,
+  ParameterValue,
   LayoutResult,
   LineItem,
   Machine,
@@ -61,11 +63,25 @@ export function effectiveMachine(
   machine: Machine,
   selectedOptions: string[],
   overrideLengthMm?: number,
+  parameters?: Record<string, ParameterValue>,
 ): EffectiveMachine {
   let lengthMm = machine.footprint.lengthMm;
   let widthMm = machine.footprint.widthMm;
+  let heightMm = machine.footprint.heightMm;
   let capacity = machine.capacity.packagesPerHour;
   let powerKw = machine.utilities.powerKw;
+
+  // Kundens parametrar kan styra mått och kapacitet direkt.
+  for (const parameter of machine.parameters ?? []) {
+    if (!parameter.affects) continue;
+    const raw = parameters?.[parameter.id];
+    const value = typeof raw === "number" ? raw : parameter.defaultNumber;
+    if (typeof value !== "number" || !Number.isFinite(value)) continue;
+    if (parameter.affects === "capacity") capacity = Math.max(0, Math.round(value));
+    if (parameter.affects === "lengthMm") lengthMm = Math.max(100, Math.round(value));
+    if (parameter.affects === "widthMm") widthMm = Math.max(100, Math.round(value));
+    if (parameter.affects === "heightMm") heightMm = Math.max(100, Math.round(value));
+  }
 
   for (const optId of selectedOptions) {
     const opt = machine.options.find((o) => o.id === optId);
@@ -87,7 +103,7 @@ export function effectiveMachine(
     ...machine,
     effLengthMm: lengthMm,
     effWidthMm: widthMm,
-    effHeightMm: machine.footprint.heightMm,
+    effHeightMm: heightMm,
     effCapacity: Math.max(0, capacity),
     effPowerKw: Math.max(0, powerKw),
   };
@@ -100,11 +116,37 @@ function scaledPorts(m: EffectiveMachine) {
   return m.ports.map((p) => ({ ...p, pos: { x: p.pos.x * lr, y: p.pos.y * wr } }));
 }
 
+/**
+ * Maskinzonen som en lokal box. Fram/bak ligger längs X (flödesriktningen),
+ * vänster/höger längs Y — samma konvention som resten av geometrin.
+ */
+function clearanceZone(m: EffectiveMachine): Zone | null {
+  const c = m.clearance;
+  if (!c) return null;
+  if (c.frontMm <= 0 && c.backMm <= 0 && c.leftMm <= 0 && c.rightMm <= 0) return null;
+  return {
+    type: "clearance",
+    label: `Maskinzon ${m.sku}`,
+    box: {
+      x: -c.backMm,
+      y: -c.leftMm,
+      l: m.effLengthMm + c.backMm + c.frontMm,
+      w: m.effWidthMm + c.leftMm + c.rightMm,
+    },
+  };
+}
+
 /** Zoner skalade i längdled; tvärgående fri­mått hålls konstanta. */
 function scaledZones(m: EffectiveMachine) {
   const lr = m.effLengthMm / m.footprint.lengthMm;
   const widthDelta = m.effWidthMm - m.footprint.widthMm;
-  return m.zones.map((z) => {
+  const clearance = clearanceZone(m);
+  const zones = clearance ? [...m.zones, clearance] : m.zones;
+  return zones.map((z) => {
+    // Maskinzonen är redan uttryckt i effektiva mått och ska inte skalas om.
+    if (z.type === "clearance") {
+      return { type: z.type, label: z.label, box: { ...z.box } as Box };
+    }
     const spansWidth = z.box.y <= 0 && z.box.y + z.box.w >= m.footprint.widthMm;
     return {
       type: z.type,
@@ -121,16 +163,28 @@ function scaledZones(m: EffectiveMachine) {
 
 type Cursor = { point: Vec2; dir: Dir };
 
-function startCursor(config: Configuration): Cursor {
-  const midY = Math.round(config.hall.widthMm / 2);
+/** Linjens startpunkt, med ett rimligt utgångsläge om kunden inte flyttat den. */
+export function defaultStartPoint(config: Configuration): Vec2 {
   switch (config.flow.infeedFrom) {
     case "right":
-      // Paketen kommer in från högersidan (+Y) och färdas alltså mot −Y.
-      return { point: { x: HALL_INSET_MM, y: config.hall.widthMm - HALL_INSET_MM }, dir: "y-" };
+      return { x: HALL_INSET_MM, y: config.hall.widthMm - HALL_INSET_MM };
     case "left":
-      return { point: { x: HALL_INSET_MM, y: HALL_INSET_MM }, dir: "y+" };
+      return { x: HALL_INSET_MM, y: HALL_INSET_MM };
     default:
-      return { point: { x: HALL_INSET_MM, y: midY }, dir: "x+" };
+      return { x: HALL_INSET_MM, y: Math.round(config.hall.widthMm / 2) };
+  }
+}
+
+function startCursor(config: Configuration): Cursor {
+  const point = config.flow.startPoint ?? defaultStartPoint(config);
+  switch (config.flow.infeedFrom) {
+    // Paketen kommer in från högersidan (+Y) och färdas alltså mot −Y.
+    case "right":
+      return { point, dir: "y-" };
+    case "left":
+      return { point, dir: "y+" };
+    default:
+      return { point, dir: "x+" };
   }
 }
 
@@ -172,6 +226,16 @@ function fitMachine(
   return { rotation: candidates[0].rotation, mirrored: candidates[0].mirrored };
 }
 
+
+/** Boxen utvidgad med maskinens frigång. Riktningsoberoende — vi tar den
+ *  största sidan så att zonen respekteras oavsett hur maskinen roterats. */
+function expandByClearance(box: Box, m: EffectiveMachine): Box {
+  const c = m.clearance;
+  if (!c) return box;
+  const pad = Math.max(c.frontMm, c.backMm, c.leftMm, c.rightMm);
+  if (pad <= 0) return box;
+  return { x: box.x - pad, y: box.y - pad, l: box.l + pad * 2, w: box.w + pad * 2 };
+}
 
 /**
  * Hur långt markören måste flyttas längs `dir` för att `box` ska gå fri från
@@ -293,7 +357,9 @@ function placeAux(
   if (anchor) {
     const r = rightOf(anchorDir);
     const s: Vec2 = side === "right" ? r : { x: -r.x, y: -r.y };
-    const a = anchor.bbox;
+    // Hjälpobjektet läggs utanför ankarmaskinens maskinzon, inte bara utanför
+    // dess kropp — annars hamnar pulpeten inne i det fria utrymmet.
+    const a = anchor.zones.find((z) => z.type === "clearance")?.box ?? anchor.bbox;
     const cx = a.x + a.l / 2;
     const cy = a.y + a.w / 2;
 
@@ -387,7 +453,12 @@ function buildAisle(lineBounds: Box, outDir: Dir, side: Side): Aisle {
   };
 }
 
-function computeMetrics(placements: Placement[], aisle: Aisle | null, bounds: Box): Metrics {
+function computeMetrics(
+  placements: Placement[],
+  aisle: Aisle | null,
+  bounds: Box,
+  endPointGapMm: number | null,
+): Metrics {
   const line = placements.filter((p) => !p.aux);
   const withCapacity = line.filter((p) => p.capacity > 0);
   const bottleneckPlacement = withCapacity.reduce<Placement | null>(
@@ -416,6 +487,7 @@ function computeMetrics(placements: Placement[], aisle: Aisle | null, bounds: Bo
     totalAirNlPerMin: placements.reduce((a, p) => a + p.machine.utilities.airNlPerMin, 0),
     pitCount: placements.filter((p) => p.machine.foundation.pitDepthMm > 0).length,
     leadTimeWeeks: Math.max(0, ...placements.map((p) => p.machine.leadTimeWeeks)),
+    endPointGapMm,
   };
 }
 
@@ -426,42 +498,46 @@ export type SolveOutput = Omit<LayoutResult, "diagnostics"> & {
   outDir: Dir;
   /** Sant om kedjan aldrig vändes tillbaka till hallens längdriktning. */
   neverTurnedToMainAxis: boolean;
+  /** Där linjen faktiskt slutar — sista utportens läge. */
+  lineEnd: Vec2 | null;
+  /** Längden som sista parametriska maskinen fick, efter eventuell anpassning. */
+  finalConveyorLengthMm: number;
 };
 
 /**
  * Deterministisk layoutgenerering. Samma konfiguration ger alltid samma
  * geometri — inga slumpmässiga eller modellgenererade placeringar.
  */
-export function solveLayout(config: Configuration): SolveOutput {
-  const preferMirrored = config.flow.controlDeskSide === "left";
+type ChainResult = {
+  placements: Placement[];
+  unplaced: SolveOutput["unplaced"];
+  cursor: Cursor;
+  turnedToMainAxis: boolean;
+};
+
+/** Bygger kedjan med en given längd på den parametriska maskinen. */
+function walkChain(
+  config: Configuration,
+  lineItems: { item: LineItem; machine: Machine }[],
+  parametricIndex: number,
+  finalLengthMm: number,
+  preferMirrored: boolean,
+): ChainResult {
   const placements: Placement[] = [];
   const unplaced: SolveOutput["unplaced"] = [];
-
-  const resolved = config.line
-    .map((item) => ({ item, machine: getMachine(item.machineId) }))
-    .filter((r): r is { item: LineItem; machine: Machine } => !!r.machine);
-
-  const lineItems = resolved.filter((r) => !r.machine.aux);
-  const auxItems = resolved.filter((r) => r.machine.aux);
-
-  // Sista transportmaskinen med parametrisk längd styrs av flödesfrågan.
-  const parametricIndex = (() => {
-    for (let i = lineItems.length - 1; i >= 0; i--) {
-      if (lineItems[i].machine.parametricLength) return i;
-    }
-    return -1;
-  })();
+  const idealBoxes: Box[] = [];
+  // Samma boxar utvidgade med maskinzonen, så att kedjan lägger sig fritt.
+  const idealClearBoxes: Box[] = [];
 
   let cursor = startCursor(config);
-  const idealBoxes: Box[] = [];
-  const startDir = cursor.dir;
-  let turnedToMainAxis = startDir === "x+";
+  let turnedToMainAxis = cursor.dir === "x+";
 
   lineItems.forEach(({ item, machine }, index) => {
     const eff = effectiveMachine(
       machine,
       item.selectedOptions,
-      index === parametricIndex ? config.flow.finalConveyorLengthMm : undefined,
+      index === parametricIndex ? finalLengthMm : undefined,
+      item.parameters,
     );
 
     let result = placeOne(item, eff, index + 1, cursor, preferMirrored);
@@ -474,9 +550,14 @@ export function solveLayout(config: Configuration): SolveOutput {
       return;
     }
 
-    // Skjut fram markören tills maskinen står fri från de tidigare.
+    /*
+     * Skjut fram markören tills maskinen står fri. Tidigare maskiner räknas
+     * med sin maskinzon — utom den närmast föregående, som är inkopplad port
+     * mot port och därför med rätta står i frigången framåt.
+     */
+    const blockers = [...idealClearBoxes.slice(0, -1), ...idealBoxes.slice(-1)];
     for (let attempt = 0; attempt < MAX_CLEARANCE_ATTEMPTS; attempt++) {
-      const shift = clearanceShift(result.idealBbox, idealBoxes, cursor.dir, TURN_CLEARANCE_MM);
+      const shift = clearanceShift(result.idealBbox, blockers, cursor.dir, TURN_CLEARANCE_MM);
       if (shift <= 0) break;
       const v = DIR_VEC[cursor.dir];
       cursor = {
@@ -493,16 +574,68 @@ export function solveLayout(config: Configuration): SolveOutput {
 
     placements.push(result.placement);
     idealBoxes.push(result.idealBbox);
+    idealClearBoxes.push(expandByClearance(result.idealBbox, eff));
     cursor = result.next;
     if (cursor.dir === "x+") turnedToMainAxis = true;
   });
 
+  return { placements, unplaced, cursor, turnedToMainAxis };
+}
+
+export function solveLayout(
+  config: Configuration,
+  library: MachineLibrary = BUILTIN_LIBRARY,
+): SolveOutput {
+  const preferMirrored = config.flow.controlDeskSide === "left";
+
+  const resolved = config.line
+    .map((item) => ({ item, machine: getMachine(item.machineId, library) }))
+    .filter((r): r is { item: LineItem; machine: Machine } => !!r.machine);
+
+  const lineItems = resolved.filter((r) => !r.machine.aux);
+  const auxItems = resolved.filter((r) => r.machine.aux);
+
+  // Sista transportmaskinen med parametrisk längd styrs av flödesfrågan.
+  const parametricIndex = (() => {
+    for (let i = lineItems.length - 1; i >= 0; i--) {
+      if (lineItems[i].machine.parametricLength) return i;
+    }
+    return -1;
+  })();
+
+  let finalLengthMm = config.flow.finalConveyorLengthMm;
+  let chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
+
+  /*
+   * Ska linjen sluta i en angiven punkt sätts den parametriska maskinens längd
+   * så att sista utporten hamnar där. Slutsegmentet är rakt, så en enda
+   * korrigering räcker — men vi kör om kedjan för att få exakt geometri.
+   */
+  if (config.flow.fitToEndPoint && config.flow.endPoint && parametricIndex >= 0) {
+    const limits = lineItems[parametricIndex].machine.parametricLength;
+    const v = DIR_VEC[chain.cursor.dir];
+    const delta =
+      (config.flow.endPoint.x - chain.cursor.point.x) * v.x +
+      (config.flow.endPoint.y - chain.cursor.point.y) * v.y;
+
+    const wanted = Math.round(finalLengthMm + delta);
+    const clamped = limits
+      ? Math.min(limits.maxMm, Math.max(limits.minMm, wanted))
+      : Math.max(500, wanted);
+
+    if (clamped !== finalLengthMm) {
+      finalLengthMm = clamped;
+      chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
+    }
+  }
+
+  const placements = [...chain.placements];
   const linePlacements = placements.filter((p) => !p.aux);
   const lineBounds = unionBox(linePlacements.map((p) => p.bbox));
 
   // Hjälpobjekt placeras relativt sin ankarmaskin.
   for (const { item, machine } of auxItems) {
-    const eff = effectiveMachine(machine, item.selectedOptions);
+    const eff = effectiveMachine(machine, item.selectedOptions, undefined, item.parameters);
     let anchor: Placement | null = null;
 
     if (machine.anchorFor) {
@@ -519,8 +652,7 @@ export function solveLayout(config: Configuration): SolveOutput {
     }
     anchor = anchor ?? linePlacements[linePlacements.length - 1] ?? null;
 
-    const anchorDir =
-      anchor?.ports.find((p) => p.role === "out")?.dir ?? (cursor.dir as Dir);
+    const anchorDir = anchor?.ports.find((p) => p.role === "out")?.dir ?? chain.cursor.dir;
     const side: Side =
       machine.category === "control" ? config.flow.controlDeskSide : config.flow.stickerMagazineSide;
 
@@ -538,19 +670,32 @@ export function solveLayout(config: Configuration): SolveOutput {
   }
 
   const bounds = unionBox(placements.map((p) => p.bbox));
-  const outDir = cursor.dir;
+  const outDir = chain.cursor.dir;
   const aisle = linePlacements.length
     ? buildAisle(lineBounds, outDir, config.flow.truckPickupSide)
     : null;
+
+  const lineEnd = linePlacements.length ? chain.cursor.point : null;
+  const endPointGapMm =
+    config.flow.endPoint && lineEnd
+      ? Math.round(
+          Math.hypot(
+            config.flow.endPoint.x - lineEnd.x,
+            config.flow.endPoint.y - lineEnd.y,
+          ),
+        )
+      : null;
 
   return {
     placements,
     aisle,
     bounds,
-    metrics: computeMetrics(placements, aisle, bounds),
-    unplaced,
+    metrics: computeMetrics(placements, aisle, bounds, endPointGapMm),
+    unplaced: chain.unplaced,
     outDir,
-    neverTurnedToMainAxis: !turnedToMainAxis,
+    neverTurnedToMainAxis: !chain.turnedToMainAxis,
+    lineEnd,
+    finalConveyorLengthMm: finalLengthMm,
   };
 }
 

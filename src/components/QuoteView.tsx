@@ -3,9 +3,9 @@
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters, mkr, todayISO } from "@/lib/format";
 import { Button, Tag } from "./ui";
-import type { PriceResult } from "@/lib/server/pricing";
+import type { PriceResult, Role } from "@/lib/server/pricing";
 
-export function QuoteView({ price, role }: { price: PriceResult | null; role: "guest" | "sales" }) {
+export function QuoteView({ price, role }: { price: PriceResult | null; role: Role }) {
   const { config, layout, setScreen } = useConfigStore();
   const metrics = layout.metrics;
   const errors = layout.diagnostics.filter((d) => d.severity === "error");
@@ -74,7 +74,7 @@ export function QuoteView({ price, role }: { price: PriceResult | null; role: "g
                 <Th>Artikel</Th>
                 <Th>Optioner</Th>
                 <Th>Antal</Th>
-                {role === "sales" ? <Th align="right">Radpris</Th> : null}
+                {role !== "guest" ? <Th align="right">Radpris</Th> : null}
               </tr>
             </thead>
             <tbody>
@@ -85,7 +85,7 @@ export function QuoteView({ price, role }: { price: PriceResult | null; role: "g
                   <Td muted>{line.sku}</Td>
                   <Td muted>{line.optionNames.join(", ") || "—"}</Td>
                   <Td>{line.quantity}</Td>
-                  {role === "sales" ? (
+                  {role !== "guest" ? (
                     <Td align="right">{line.rowTotal != null ? formatSek(line.rowTotal) : "—"}</Td>
                   ) : null}
                 </tr>
@@ -97,7 +97,7 @@ export function QuoteView({ price, role }: { price: PriceResult | null; role: "g
                   <Td>—</Td>
                   <Td>—</Td>
                   <Td>—</Td>
-                  {role === "sales" ? <Td>—</Td> : null}
+                  {role !== "guest" ? <Td>—</Td> : null}
                 </tr>
               ) : null}
             </tbody>
@@ -149,8 +149,12 @@ export function QuoteView({ price, role }: { price: PriceResult | null; role: "g
                 value={`${meters(config.flow.finalConveyorLengthMm)} m`}
               />
               <Line
+                label="Virkesbredd"
+                value={`${meters(config.product.packageWidthMinMm)}–${meters(config.product.packageWidthMaxMm)} m`}
+              />
+              <Line
                 label="Paket"
-                value={`${meters(config.product.packageLengthMm)} × ${meters(config.product.packageWidthMm)} × ${meters(config.product.packageHeightMm)} m, ${config.product.packageWeightKg} kg`}
+                value={`${meters(config.product.packageLengthMm)} × ${meters(config.product.packageHeightMm)} m, ${config.product.packageWeightKg} kg`}
               />
             </dl>
           </Section>

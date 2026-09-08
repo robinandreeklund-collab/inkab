@@ -1,4 +1,4 @@
-import { getMachine, CATEGORY_ORDER } from "./library";
+import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import { TRUCK_AISLE_MM, type SolveOutput } from "./solver";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
@@ -9,6 +9,8 @@ const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
 const PORT_LEVEL_TOLERANCE_MM = 20;
 /** Maskiner får nudda varandra; överlapp under detta ignoreras, mm. */
 const TOUCH_TOLERANCE_MM = 30;
+/** Hur nära slutpunkten linjen måste sluta innan det räknas som avvikelse, mm. */
+const END_POINT_TOLERANCE_MM = 500;
 
 function hallBox(config: Configuration): Box {
   return { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
@@ -18,7 +20,11 @@ function hallBox(config: Configuration): Box {
  * Regelverket. Varje regel är deterministisk och körs på solverns utdata —
  * ingen av dem är hårdkodad text, alla räknas fram ur geometrin.
  */
-export function runRules(config: Configuration, layout: SolveOutput): Diagnostic[] {
+export function runRules(
+  config: Configuration,
+  layout: SolveOutput,
+  library: MachineLibrary = BUILTIN_LIBRARY,
+): Diagnostic[] {
   const out: Diagnostic[] = [];
   const line = layout.placements.filter((p) => !p.aux).sort((a, b) => a.pos - b.pos);
   const aux = layout.placements.filter((p) => p.aux);
@@ -104,6 +110,41 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
           anchor: boxCenter(zone.box),
         });
       }
+    }
+  }
+
+  /* ── R-106 Maskinzonen inkräktad ────────────────────────────────────── */
+  for (const p of all) {
+    const clearance = p.zones.find((z) => z.type === "clearance");
+    if (!clearance) continue;
+
+    for (const other of all) {
+      if (other.instanceId === p.instanceId) continue;
+      // Grannen i kedjan är inkopplad port mot port och står med rätta i
+      // frigången framåt respektive bakåt. Zonen gäller allt annat.
+      if (!p.aux && !other.aux && Math.abs(p.pos - other.pos) === 1) continue;
+      if (!boxesOverlap(clearance.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
+      out.push({
+        code: "R-106",
+        severity: "error",
+        title: "Maskinzonen är inkräktad",
+        detail: `${other.machine.name} står innanför maskinzonen kring ${p.machine.name}. Det fria utrymmet runt maskinen måste hållas.`,
+        instanceIds: [p.instanceId, other.instanceId],
+        anchor: boxCenter(other.bbox),
+      });
+    }
+
+    for (const obj of config.drawn) {
+      const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
+      if (!boxesOverlap(clearance.box, box, TOUCH_TOLERANCE_MM)) continue;
+      out.push({
+        code: "R-106",
+        severity: "error",
+        title: "Maskinzonen är inkräktad",
+        detail: `${obj.name} går in i maskinzonen kring ${p.machine.name}.`,
+        instanceIds: [p.instanceId],
+        anchor: boxCenter(box),
+      });
     }
   }
 
@@ -221,6 +262,26 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
     }
   }
 
+  /* ── R-206 Linjen slutar inte där kunden vill ───────────────────────── */
+  if (config.flow.endPoint && layout.lineEnd) {
+    const gap = layout.metrics.endPointGapMm ?? 0;
+    if (gap > END_POINT_TOLERANCE_MM) {
+      out.push({
+        code: "R-206",
+        severity: "warning",
+        title: "Linjen slutar inte vid slutpunkten",
+        detail: config.flow.fitToEndPoint
+          ? `Linjen slutar ${m(gap)} m från slutpunkten trots automatisk anpassning. Sista transportörens längd räcker inte hela vägen — flytta slutpunkten eller lägg till en transportör.`
+          : `Linjen slutar ${m(gap)} m från slutpunkten. Slå på automatisk anpassning eller justera sista transportörens längd.`,
+        instanceIds: [],
+        anchor: layout.lineEnd,
+        fix: config.flow.fitToEndPoint
+          ? undefined
+          : { kind: "flow", patch: { fitToEndPoint: true }, label: "Anpassa längden automatiskt" },
+      });
+    }
+  }
+
   /* ── R-301 Kapacitet under målet ────────────────────────────────────── */
   for (const p of line) {
     if (p.capacity <= 0) continue;
@@ -242,7 +303,8 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
     if (c.maxWeightKg <= 0) continue;
     const checks: [string, number, [number, number]][] = [
       ["längd", prod.packageLengthMm, c.packageLengthMm],
-      ["bredd", prod.packageWidthMm, c.packageWidthMm],
+      ["minsta virkesbredd", prod.packageWidthMinMm, c.packageWidthMm],
+      ["största virkesbredd", prod.packageWidthMaxMm, c.packageWidthMm],
       ["höjd", prod.packageHeightMm, c.packageHeightMm],
     ];
     for (const [label, value, [min, max]] of checks) {
@@ -254,6 +316,21 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
         detail: `Paketets ${label} ${m(value)} m ligger utanför ${p.machine.name}: ${m(min)}–${m(max)} m.`,
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
+      });
+    }
+
+    // Portarna måste rymma hela virkesbreddsintervallet, inte bara ett värde.
+    for (const port of p.ports) {
+      const [portMin, portMax] = p.machine.ports.find((x) => x.id === port.id)?.widthMm ?? [0, 0];
+      if (portMax <= 0) continue;
+      if (prod.packageWidthMinMm >= portMin && prod.packageWidthMaxMm <= portMax) continue;
+      out.push({
+        code: "R-304",
+        severity: "warning",
+        title: "Porten täcker inte hela virkesbreddsintervallet",
+        detail: `Port ${port.id} på ${p.machine.name} tar ${m(portMin)}–${m(portMax)} m, men linjen ska köra ${m(prod.packageWidthMinMm)}–${m(prod.packageWidthMaxMm)} m.`,
+        instanceIds: [p.instanceId],
+        anchor: port.pos,
       });
     }
     if (prod.packageWeightKg > c.maxWeightKg) {
@@ -313,7 +390,7 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
   for (const p of layout.placements) {
     for (const req of p.machine.requires ?? []) {
       if (presentIds.has(req)) continue;
-      const reqMachine = getMachine(req);
+      const reqMachine = getMachine(req, library);
       out.push({
         code: "R-501",
         severity: "error",
@@ -330,7 +407,7 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
         code: "R-501",
         severity: "error",
         title: "Maskinerna kan inte kombineras",
-        detail: `${p.machine.name} kan inte kombineras med ${getMachine(conflict)?.name ?? conflict}.`,
+        detail: `${p.machine.name} kan inte kombineras med ${getMachine(conflict, library)?.name ?? conflict}.`,
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -358,7 +435,7 @@ export function runRules(config: Configuration, layout: SolveOutput): Diagnostic
       code: "R-102",
       severity: "error",
       title: "Maskinen kunde inte kopplas in",
-      detail: `${getMachine(u.machineId)?.name ?? u.machineId}: ${u.reason}`,
+      detail: `${getMachine(u.machineId, library)?.name ?? u.machineId}: ${u.reason}`,
       instanceIds: [u.instanceId],
     });
   }

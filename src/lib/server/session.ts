@@ -1,19 +1,15 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { currentRole as roleFromSession, currentUser } from "./auth";
 import type { Role } from "./pricing";
 
-export const SALES_COOKIE = "inkab_sales";
+export { SESSION_COOKIE } from "./auth";
 
-function salesPassword(): string {
-  return process.env.SALES_PASSWORD || "inkab";
-}
-
-/** Enkel rollmodell för prototypen. Ersätts av Auth.js i skarpt läge. */
 export async function currentRole(): Promise<Role> {
-  const store = await cookies();
-  return store.get(SALES_COOKIE)?.value === salesPassword() ? "sales" : "guest";
+  return roleFromSession();
 }
 
-export function checkPassword(candidate: string): boolean {
-  return candidate === salesPassword();
+export async function requireAdmin(): Promise<boolean> {
+  return (await roleFromSession()) === "admin";
 }
+
+export { currentUser };

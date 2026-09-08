@@ -1,4 +1,5 @@
 import { computeLayout } from "@/lib/layout";
+import { BUILTIN_LIBRARY, type MachineLibrary } from "@/lib/library";
 import type { Configuration } from "@/lib/types";
 
 export type FallbackSuggestion = {
@@ -14,11 +15,11 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
  * Regelbaserade förslag när ingen ANTHROPIC_API_KEY är satt. Verktyget ska
  * fungera fullt ut utan AI — assistenten är ett lager ovanpå, inte fundamentet.
  */
-export function ruleBasedSuggestions(config: Configuration): {
-  text: string;
-  suggestions: FallbackSuggestion[];
-} {
-  const layout = computeLayout(config);
+export function ruleBasedSuggestions(
+  config: Configuration,
+  library: MachineLibrary = BUILTIN_LIBRARY,
+): { text: string; suggestions: FallbackSuggestion[] } {
+  const layout = computeLayout(config, library);
   const fixable = layout.diagnostics.filter((d) => d.fix);
   const suggestions: FallbackSuggestion[] = [];
 

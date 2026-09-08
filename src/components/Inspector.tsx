@@ -4,9 +4,11 @@ import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
 import { Button, Row, Tag } from "./ui";
-import type { PriceResult } from "@/lib/server/pricing";
+import { MachineParameters } from "./MachineParameters";
+import { MachineImages } from "./MachineImages";
+import type { PriceResult, Role } from "@/lib/server/pricing";
 
-export function Inspector({ price, role }: { price: PriceResult | null; role: "guest" | "sales" }) {
+export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
   const {
     config,
     layout,
@@ -54,6 +56,9 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: "g
       {placement ? (
         <div>
           <div className="kicker">
+            {placement.machine.catalogueNumber && placement.machine.catalogueNumber !== "—"
+              ? `Katalog ${placement.machine.catalogueNumber} · `
+              : ""}
             {placement.machine.sku} · {placement.aux ? "Hjälpobjekt" : `Position ${placement.pos}`}
           </div>
           <h3 className="mb-1 text-lg leading-tight">{placement.machine.name}</h3>
@@ -84,6 +89,27 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: "g
             }
           />
           <Row label="Leveranstid" value={`${placement.machine.leadTimeWeeks} v`} />
+          {placement.machine.clearance ? (
+            <Row
+              label="Maskinzon"
+              value={`${meters(placement.machine.clearance.frontMm)} / ${meters(placement.machine.clearance.backMm)} / ${meters(placement.machine.clearance.leftMm)} / ${meters(placement.machine.clearance.rightMm)} m`}
+            />
+          ) : null}
+          {placement.machine.dimensionsVerified === false ? (
+            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">
+              Måtten är uppskattade och inte kontrollerade mot ritning.
+            </p>
+          ) : null}
+
+          {item ? (
+            <MachineParameters
+              machine={placement.machine}
+              instanceId={item.instanceId}
+              values={item.parameters}
+            />
+          ) : null}
+
+          <MachineImages machine={placement.machine} />
 
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">
@@ -109,7 +135,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: "g
 
           <div className="blueprint mt-4 p-3">
             <div className="kicker">Pris</div>
-            {role === "sales" && priceLine?.rowTotal != null ? (
+            {role !== "guest" && priceLine?.rowTotal != null ? (
               <>
                 <div className="num text-xl">{formatSek(priceLine.rowTotal)}</div>
                 <div className="text-[11px] text-muted">
@@ -170,7 +196,7 @@ function StepButton({
 }: {
   file?: string;
   name: string;
-  role: "guest" | "sales";
+  role: Role;
 }) {
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
@@ -187,7 +213,7 @@ function StepButton({
         className="w-full"
         onClick={() =>
           setMessage(
-            role === "sales"
+            role !== "guest"
               ? `${file} finns inte i prototypen. I skarpt läge levereras en signerad, loggad nedladdning.`
               : "STEP-filer kräver inloggning. Prototypen levererar inga CAD-filer.",
           )

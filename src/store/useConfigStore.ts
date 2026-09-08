@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
-import { getMachine } from "@/lib/library";
+import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import type {
   ConfigPatch,
@@ -10,6 +10,8 @@ import type {
   DrawnObject,
   Flow,
   LayoutResult,
+  Machine,
+  ParameterValue,
   Vec2,
 } from "@/lib/types";
 
@@ -25,6 +27,9 @@ type Screen = "onboarding" | "configurator" | "quote";
 type State = {
   config: Configuration;
   layout: LayoutResult;
+  /** Aktivt maskinbibliotek, hämtat från servern så att admins ändringar slår igenom. */
+  library: MachineLibrary;
+  libraryLoaded: boolean;
   past: Configuration[];
   future: Configuration[];
 
@@ -53,13 +58,16 @@ type Actions = {
   toggleZones: () => void;
   togglePorts: () => void;
 
+  setLibrary: (machines: Machine[]) => void;
   load: (config: Configuration, options?: { resetHistory?: boolean }) => void;
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
+  setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
   addMachine: (machineId: string, atIndex?: number) => void;
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
+  setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
   addDrawn: (obj: DrawnObject) => void;
@@ -88,10 +96,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
   const initial = defaultConfig();
 
   const commit = (next: Configuration) => {
-    const { config, past } = get();
+    const { config, past, library } = get();
     set({
       config: next,
-      layout: computeLayout(next),
+      layout: computeLayout(next, library),
       past: [...past, config].slice(-HISTORY_LIMIT),
       future: [],
     });
@@ -101,6 +109,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
   return {
     config: initial,
     layout: computeLayout(initial),
+    library: BUILTIN_LIBRARY,
+    libraryLoaded: false,
     past: [],
     future: [],
 
@@ -127,10 +137,21 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
 
+    setLibrary: (machines) => {
+      const library = makeLibrary(machines);
+      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library) });
+    },
+
     load: (config, options) => {
       const next = clone(config);
       if (options?.resetHistory) {
-        set({ config: next, layout: computeLayout(next), past: [], future: [], selectedId: null });
+        set({
+          config: next,
+          layout: computeLayout(next, get().library),
+          past: [],
+          future: [],
+          selectedId: null,
+        });
         persist(next);
       } else {
         commit(next);
@@ -145,8 +166,17 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setFlow: (patch) => get().update((d) => Object.assign(d.flow, patch)),
 
+    setFlowPoint: (which, point) =>
+      get().update((d) => {
+        if (which === "startPoint") {
+          if (point) d.flow.startPoint = point;
+        } else {
+          d.flow.endPoint = point;
+        }
+      }),
+
     addMachine: (machineId, atIndex) => {
-      const machine = getMachine(machineId);
+      const machine = getMachine(machineId, get().library);
       if (!machine) return;
       // Hjälpobjekt är unika: en linje har en pulpet och ett ströfacksmagasin.
       if (machine.aux && get().config.line.some((i) => i.machineId === machineId)) {
@@ -175,6 +205,13 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (from < 0) return;
         const [item] = d.line.splice(from, 1);
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
+      }),
+
+    setParameter: (instanceId, parameterId, value) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (!item) return;
+        item.parameters = { ...(item.parameters ?? {}), [parameterId]: value };
       }),
 
     toggleOption: (instanceId, optionId) =>
@@ -239,7 +276,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const previous = past[past.length - 1];
       set({
         config: previous,
-        layout: computeLayout(previous),
+        layout: computeLayout(previous, get().library),
         past: past.slice(0, -1),
         future: [config, ...future].slice(0, HISTORY_LIMIT),
       });
@@ -252,7 +289,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const next = future[0];
       set({
         config: next,
-        layout: computeLayout(next),
+        layout: computeLayout(next, get().library),
         past: [...past, config].slice(-HISTORY_LIMIT),
         future: future.slice(1),
       });

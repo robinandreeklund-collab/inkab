@@ -3,8 +3,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { configurationSchema } from "@/lib/schema";
 import { currentRole } from "@/lib/server/session";
+import { activeContext } from "@/lib/server/context";
 import { buildSystem } from "@/lib/ai/prompt";
-import { TOOL_DEFINITIONS, executeTool, type ToolContext } from "@/lib/ai/tools";
+import { executeTool, toolDefinitions, type ToolContext } from "@/lib/ai/tools";
 import { ruleBasedSuggestions } from "@/lib/ai/fallback";
 import type { Configuration } from "@/lib/types";
 
@@ -36,10 +37,11 @@ export async function POST(request: Request) {
 
   const { config, message, history } = parsed.data;
   const role = await currentRole();
+  const { library, priceBook } = await activeContext();
 
   // Utan nyckel degraderar assistenten till regelmotorns egna förslag.
   if (!process.env.ANTHROPIC_API_KEY) {
-    const { text, suggestions } = ruleBasedSuggestions(config as Configuration);
+    const { text, suggestions } = ruleBasedSuggestions(config as Configuration, library);
     return new Response(
       new ReadableStream({
         start(controller) {
@@ -68,6 +70,8 @@ export async function POST(request: Request) {
     draft: JSON.parse(JSON.stringify(config)),
     variants: [],
     role,
+    library,
+    priceBook,
   };
 
   const messages: Anthropic.MessageParam[] = [
@@ -91,8 +95,8 @@ export async function POST(request: Request) {
             max_tokens: 16000,
             thinking: { type: "adaptive", display: "summarized" },
             output_config: { effort: "high" },
-            system: buildSystem(),
-            tools: TOOL_DEFINITIONS,
+            system: buildSystem(library),
+            tools: toolDefinitions(library),
             messages,
           });
 

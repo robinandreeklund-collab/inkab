@@ -6,10 +6,12 @@ och 3D, och ta fram ett offertunderlag.
 
 [![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/robinandreeklund-collab/inkab/tree/claude/package-handling-config-tool-2yp0dp)
 
-> **Prototyp (fas 1).** Layoutmotorn, regelverket, prissättningen och
-> AI-assistenten är på riktigt. **Maskindata och priser är påhittade
-> placeholder-siffror** och ska ersättas med INKAB:s egna innan verktyget visas
-> för kund. Se [Vad som är verkligt](#vad-som-är-verkligt-och-vad-som-inte-är-det).
+> **Prototyp.** Layoutmotorn, regelverket, prissättningen, kontohanteringen,
+> admin-vyn och AI-assistenten är på riktigt. **Maskinerna kommer från INKAB:s
+> produktkatalog utgåva 1** — namn, funktion, beskrivningar, drivning och
+> tekniska data är era egna. **Fotavtryck, portlägen, kapacitet och priser är
+> fortfarande uppskattade** och redigeras i admin-vyn. Se
+> [Vad som är verkligt](#vad-som-är-verkligt-och-vad-som-inte-är-det).
 
 Arkitekturunderlaget finns i [`docs/forslag.md`](docs/forslag.md).
 Designreferensen (Claude Design-prototypen) ligger i
@@ -27,7 +29,23 @@ Vid deployen frågar Render om två miljövariabler:
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
-| `SALES_PASSWORD` | Nej | Lösenord till säljläget som visar listpriser och marginal. Standardvärdet är `inkab`. **Byt det efter första deployen.** |
+| `DATABASE_URL` | Nej | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton och admins ändringar bara så länge servern gör det — admin-vyn säger det rakt ut och erbjuder export till JSON. **Sätt den om du vill mata in maskindata som består.** |
+| `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu`. |
+| `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
+
+### Första inloggningen
+
+Klicka **Logga in → Skapa konto** och registrera dig med en adress som står i
+`ADMIN_EMAILS`. Kontot blir admin direkt och **Admin**-knappen dyker upp i
+topbaren. Alla andra som registrerar sig blir kund; deras roll ändras under
+**Admin → Konton**.
+
+| Roll | Ser |
+|---|---|
+| Gäst | Bygger fritt, ser prisintervall |
+| Kund | Samma, plus sparade uppgifter |
+| Säljare | Listpriser, radpriser och marginal |
+| Admin | Allt, plus maskinbibliotek, prisbok och konton |
 
 Första bygget tar ett par minuter. Gratisplanen somnar efter inaktivitet, så
 första anropet efter en paus tar cirka 30 sekunder.
@@ -73,7 +91,12 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Regelverk** | 17 regler beräknade ur geometrin — kollisioner, zoner, hallgränser, truckgata, buffert, kapacitet, paketmått, beroenden. Varje regel kan ge ett åtgärdsförslag som går att applicera med ett klick. |
 | **Prissättning** | Beräknas på servern. Prisboken är märkt `server-only` — bygget kraschar om en klientkomponent försöker importera den. |
 | **Rollmodell** | Gäst ser prisintervall, säljläge ser listpris, radpriser och marginal. Serversidan avgör, inte klienten. |
-| **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. |
+| **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. Varje maskins fullständiga beskrivning ur katalogen ligger i systemprompten, så assistenten vet vad maskinerna faktiskt gör. |
+| **Admin-vy** | `/admin` — maskinbibliotek, prisbok och konton. Per maskin: identitet, AI-beskrivning, geometri, maskinzon, portar med live-förhandsgranskning, zoner, kapacitet, media, beroenden, kundens inställningar, bilder, optioner och pris. Provkoppling testar att portarna går att koppla in. Export och import av hela biblioteket som JSON. |
+| **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
+| **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
+| **Start- och slutpunkt** | Dras direkt i ritningen eller skrivs in i meter. Slås "anpassa längden automatiskt" på sätter solvern sista kedjetransportörens längd så att linjen slutar exakt i punkten. |
+| **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
 | **Övrigt** | Ångra/gör om, autospar, delningslänk med konfigurationen i URL:en, offertunderlag med utskrift till PDF, fyra startmallar, tangentbordsgenvägar. |
 
@@ -81,11 +104,11 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 
 | Del | Varför |
 |---|---|
-| **Verklig maskindata** | 13 branschgeneriska maskiner i `src/lib/library.ts`. Mått, kapacitet och portar är kvalificerade gissningar. **Detta är det enda som står mellan prototypen och något ni kan visa en kund.** |
-| **Verkliga priser** | Påhittade siffror i `src/lib/server/pricebook.ts`. |
+| **Verifierade mått** | Maskinerna kommer ur er katalog, men den anger inga fotavtryck. Längd, bredd, höjd, portlägen och kapacitet är uppskattade. Varje maskin har en flagga `dimensionsVerified` — bocka i den i admin-vyn när måtten är kontrollerade mot ritning. Tills dess varnar både inspektorn och admin-listan. |
+| **Verkliga priser** | Katalogen anger inga priser. Siffrorna i `src/lib/server/pricebook.ts` är påhittade och redigeras i admin-vyn. |
 | **STEP-filer** | Knappen finns och förklarar vad som skulle hända. Inga CAD-filer levereras. |
-| **Riktig inloggning** | Delat lösenord i en cookie. Ska bli Auth.js med magisk länk för kund och Entra ID internt. |
-| **Databas** | Konfigurationen lever i webbläsaren och i delningslänken. Inga sparade projekt, ingen offerthistorik. |
+| **Auth.js** | Konton är riktiga — e-post, scrypt-hashade lösenord, HMAC-signerad sessionscookie — men lösenordshanteringen ligger i appen. Ska bli magisk länk för kund och Entra ID internt. |
+| **Sparade projekt** | Konfigurationen lever i webbläsaren och i delningslänken. Kontot bär roll, inte projekt. Ingen offerthistorik. |
 | **Server-renderad PDF** | Utskrift via webbläsaren. Skarpt läge ska rendera måttsatt vektorritning på servern. |
 | **three.js och GLB-modeller** | 3D-vyn är SVG-isometri. Det bär inte riktiga maskinmodeller, men det finns inga sådana ännu — bytet görs när modellerna finns. |
 | **DXF- och Excel-export** | Knappar finns, avstängda. |
@@ -140,7 +163,8 @@ src/
 │   ├── types.ts          Domänmodellen
 │   ├── geometry.ts       Rotation, spegling, boxar, snitt
 │   ├── projection.ts     Isometrisk projektion och dess invers
-│   ├── library.ts        ⚠ Maskinbibliotek — placeholder-data
+│   ├── library.ts        Maskinbibliotek ur produktkatalogen (mått uppskattade)
+│   ├── machineSchema.ts  Validering av admin-redigerad maskindata
 │   ├── solver.ts         Layoutmotorn
 │   ├── rules.ts          Regelverket
 │   ├── layout.ts         computeLayout() — enda ingången
@@ -154,12 +178,16 @@ src/
 │   └── server/
 │       ├── pricebook.ts  ⚠ Priser — server-only, placeholder-data
 │       ├── pricing.ts    Rollfiltrerad prisberäkning
-│       └── session.ts    Rollmodell
+│       ├── auth.ts       Konton, scrypt, signerad sessionscookie
+│       ├── store.ts      Bibliotek och konton: seed → Postgres → minne
+│       └── context.ts    Det aktiva biblioteket och prisboken
 ├── components/           Skal, sidebar, CAD-vy, inspektor, AI-panel, offert
+│   └── admin/            Maskinformulär, parametrar, bilder, prisbok, konton
 ├── store/                Zustand med historik och autospar
 └── app/
     ├── page.tsx
-    └── api/              ai/chat · price · session · health
+    ├── admin/            Admin-vyn
+    └── api/              ai/chat · price · library · auth · admin · health
 ```
 
 ---
@@ -173,18 +201,23 @@ src/
 | R-103 | Maskiner överlappar | fel |
 | R-104 | Servicezon blockerad av annan maskin | varning |
 | R-105 | Skyddszon skär truckgatan | fel |
+| R-106 | Maskinzonen inkräktad av annan maskin eller ritat objekt | fel |
 | R-201 | Truckgatan får inte plats i hallen | fel |
 | R-202 | Sista transportören rymmer inte två pakets buffert | varning |
 | R-203 | Pulpet eller magasin står i truckgatan | fel |
 | R-204 | Trucken måste korsa flödet för att nå magasinet | varning |
+| R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |
 | R-303 | Paketet är för tungt | fel |
+| R-304 | Porten täcker inte hela virkesbreddsintervallet | varning |
 | R-401 | Maskinen hamnar utanför hallen | fel |
 | R-402 | Maskinen är högre än fri höjd | fel |
 | R-403 | Kollision med ritad vägg eller no-go-zon | fel |
 | R-501 | Beroende saknas eller maskiner kan inte kombineras | fel |
 | R-601 | Ovanlig ordning i kedjan | info |
+
+17 regler. 
 
 Reglerna bor i `src/lib/rules.ts`, en funktion per grupp. Att lägga till en
 regel är att lägga till ett block som returnerar `Diagnostic[]`.
@@ -266,13 +299,45 @@ och frågan ligger efter den så att cachen inte invalideras vid varje anrop.
 
 ---
 
+## Admin-vyn
+
+`/admin`, för konton med rollen admin.
+
+**Maskiner.** Hela biblioteket, grupperat per kategori. Per maskin redigeras
+identitet och katalognummer, den utförliga beskrivningen som assistenten läser,
+geometri, maskinzon, portar, zoner, kapacitet, media och fundament, beroenden,
+kundens inställningar, bilder och kataloglänkar, optioner och pris.
+Förhandsgranskningen till höger ritar fotavtryck, portar och zoner medan du
+skriver — det är där man ser om en port hamnat på fel kant. **Provkoppla**
+kopplar maskinen efter en annan i motorn och rapporterar om det fungerar.
+
+**Prisbok.** Montagepåslag per kategori, el- och styrpåslag, frakt och det
+intervall som visas publikt.
+
+**Konton.** Roller och borttagning. Adresser i `ADMIN_EMAILS` är låsta som admin.
+
+**Export och import.** *Exportera JSON* laddar ner hela biblioteket. Lägg filen
+som `data/library.json` i repot och committa den — då blir den det
+versionshanterade utgångsläget som gäller vid varje deploy, oavsett databas.
+Det är den arbetsgången jag rekommenderar för maskindata: granskningsbar i en
+pull request, med full historik.
+
+**Lagring.** Med `DATABASE_URL` sparas ändringar i Postgres. Utan den lever de
+i serverns minne tills den startar om — banderollen högst upp säger vilket som
+gäller.
+
+---
+
 ## Nästa steg
 
-1. **Ersätt maskinbiblioteket med INKAB:s verkliga data.** Fem riktiga maskiner
-   med riktiga portar är värt mer än trettio gissade.
-2. **Håll workshop om flödesreglerna** med konstruktörerna och skriv om
+1. **Fyll i de verkliga måtten.** Katalogen gav er maskiner och beskrivningar,
+   men inte fotavtryck. Gå igenom maskinerna i admin-vyn, mata in längd, bredd,
+   höjd, portlägen och kapacitet, och bocka i *måtten är kontrollerade*.
+   Exportera JSON och committa den när ni är klara.
+2. **Sätt riktiga priser** i prisboken.
+3. **Håll workshop om flödesreglerna** med konstruktörerna och skriv om
    `rules.ts` efter vad som faktiskt gäller. Reglerna är produkten.
-3. **Låt tre konstruktörer testa** och räkna hur ofta de säger "så gör vi
+4. **Låt tre konstruktörer testa** och räkna hur ofta de säger "så gör vi
    aldrig". Det talet är prototypens verkliga betyg.
-4. Därefter fas 2 enligt [`docs/forslag.md`](docs/forslag.md): inloggning,
-   databas, serverrenderad PDF, STEP-leverans.
+5. Därefter fas 2 enligt [`docs/forslag.md`](docs/forslag.md): sparade projekt,
+   serverrenderad PDF, STEP-leverans.

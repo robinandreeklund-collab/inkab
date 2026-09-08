@@ -7,6 +7,9 @@ import "server-only";
  * här filen. Priser skickas aldrig i sin helhet till webbläsaren; klienten får
  * bara det aggregat som användarens roll tillåter (se pricing.ts).
  *
+ * Detta är utgångsläget. Den prisbok som faktiskt används läses via
+ * store.ts och kan redigeras i admin-vyn.
+ *
  * PLACEHOLDER-SIFFROR. Ersätt med INKAB:s verkliga prisbok.
  */
 
@@ -35,26 +38,31 @@ export type PriceBook = {
   indicationSpread: { low: number; high: number };
 };
 
-export const PRICE_BOOK: PriceBook = {
+export const BUILTIN_PRICE_BOOK: PriceBook = {
   id: "2026-Q3",
   name: "Prisbok 2026-Q3",
   validFrom: "2026-07-01",
   validUntil: "2026-12-31",
   currency: "SEK",
   entries: {
-    ib2: { list: 310_000, cost: 198_000, options: { "ib2-roll": 48_000 } },
-    tt1: { list: 154_000, cost: 96_000, options: {} },
-    pl3: { list: 1_460_000, cost: 940_000, options: { "pl3-servo": 92_000 } },
-    ts4: { list: 1_074_000, cost: 690_000, options: { "ts4-fack": 34_000, "ts4-cam": 21_000 } },
-    sr2: { list: 186_000, cost: 118_000, options: {} },
-    pp1: { list: 465_000, cost: 298_000, options: {} },
-    bm2: { list: 398_000, cost: 254_000, options: { "bm2-4band": 26_000 } },
-    pk1: { list: 720_000, cost: 462_000, options: {} },
-    kt: { list: 96_000, cost: 61_000, options: {} },
-    rb: { list: 264_000, cost: 168_000, options: {} },
-    ub1: { list: 228_000, cost: 146_000, options: {} },
-    mp1: { list: 96_000, cost: 58_000, options: {} },
-    sf3: { list: 74_000, cost: 44_000, options: {} },
+    // PLACEHOLDER-PRISER. Katalogen anger inga priser — ersätt med INKAB:s egna.
+    "tsl-enkel": { list: 1_180_000, cost: 742_000, options: { "magasin-stort": 96_000 } },
+    "tsl-multi": { list: 2_240_000, cost: 1_420_000, options: { "vakuumlyft-extra": 268_000 } },
+    underslagslaggare: { list: 1_340_000, cost: 855_000, options: { "separat-magasin": 184_000 } },
+    "rullbana-underslag": { list: 640_000, cost: 402_000, options: {} },
+    "paketlyft-fast": { list: 720_000, cost: 448_000, options: {} },
+    "paketlyft-vagn": { list: 985_000, cost: 618_000, options: {} },
+    sidoskyddslaggare: { list: 890_000, cost: 562_000, options: {} },
+    "paketpress-hydraulisk": { list: 745_000, cost: 468_000, options: {} },
+    lattpress: { list: 268_000, cost: 168_000, options: {} },
+    emballageutlaggare: { list: 690_000, cost: 436_000, options: {} },
+    rullbana: { list: 74_000, cost: 47_000, options: {} },
+    kedjetransportor: { list: 96_000, cost: 61_000, options: {} },
+    "kedjekanal-hojsank": { list: 386_000, cost: 244_000, options: {} },
+    bandomforing: { list: 246_000, cost: 154_000, options: {} },
+    "bandomforing-spjut": { list: 342_000, cost: 214_000, options: {} },
+    strofacksmagasin: { list: 74_000, cost: 44_000, options: {} },
+    manoverpulpet: { list: 168_000, cost: 104_000, options: {} },
   },
   installFactor: {
     infeed: 0.12,

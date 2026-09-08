@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: inkab-layout-configurator
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Valfri. Utan nyckel faller assistenten tillbaka på regelmotorns egna
+      # åtgärdsförslag — verktyget fungerar fullt ut ändå.
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      # Lösenord för säljläget som visar listpriser. Byt efter första deployen.
+      - key: SALES_PASSWORD
+        value: inkab

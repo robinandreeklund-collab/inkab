@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  background: theme("colors.paper");
+  color: theme("colors.ink");
+  overscroll-behavior: none;
+}
+
+@layer components {
+  /* Blueprint-ram: hörnmarkeringar i stället för en heldragen ram. */
+  .blueprint {
+    position: relative;
+    border: 1px solid theme("colors.divider");
+  }
+  .blueprint::before,
+  .blueprint::after {
+    content: "";
+    position: absolute;
+    width: 7px;
+    height: 7px;
+    border: 1px solid theme("colors.accent");
+    pointer-events: none;
+  }
+  .blueprint::before {
+    top: -1px;
+    left: -1px;
+    border-right: 0;
+    border-bottom: 0;
+  }
+  .blueprint::after {
+    bottom: -1px;
+    right: -1px;
+    border-left: 0;
+    border-top: 0;
+  }
+
+  .kicker {
+    font-family: var(--font-barlow-cond), sans-serif;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    font-size: 10px;
+    color: theme("colors.muted");
+  }
+
+  .num {
+    font-family: var(--font-barlow-cond), sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .scroll-thin {
+    scrollbar-width: thin;
+    scrollbar-color: theme("colors.divider") transparent;
+  }
+  .scroll-thin::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+  .scroll-thin::-webkit-scrollbar-thumb {
+    background: theme("colors.divider");
+  }
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+  body {
+    background: #fff;
+  }
+}

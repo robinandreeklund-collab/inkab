@@ -7,6 +7,7 @@ import { Button, Tag } from "../ui";
 import { MachinePreview } from "./MachinePreview";
 import { ParameterPanel } from "./ParameterPanel";
 import { ImagePanel } from "./ImagePanel";
+import { ModelPanel } from "./ModelPanel";
 import {
   CheckField,
   Grid,
@@ -463,6 +464,8 @@ export function MachineForm({
             onChange={onChange}
             onAssetsChange={onAssetsChange}
           />
+
+          <ModelPanel machine={machine} onChange={onChange} />
 
           <OptionPanel machine={machine} price={price} onChange={onChange} onPriceChange={onPriceChange} />
 

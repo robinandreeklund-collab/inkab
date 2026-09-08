@@ -31,7 +31,7 @@ Vid deployen frågar Render om två miljövariabler:
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. Läggs in i Render under **din tjänst → Environment → Environment Variables**. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
-| `DATABASE_URL` | Nej | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton och admins ändringar bara så länge servern gör det — admin-vyn säger det rakt ut och erbjuder export till JSON. **Sätt den om du vill mata in maskindata som består.** |
+| `DATABASE_URL` | Nej | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge servern gör det — admin-vyn säger det rakt ut och erbjuder export till JSON. **Sätt den om du vill mata in maskindata som består.** |
 | `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu`. |
 | `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
 
@@ -102,7 +102,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
-| **CAD-kedja** | `scripts/step-to-glb.mjs` tar en STEP och skriver GLB plus katalogkort: normaliserar origo och enheter, utelämnar smådelar, komprimerar med meshopt, föreslår portar och varnar för fel längdenhet. `tests/pipeline.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
+| **CAD-kedja** | Ladda upp maskinens STEP-fil i admin — servern tessellerar, komprimerar, lagrar GLB:n och svarar med fotavtryck, portförslag, varningar och mätvärden. Måtten skrivs inte in automatiskt; panelen visar skillnaden mot biblioteket och du bestämmer. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora att skicka genom webbläsaren. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Skalar likformigt och **varnar när modellens mått inte stämmer med bibliotekets** — 3D blir en kontroll av datan, inte bara en bild. |
 | **Övrigt** | Ångra/gör om, autospar, delningslänk med konfigurationen i URL:en, offertunderlag med utskrift till PDF, fyra startmallar, tangentbordsgenvägar. |
 
@@ -116,7 +116,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Auth.js** | Konton är riktiga — e-post, scrypt-hashade lösenord, HMAC-signerad sessionscookie — men lösenordshanteringen ligger i appen. Ska bli magisk länk för kund och Entra ID internt. |
 | **Sparade projekt** | Konfigurationen lever i webbläsaren och i delningslänken. Kontot bär roll, inte projekt. Ingen offerthistorik. |
 | **Server-renderad PDF** | Utskrift via webbläsaren. Skarpt läge ska rendera måttsatt vektorritning på servern. |
-| **Maskinmodeller** | CAD-kedjan är byggd och körs (`scripts/step-to-glb.mjs`, vyn **Modell**), men inga verkliga maskinmodeller är framtagna. `public/models/exempel.glb` visar att den fungerar. Se [`docs/cad-pipeline.md`](docs/cad-pipeline.md). |
+| **Maskinmodeller** | CAD-kedjan är byggd och körs (STEP-uppladdning i admin, `scripts/step-to-glb.mjs`, vyn **Modell**), men inga verkliga maskinmodeller är framtagna. `public/models/exempel.glb` visar att den fungerar. Se [`docs/cad-pipeline.md`](docs/cad-pipeline.md). |
 | **DXF- och Excel-export** | Knappar finns, avstängda. |
 
 ---
@@ -165,7 +165,7 @@ vänster `−Y`** — den konventionen avgör vad de fyra sidofrågorna betyder.
 
 ```
 scripts/
-└── step-to-glb.mjs       STEP → GLB + katalogkort (körs offline)
+└── step-to-glb.mjs       STEP → GLB + katalogkort (CLI runt src/lib/server/stepConvert.ts)
 src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
@@ -195,7 +195,7 @@ src/
 └── app/
     ├── page.tsx
     ├── admin/            Admin-vyn
-    └── api/              ai/chat · price · library · auth · admin · health
+    └── api/              ai/chat · price · library · models · auth · admin (library, step, users) · health
 ```
 
 ---

@@ -355,3 +355,190 @@ export async function deleteUser(id: string): Promise<void> {
 export async function countUsers(): Promise<number> {
   return (await listUsers()).length;
 }
+
+/* ── 3D-modeller ───────────────────────────────────────────────────────── */
+
+/**
+ * GLB-filer lagras för sig, aldrig i biblioteksdokumentet.
+ *
+ * Dokumentet läses vid varje /api/library och /api/price. En maskinmodell är
+ * några hundra kilobyte till några megabyte; tio sådana i dokumentet skulle
+ * göra varje prisberäkning till en flerhundramegabytesläsning. Därför en egen
+ * tabell, hämtad bara av /api/models/[id] när vyn Modell faktiskt öppnas.
+ */
+
+export type StoredModel = {
+  id: string;
+  machineId: string;
+  /** Namnet på STEP-filen den kom ur. */
+  name: string;
+  kind: "glb" | "proxy";
+  bytes: number;
+  createdAt: string;
+};
+
+/** Tak för modeller i minnesläge. Äldst faller ut först. */
+const MEMORY_MODEL_BUDGET = 64 * 1024 * 1024;
+
+const memoryModels = new Map<string, { meta: StoredModel; data: Buffer }>();
+
+function trimMemoryModels() {
+  let total = 0;
+  for (const entry of memoryModels.values()) total += entry.data.length;
+  if (total <= MEMORY_MODEL_BUDGET) return;
+
+  const oldest = [...memoryModels.entries()].sort((a, b) =>
+    a[1].meta.createdAt.localeCompare(b[1].meta.createdAt),
+  );
+  for (const [id, entry] of oldest) {
+    if (total <= MEMORY_MODEL_BUDGET) break;
+    memoryModels.delete(id);
+    total -= entry.data.length;
+  }
+}
+
+async function ensureModelTable(pool: PgPool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS machine_model (
+      id          text PRIMARY KEY,
+      machine_id  text NOT NULL,
+      name        text NOT NULL DEFAULT '',
+      kind        text NOT NULL DEFAULT 'glb',
+      data        bytea NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+type ModelRow = {
+  id: string;
+  machine_id: string;
+  name: string;
+  kind: string;
+  created_at: Date;
+  bytes: string | number;
+};
+
+function modelMeta(row: ModelRow): StoredModel {
+  return {
+    id: row.id,
+    machineId: row.machine_id,
+    name: row.name,
+    kind: row.kind === "proxy" ? "proxy" : "glb",
+    bytes: Number(row.bytes),
+    createdAt: row.created_at.toISOString(),
+  };
+}
+
+export async function putModel(model: {
+  id: string;
+  machineId: string;
+  name: string;
+  kind: "glb" | "proxy";
+  data: Uint8Array;
+}): Promise<{ persisted: boolean; reason: string | null }> {
+  const data = Buffer.from(model.data);
+  const meta: StoredModel = {
+    id: model.id,
+    machineId: model.machineId,
+    name: model.name,
+    kind: model.kind,
+    bytes: data.length,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureModelTable(pool);
+      await pool.query(
+        `INSERT INTO machine_model (id, machine_id, name, kind, data)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO UPDATE
+           SET machine_id = $2, name = $3, kind = $4, data = $5, created_at = now()`,
+        [meta.id, meta.machineId, meta.name, meta.kind, data],
+      );
+      degradedReason = null;
+      return { persisted: true, reason: null };
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+      // Faller igenom till minnet: modellen ska gå att se nu även om den
+      // inte överlever en omstart. Anroparen får veta att den inte sparades.
+      memoryModels.set(meta.id, { meta, data });
+      trimMemoryModels();
+      return { persisted: false, reason: degradedReason };
+    }
+  }
+
+  memoryModels.set(meta.id, { meta, data });
+  trimMemoryModels();
+  return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
+}
+
+export async function readModel(id: string): Promise<{ meta: StoredModel; data: Buffer } | null> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureModelTable(pool);
+      const result = await pool.query<ModelRow & { data: Buffer }>(
+        `SELECT id, machine_id, name, kind, created_at, data, length(data) AS bytes
+         FROM machine_model WHERE id = $1`,
+        [id],
+      );
+      degradedReason = null;
+      if (result.rows[0]) {
+        return { meta: modelMeta(result.rows[0]), data: result.rows[0].data };
+      }
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return memoryModels.get(id) ?? null;
+}
+
+export async function listModels(machineId?: string): Promise<StoredModel[]> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureModelTable(pool);
+      const result = machineId
+        ? await pool.query<ModelRow>(
+            `SELECT id, machine_id, name, kind, created_at, length(data) AS bytes
+             FROM machine_model WHERE machine_id = $1 ORDER BY created_at DESC`,
+            [machineId],
+          )
+        : await pool.query<ModelRow>(
+            `SELECT id, machine_id, name, kind, created_at, length(data) AS bytes
+             FROM machine_model ORDER BY created_at DESC`,
+          );
+      degradedReason = null;
+      return result.rows.map(modelMeta);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return [...memoryModels.values()]
+    .map((entry) => entry.meta)
+    .filter((meta) => !machineId || meta.machineId === machineId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function deleteModel(id: string): Promise<void> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureModelTable(pool);
+      await pool.query("DELETE FROM machine_model WHERE id = $1", [id]);
+      degradedReason = null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+  memoryModels.delete(id);
+}

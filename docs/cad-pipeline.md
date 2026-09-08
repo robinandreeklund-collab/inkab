@@ -5,10 +5,13 @@ Analys av den föreslagna CAD-pipelinen, och vad jag skulle ändra.
 > Kort version: grundplanen är rätt. Det mesta jag har att säga handlar om att
 > göra **mindre** än vad som föreslås, i en annan ordning.
 
-**Pipelinen är byggd och körs.** `scripts/step-to-glb.mjs` tar en STEP-fil och
-skriver en GLB plus ett katalogkort. `tests/pipeline.test.ts` kör den skarpt vid
-varje testkörning, mot en riktig STEP, och underkänner om något går sönder.
-Vyn **Modell** i konfiguratorn laddar modellerna med three.js. Se
+**Pipelinen är byggd och körs — och den körs från plattformen.** Ladda upp
+maskinens STEP-fil i admin-vyn så sköter servern resten: tessellering,
+komprimering, lagring och mätvärden tillbaka. Samma konvertering finns som
+kommandoradsskript för filer som är för stora att skicka genom webbläsaren.
+`tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt vid varje
+testkörning, mot en riktig STEP, och underkänner om något går sönder. Vyn
+**Modell** i konfiguratorn laddar modellerna med three.js. Se
 [Så kör du den](#så-kör-du-den) längst ned.
 
 ---
@@ -147,13 +150,21 @@ specialfall.
 
 ### GLB hör inte hemma i biblioteksdokumentet
 
-Maskinbiblioteket lagras idag som ett JSON-dokument, i Postgres eller
+*Åtgärdat.*
+
+Maskinbiblioteket lagras som ett JSON-dokument, i Postgres eller
 versionshanterat i repot. Bilder ligger som base64 i det dokumentet, vilket är
 rimligt för foton på några hundra kilobyte.
 
-För GLB på 1–2 MB × 17 maskiner är det fel. De ska ligga i objektlagring
-(Cloudflare R2 eller S3) och katalogkortet ska bära en URL. Det är en
-liten ändring nu och en jobbig migrering sedan.
+För GLB på 1–2 MB × 17 maskiner vore det fel: dokumentet läses vid *varje*
+`/api/library` och `/api/price`, så tjugo megabyte modeller skulle göra varje
+prisberäkning till en flerhundramegabytesläsning. Modellerna ligger därför i en
+egen tabell, `machine_model`, med bara ett id i maskinen. `/api/models/<id>`
+hämtar dem, och bara när vyn **Modell** öppnas.
+
+Nästa steg när biblioteket är fullt är objektlagring (Cloudflare R2 eller S3) i
+stället för `bytea` i Postgres. Det byter ut en funktion i `store.ts` — inte
+datamodellen, för maskinen bär redan bara en URL.
 
 ### Förenklingen betalar sig två gånger
 
@@ -195,6 +206,40 @@ pakethantering, och att grader bara flyttar in en felkälla.
 
 ## Så kör du den
 
+Det finns två vägar in, och de kör **samma kod**:
+`src/lib/server/stepConvert.ts`. Skriptet och admin-uppladdningen kan därför
+inte glida isär.
+
+### Från admin-vyn — vanliga fallet
+
+Öppna maskinen i admin, gå till panelen **3D-modell från STEP** och välj
+maskinens STEP-fil. Servern tessellerar, komprimerar, lagrar GLB:n och fyller i
+maskinens modellfält åt dig. Panelen visar sedan:
+
+- **Mätvärdena** — filstorlek in och ut, antal delar, trianglar, tid.
+- **Varningarna** — fel längdenhet, orimlig höjd, för mycket geometri.
+- **Skillnaden mot biblioteket**, mått för mått. Måtten skrivs *inte* in
+  automatiskt. Ett uppmätt fotavtryck är sanning tills någon medvetet byter ut
+  det, så knappen **Använd modellens mått** finns, men den trycker du på.
+- **Portförslaget**, som ligger mitt på kortsidorna. Det är räknat ur
+  fotavtryckets kanter, inte ur geometrin — kontrollera det mot ritning.
+
+Reglagen är desamma som skriptets: tolerans, minsta del, upp-axel, proxy.
+
+**Var modellen hamnar.** GLB:n lagras i en egen tabell (`machine_model`) och
+serveras av `/api/models/<id>`, aldrig i biblioteksdokumentet — se
+[GLB hör inte hemma i biblioteksdokumentet](#glb-hör-inte-hemma-i-biblioteksdokumentet).
+Utan `DATABASE_URL` ligger den bara i serverns minne och försvinner vid
+omstart; panelen säger det rakt ut i stället för att låtsas att den är sparad.
+
+**Gränserna.** Taket är 120 MB per fil, och tesselleringen körs i
+webbserverns process. En tung sammanställning tar minuter och mycket minne — på
+en liten instans kan den slå i taket. Händer det svarar servern med vad som
+gick fel och vad du kan göra: höj toleransen, höj gränsen för smådelar, eller
+kör filen lokalt med skriptet.
+
+### Från kommandoraden — stora filer och sådant som ska in i repot
+
 ```bash
 node scripts/step-to-glb.mjs maskiner/tsl-enkel.step \
   --id tsl-enkel --tolerance 2 --min-part 50
@@ -207,7 +252,7 @@ filstorlek, hur många delar som utelämnades, hur lång tid det tog.
 Klistra sedan in `/models/tsl-enkel.glb` i fältet **GLB** på maskinen i admin
 och byt till vyn **Modell**.
 
-### Vad skriptet gör åt dig
+### Vad konverteringen gör åt dig
 
 - **Normaliserar geometrin.** Origo till inmatningsporten i golvnivå, X i
   flödesriktningen, Z upp, millimeter till meter. Samma konvention som solvern,

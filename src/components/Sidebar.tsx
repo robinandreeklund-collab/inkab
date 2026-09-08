@@ -512,24 +512,38 @@ export function Sidebar() {
 
 function ShareButton() {
   const config = useConfigStore((s) => s.config);
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
+
+  const share = async () => {
+    const { shareUrl } = await import("@/lib/share");
+    const { url, long } = await shareUrl(config, window.location.origin, window.location.pathname);
+    try {
+      await navigator.clipboard.writeText(url);
+      setState(long ? "long" : "copied");
+      setTimeout(() => setState("idle"), long ? 8000 : 2000);
+    } catch {
+      // Utklippet kräver säker kontext och kan nekas. Då får man länken ändå.
+      window.prompt("Kopiera länken:", url);
+      setState("idle");
+    }
+  };
 
   return (
-    <Button
-      className="w-full"
-      onClick={async () => {
-        const { encodeConfig } = await import("@/lib/share");
-        const url = `${window.location.origin}${window.location.pathname}?c=${encodeConfig(config)}`;
-        try {
-          await navigator.clipboard.writeText(url);
-          setCopied(true);
-          setTimeout(() => setCopied(false), 2000);
-        } catch {
-          window.prompt("Kopiera länken:", url);
-        }
-      }}
-    >
-      {copied ? "Länk kopierad" : "Kopiera delningslänk"}
-    </Button>
+    <div>
+      <Button className="w-full" onClick={share}>
+        {state === "idle" || state === "failed" ? "Kopiera delningslänk" : "Länk kopierad"}
+      </Button>
+      {state === "long" ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-warn">
+          Länken blev lång. Skicka den som klickbar länk — vissa e-postklienter bryter
+          långa adresser och då går den inte att öppna.
+        </p>
+      ) : (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          Hela konfigurationen ligger i länken. Inget sparas på servern, och mottagaren
+          behöver inget konto.
+        </p>
+      )}
+    </div>
   );
 }

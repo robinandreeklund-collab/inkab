@@ -104,7 +104,11 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
 | **CAD-kedja** | Ladda upp maskinens STEP-fil i admin — servern tessellerar, komprimerar, lagrar GLB:n och svarar med fotavtryck, portförslag, varningar och mätvärden. Måtten skrivs inte in automatiskt; panelen visar skillnaden mot biblioteket och du bestämmer. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora att skicka genom webbläsaren. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Skalar likformigt och **varnar när modellens mått inte stämmer med bibliotekets** — 3D blir en kontroll av datan, inte bara en bild. |
-| **Övrigt** | Ångra/gör om, autospar, delningslänk med konfigurationen i URL:en, offertunderlag med utskrift till PDF, fyra startmallar, tangentbordsgenvägar. |
+| **Offertunderlag** | Ett dokument satt för A4, inte en skärmvy: titelblock med underlagsnummer, datum och giltighet, ifyllbara kundfält, **planritning med måttsättning, skalstock, flödespil och positionsnummer som pekar in i maskinlistan**, maskinlista med mått, tekniska förutsättningar, flödesval och avgränsningar. Sidfoten upprepas på varje sida och tabellhuvudet följer med över sidbrytningen. |
+| **Underlagsnummer** | Räknas ur konfigurationen, inte ur en räknare: samma anläggning ger alltid samma nummer, och ändras linjen ändras numret. Ett papper och en konfiguration kan alltså inte glida isär i tysthet. Kundfält och projektnamn påverkar det inte. |
+| **Delningslänk** | Hela konfigurationen ligger gzip-komprimerad i adressen — inget sparas på servern och mottagaren behöver inget konto. En trasig eller föråldrad länk säger till i klartext i stället för att tyst visa standardkonfigurationen, adressraden städas efter laddning, och utkastet länken skrev över går att hämta tillbaka. |
+| **Export** | Maskinlistan som CSV för svensk Excel och planritningen som DXF (R12, millimeter) med hall, maskiner, maskinzoner, truckgator och flöde på egna lager. Filnamnen bär underlagsnumret. |
+| **Övrigt** | Ångra/gör om, autospar, fyra startmallar, tangentbordsgenvägar. |
 
 ### Inte byggt — och medvetet så
 
@@ -115,9 +119,8 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **STEP-filer** | Knappen finns och förklarar vad som skulle hända. Inga CAD-filer levereras. |
 | **Auth.js** | Konton är riktiga — e-post, scrypt-hashade lösenord, HMAC-signerad sessionscookie — men lösenordshanteringen ligger i appen. Ska bli magisk länk för kund och Entra ID internt. |
 | **Sparade projekt** | Konfigurationen lever i webbläsaren och i delningslänken. Kontot bär roll, inte projekt. Ingen offerthistorik. |
-| **Server-renderad PDF** | Utskrift via webbläsaren. Skarpt läge ska rendera måttsatt vektorritning på servern. |
+| **Server-renderad PDF** | PDF:en görs med webbläsarens utskrift, satt för A4 och verifierad genom att faktiskt skriva ut dokumentet i Chromium. Ett serverrenderat alternativ behövs först när underlag ska genereras utan en webbläsare — massutskick eller schemalagd rapportering. |
 | **Maskinmodeller** | CAD-kedjan är byggd och körs (STEP-uppladdning i admin, `scripts/step-to-glb.mjs`, vyn **Modell**), men inga verkliga maskinmodeller är framtagna. `public/models/exempel.glb` visar att den fungerar. Se [`docs/cad-pipeline.md`](docs/cad-pipeline.md). |
-| **DXF- och Excel-export** | Knappar finns, avstängda. |
 
 ---
 
@@ -357,4 +360,4 @@ gäller.
 4. **Låt tre konstruktörer testa** och räkna hur ofta de säger "så gör vi
    aldrig". Det talet är prototypens verkliga betyg.
 5. Därefter fas 2 enligt [`docs/forslag.md`](docs/forslag.md): sparade projekt,
-   serverrenderad PDF, STEP-leverans.
+   offerthistorik, STEP-leverans.

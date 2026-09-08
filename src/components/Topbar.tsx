@@ -32,7 +32,7 @@ export function Topbar({
   }, [autoOpenLogin, user]);
 
   return (
-    <header className="flex h-[56px] flex-none items-center gap-4 border-b border-steel bg-steel px-3 text-paper">
+    <header className="no-print flex h-[56px] flex-none items-center gap-4 border-b border-steel bg-steel px-3 text-paper">
       <button onClick={() => setScreen("onboarding")} className="flex flex-none items-center">
         <Image
           src="/inkab-logo.png"

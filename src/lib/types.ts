@@ -252,6 +252,17 @@ export type Product = {
 export type Configuration = {
   version: 1;
   projectName: string;
+  /**
+   * Uppgifter som bara står på offertunderlaget. De påverkar varken layouten
+   * eller priset, och ingår därför inte i underlagsnumret.
+   */
+  customer?: {
+    company?: string;
+    contact?: string;
+    /** Kundens eget referens- eller projektnummer. */
+    reference?: string;
+    site?: string;
+  };
   hall: Hall;
   flow: Flow;
   product: Product;

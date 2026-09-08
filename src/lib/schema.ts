@@ -39,6 +39,16 @@ export const flowSchema = z.object({
 export const configurationSchema = z.object({
   version: z.literal(1),
   projectName: z.string().min(1).max(120),
+  // Rena underlagsuppgifter. Valfria, och validerade som allt annat som kan
+  // komma in via en delningslänk.
+  customer: z
+    .object({
+      company: z.string().max(120).optional(),
+      contact: z.string().max(120).optional(),
+      reference: z.string().max(60).optional(),
+      site: z.string().max(120).optional(),
+    })
+    .optional(),
   hall: z.object({
     lengthMm: z.number().int().min(5000).max(300000),
     widthMm: z.number().int().min(5000).max(150000),

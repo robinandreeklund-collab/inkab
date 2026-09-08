@@ -69,13 +69,126 @@ body {
   .scroll-thin::-webkit-scrollbar-thumb {
     background: theme("colors.divider");
   }
+
+  /*
+   * Dokumentet ligger i en tabell för att sidfoten ska kunna upprepas på
+   * varje utskriven sida. På skärmen ska det inte märkas, så tabellen läggs
+   * ut som vanliga block — utskriftsreglerna ställer tillbaka den.
+   */
+  .quote-sheet,
+  .quote-sheet > tbody,
+  .quote-sheet > tfoot,
+  .quote-sheet > tbody > tr,
+  .quote-sheet > tfoot > tr,
+  .quote-sheet > tbody > tr > td,
+  .quote-sheet > tfoot > tr > td {
+    display: block;
+  }
 }
 
+/*
+ * Utskrift.
+ *
+ * Offertunderlaget blir en PDF via webbläsarens utskrift, så pappret är en
+ * riktig målyta och inte en eftertanke. Appen är byggd som en helskärmsvy —
+ * h-dvh, flex och egna scrollytor — och allt det måste vecklas ut här, annars
+ * skrivs bara den första skärmbilden ut och resten klipps bort.
+ */
 @media print {
+  @page {
+    size: A4 portrait;
+    /* Nedre marginalen är större: där ligger den löpande sidfoten. */
+    margin: 14mm;
+  }
+
   .no-print {
     display: none !important;
   }
+
+  html,
   body {
+    height: auto;
     background: #fff;
+  }
+
+  /* Ingen av applayoutens begränsningar gäller på papper. */
+  body *,
+  body {
+    overflow: visible !important;
+    max-height: none !important;
+  }
+  .h-dvh,
+  .h-full {
+    height: auto !important;
+  }
+
+  /* Raster och toning ska med — annars försvinner ritningens ytor. */
+  * {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  /*
+   * Sidfoten upprepas på varje sida: en fast positionerad ruta ritas om av
+   * varje sidbrytning. Den ligger i botten av sidytan, och dokumentet får
+   * lika mycket luft under sig så att texten aldrig hamnar under den.
+   */
+  /* Sidfoten upprepas och reserverar sin plats på varje sida. */
+  .quote-sheet {
+    display: table;
+    width: 100%;
+  }
+  .quote-sheet > tfoot {
+    display: table-footer-group;
+  }
+  .quote-sheet > tbody {
+    display: table-row-group;
+  }
+
+  .quote {
+    font-size: 10.5pt;
+  }
+  .quote h1 {
+    font-size: 17pt;
+  }
+  .quote table {
+    font-size: 9.5pt;
+  }
+
+  /* Ifyllbara fält skrivs ut som text; tomma som en linje att fylla i. */
+  .quote-input {
+    border: 0 !important;
+    padding: 0 !important;
+  }
+  .quote-input:placeholder-shown {
+    border-bottom: 1px solid theme("colors.divider") !important;
+  }
+  .quote-input::placeholder {
+    color: transparent !important;
+  }
+
+  /* En rubrik ensam sist på en sida är alltid fel. */
+  h1,
+  h2,
+  h3 {
+    break-after: avoid;
+  }
+  tr,
+  figure,
+  svg {
+    break-inside: avoid;
+  }
+  thead {
+    display: table-header-group;
+  }
+
+  /* Utskrifter blir ofta svartvita — grått måste vara läsbart grått. */
+  .text-muted {
+    color: #4a4c4f !important;
+  }
+
+  a {
+    text-decoration: none;
+    color: inherit;
   }
 }

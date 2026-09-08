@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
+import { ShareNotice } from "./ShareNotice";
 import { ModelView } from "./ModelView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { Inspector } from "./Inspector";
@@ -205,7 +206,7 @@ export function AppShell() {
           onLoginHandled={() => setAskLogin(false)}
         />
         <div className="min-h-0 flex-1">
-          <QuoteView price={price} role={role} />
+          <QuoteView price={price} role={role} user={user} />
         </div>
       </div>
     );
@@ -225,6 +226,7 @@ export function AppShell() {
 
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
+            <ShareNotice />
             {view === "model" ? <ModelView /> : <CadView />}
             <DiagnosticsPanel />
             <AiPanel />

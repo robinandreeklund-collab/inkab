@@ -17,12 +17,27 @@ import type {
 
 const HISTORY_LIMIT = 60;
 const STORAGE_KEY = "inkab.config.v1";
+/**
+ * Utkastet som låg här när en delningslänk öppnades. En länk skriver över
+ * det som fanns, och utan den här nyckeln vore det arbetet borta utan att
+ * någon frågat. Bannern erbjuder att gå tillbaka.
+ */
+const RESCUE_KEY = "inkab.config.before-share";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 export type ViewMode = "2d" | "3d" | "model";
 export type Unit = "m" | "mm";
 
 type Screen = "onboarding" | "configurator" | "quote";
+
+/**
+ * Vad som hände när sidan öppnades med en delningslänk. Null betyder att
+ * ingen länk var med — inte att allt gick bra.
+ */
+export type ShareNotice =
+  | { kind: "loaded"; reference: string; hadLocalDraft: boolean }
+  | { kind: "unreadable" }
+  | { kind: "invalid" };
 
 type State = {
   config: Configuration;
@@ -44,6 +59,7 @@ type State = {
   showZones: boolean;
   showPorts: boolean;
   hydrated: boolean;
+  shareNotice: ShareNotice | null;
 };
 
 type Actions = {
@@ -76,6 +92,10 @@ type Actions = {
   clearDrawn: () => void;
   applyPatch: (patch: ConfigPatch) => void;
 
+  dismissShareNotice: () => void;
+  /** Går tillbaka till utkastet som delningslänken skrev över. */
+  restorePreviousDraft: () => boolean;
+
   undo: () => void;
   redo: () => void;
   hydrate: () => void;
@@ -83,6 +103,19 @@ type Actions = {
 
 /** Djupkopia utan beroenden; konfigurationen är ren JSON. */
 const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+
+/** Autosparat utkast, eller null om det saknas eller är obrukbart. */
+function readLocalDraft(): Configuration | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Configuration;
+    return parsed?.version === 1 ? parsed : null;
+  } catch {
+    return null;
+  }
+}
 
 function persist(config: Configuration) {
   if (typeof window === "undefined") return;
@@ -126,6 +159,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     showZones: true,
     showPorts: false,
     hydrated: false,
+    shareNotice: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -312,22 +346,62 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const shared = params.get("c");
       if (shared) {
         // Delningslänken importeras lazy för att hålla första bundlen liten.
-        import("@/lib/share").then(({ decodeConfig }) => {
-          const config = decodeConfig(shared);
-          if (config) get().load(config, { resetHistory: true });
-          set({ screen: "configurator" });
-        });
+        Promise.all([import("@/lib/share"), import("@/lib/quote")]).then(
+          ([{ decodeConfig }, { quoteReference }]) =>
+            decodeConfig(shared).then((result) => {
+              if (!result.ok) {
+                // Tyst standardkonfiguration vore det värsta svaret: den som
+                // klickade skulle tro att hen ser avsändarens anläggning.
+                set({ shareNotice: { kind: result.reason }, screen: "configurator" });
+                return;
+              }
+
+              const previous = readLocalDraft();
+              if (previous) {
+                try {
+                  window.localStorage.setItem(RESCUE_KEY, JSON.stringify(previous));
+                } catch {
+                  // Utan plats för räddningskopian erbjuds den inte heller.
+                }
+              }
+
+              get().load(result.config, { resetHistory: true });
+              set({
+                screen: "configurator",
+                shareNotice: {
+                  kind: "loaded",
+                  reference: quoteReference(result.config),
+                  hadLocalDraft: !!previous,
+                },
+              });
+            }),
+        );
+        // Adressraden städas direkt: en reload ska visa det man håller på med
+        // nu, inte importera den delade konfigurationen en gång till över det.
+        const clean = window.location.pathname + window.location.hash;
+        window.history.replaceState(null, "", clean);
         return;
       }
 
+      const saved = readLocalDraft();
+      if (saved) get().load(saved, { resetHistory: true });
+    },
+
+    dismissShareNotice: () => set({ shareNotice: null }),
+
+    restorePreviousDraft: () => {
+      if (typeof window === "undefined") return false;
+      let previous: Configuration | null = null;
       try {
-        const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (!raw) return;
-        const parsed = JSON.parse(raw) as Configuration;
-        if (parsed?.version === 1) get().load(parsed, { resetHistory: true });
+        const raw = window.localStorage.getItem(RESCUE_KEY);
+        previous = raw ? (JSON.parse(raw) as Configuration) : null;
       } catch {
-        // Ogiltigt autospar ignoreras; standardkonfigurationen gäller.
+        previous = null;
       }
+      if (previous?.version !== 1) return false;
+      get().load(previous, { resetHistory: true });
+      set({ shareNotice: null });
+      return true;
     },
   };
 });

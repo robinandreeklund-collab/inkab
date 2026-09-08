@@ -13,7 +13,9 @@ och 3D, och ta fram ett offertunderlag.
 > fortfarande uppskattade** och redigeras i admin-vyn. Se
 > [Vad som är verkligt](#vad-som-är-verkligt-och-vad-som-inte-är-det).
 
-Arkitekturunderlaget finns i [`docs/forslag.md`](docs/forslag.md).
+Arkitekturunderlaget finns i [`docs/forslag.md`](docs/forslag.md), och analysen
+av CAD-pipelinen — hur 80 MB STEP blir användbara 3D-modeller — i
+[`docs/cad-pipeline.md`](docs/cad-pipeline.md).
 Designreferensen (Claude Design-prototypen) ligger i
 [`design/inkab-konfigurator.html`](design/inkab-konfigurator.html).
 

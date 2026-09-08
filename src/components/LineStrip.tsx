@@ -2,6 +2,7 @@
 
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
+import { MachineThumb } from "./MachineThumb";
 
 /** Linjeremsan: kedjan som en vågrät sekvens — kundens mentala modell. */
 export function LineStrip() {
@@ -26,10 +27,7 @@ export function LineStrip() {
               selectedId === placement.instanceId ? "border-accent bg-accent/10" : "bg-white hover:border-accent"
             }`}
           >
-            <svg width="100%" height="15" viewBox="0 0 96 15" fill="none" stroke="currentColor" strokeWidth="1">
-              <rect x="2" y="2" width="92" height="11" />
-              <path d="M30 2v11M62 2v11" />
-            </svg>
+            <MachineThumb machine={placement.machine} className="h-8 w-full" />
             <div className="num mt-0.5 truncate text-[11px]">
               {placement.pos} {placement.machine.name.split(" ")[0]}
             </div>

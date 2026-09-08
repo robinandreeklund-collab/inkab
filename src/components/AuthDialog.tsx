@@ -67,10 +67,12 @@ export function AuthDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-ink/50 p-4"
       onClick={onClose}
     >
+      {/* Dialogen renderas inuti den mörka headern och måste därför sätta sin
+          egen textfärg — annars ärver den headerns ljusa och blir oläslig. */}
       <form
         onClick={(e) => e.stopPropagation()}
         onSubmit={submit}
-        className="blueprint w-[420px] max-w-full bg-white p-5"
+        className="blueprint w-[420px] max-w-full bg-white p-5 text-ink"
       >
         <div className="mb-4 flex border border-divider">
           {(
@@ -87,7 +89,7 @@ export function AuthDialog({
                 setError(null);
               }}
               className={`flex-1 px-3 py-2 text-sm transition-colors ${index > 0 ? "border-l border-divider" : ""} ${
-                mode === value ? "bg-accent text-white" : "hover:bg-paper"
+                mode === value ? "bg-accent text-white" : "bg-white text-ink hover:bg-paper"
               }`}
             >
               {label}

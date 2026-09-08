@@ -102,7 +102,7 @@ export function Topbar({
         {user?.role === "admin" ? (
           <a
             href="/admin"
-            className="inline-flex items-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent"
+            className="inline-flex items-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             Admin
           </a>
@@ -119,7 +119,7 @@ export function Topbar({
                 await fetch("/api/auth/logout", { method: "POST" });
                 onUserChange(null);
               }}
-              className="border border-paper/30 px-3 py-1.5 text-sm hover:border-accent hover:bg-accent"
+              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
               Logga ut
             </button>
@@ -127,7 +127,7 @@ export function Topbar({
         ) : (
           <button
             onClick={() => setAuthOpen(true)}
-            className="border border-paper/30 px-3 py-1.5 text-sm hover:border-accent hover:bg-accent"
+            className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             Logga in
           </button>

@@ -6,6 +6,7 @@ import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
+import { MachineThumb } from "./MachineThumb";
 import type { Machine, MachineCategory, Side } from "@/lib/types";
 
 const SIDE_OPTIONS: { value: Side; label: string }[] = [
@@ -73,7 +74,7 @@ export function Sidebar() {
                     onClick={() => addMachine(machine.id)}
                     className="blueprint flex w-full items-start gap-2 bg-white p-2 text-left hover:border-accent"
                   >
-                    <div className="mt-0.5 h-7 w-10 flex-none border border-divider bg-paper" />
+                    <MachineThumb machine={machine} className="mt-0.5 h-8 w-11" />
                     <div className="min-w-0">
                       <div className="truncate text-[13px]">{machine.name}</div>
                       <div className="kicker truncate">

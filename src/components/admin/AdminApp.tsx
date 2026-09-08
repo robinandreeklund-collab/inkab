@@ -10,6 +10,7 @@ import { IssueList } from "./fields";
 import { MachineForm } from "./MachineForm";
 import { PriceBookForm } from "./PriceBookForm";
 import { UserAdmin } from "./UserAdmin";
+import { MachineThumb } from "../MachineThumb";
 import type { StoreStatus } from "@/lib/server/store";
 import type { PriceEntry } from "@/lib/server/pricebook";
 import type { Machine, MachineCategory } from "@/lib/types";
@@ -112,6 +113,18 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   };
 
   const selected = doc?.machines.find((m) => m.id === selectedId) ?? null;
+
+  /**
+   * Bilder som just laddats upp finns bara i den lokala arbetskopian och kan
+   * inte hämtas från servern förrän man sparat. Läs dem direkt ur dokumentet.
+   */
+  const localAssetSrc = useCallback(
+    (assetId: string) => {
+      const asset = doc?.assets?.find((a) => a.id === assetId);
+      return asset ? `data:${asset.mime};base64,${asset.data}` : null;
+    },
+    [doc],
+  );
 
   const grouped = useMemo(() => {
     const map = new Map<MachineCategory, Machine[]>();
@@ -308,15 +321,19 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
                       key={machine.id}
                       onClick={() => setSelectedId(machine.id)}
                       className={cx(
-                        "block w-full border-b border-divider px-2 py-1.5 text-left last:border-0",
+                        "flex w-full items-center gap-2 border-b border-divider px-2 py-1.5 text-left last:border-0",
                         selectedId === machine.id ? "bg-accent/10" : "hover:bg-paper",
                       )}
                     >
-                      <div className="truncate text-[13px]">{machine.name}</div>
-                      <div className="kicker truncate">
-                        {machine.sku} · {meters(machine.footprint.lengthMm)} m
-                        {machine.aux ? " · hjälpobjekt" : ""}
-                      </div>
+                      <MachineThumb machine={machine} className="h-8 w-11" resolveSrc={localAssetSrc} />
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate text-[13px]">{machine.name}</span>
+                        <span className="kicker block truncate">
+                          {machine.sku} · {meters(machine.footprint.lengthMm)} m
+                          {machine.aux ? " · hjälpobjekt" : ""}
+                          {machine.images?.length ? ` · ${machine.images.length} bild` : ""}
+                        </span>
+                      </span>
                     </button>
                   ))}
                 </div>

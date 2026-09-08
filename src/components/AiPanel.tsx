@@ -47,7 +47,16 @@ export function AiPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ config, message: question, history: historyRef.current.slice(-8) }),
       });
-      if (!response.ok || !response.body) throw new Error("Assistenten svarade inte.");
+      if (!response.ok) {
+        // Visa serverns egna ord i stället för ett generiskt fel.
+        const problem = await response.json().catch(() => null);
+        setError(
+          [problem?.error, ...(problem?.issues ?? [])].filter(Boolean).join(" · ") ||
+            `Servern svarade ${response.status}.`,
+        );
+        return;
+      }
+      if (!response.body) throw new Error("Tomt svar.");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();

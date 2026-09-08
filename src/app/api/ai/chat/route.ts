@@ -32,7 +32,21 @@ const sse = (event: string, data: unknown) =>
 export async function POST(request: Request) {
   const parsed = bodySchema.safeParse(await request.json().catch(() => null));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Ogiltig förfrågan." }, { status: 400 });
+    // Säg vad som faktiskt är fel. Ett naket 400 gör det omöjligt att se om
+    // klienten skickar en konfiguration som servern inte känner igen — t.ex.
+    // efter en deploy där schemat och klienten hunnit glida isär.
+    const issues = parsed.error.issues
+      .slice(0, 5)
+      .map((i) => `${i.path.join(".") || "(roten)"}: ${i.message}`);
+    return NextResponse.json(
+      {
+        error:
+          "Servern kunde inte läsa konfigurationen. Ofta betyder det att sidan " +
+          "är äldre än servern — ladda om med Ctrl+F5.",
+        issues,
+      },
+      { status: 400 },
+    );
   }
 
   const { config, message, history } = parsed.data;
@@ -164,12 +178,7 @@ export async function POST(request: Request) {
           aiConfigured: true,
         });
       } catch (error) {
-        send("error", {
-          message:
-            error instanceof Anthropic.APIError
-              ? `Assistenten svarade inte (${error.status}). Verktyget fungerar utan den.`
-              : "Assistenten är tillfälligt otillgänglig. Verktyget fungerar utan den.",
-        });
+        send("error", { message: describeError(error) });
       } finally {
         controller.close();
       }
@@ -177,6 +186,23 @@ export async function POST(request: Request) {
   });
 
   return new Response(stream, { headers: streamHeaders() });
+}
+
+/** Översätter API-fel till något som går att agera på. */
+function describeError(error: unknown): string {
+  if (error instanceof Anthropic.APIError) {
+    if (error.status === 401) {
+      return "ANTHROPIC_API_KEY avvisades (401). Kontrollera att nyckeln är rätt kopierad och sparad under Environment Variables.";
+    }
+    if (error.status === 429) {
+      return "Anthropic svarade 429 — för många anrop just nu. Prova igen om en stund.";
+    }
+    if (error.status === 400) {
+      return `Anthropic avvisade förfrågan (400): ${error.message}`;
+    }
+    return `Assistenten svarade inte (${error.status}). Verktyget fungerar utan den.`;
+  }
+  return "Assistenten är tillfälligt otillgänglig. Verktyget fungerar utan den.";
 }
 
 function streamHeaders() {

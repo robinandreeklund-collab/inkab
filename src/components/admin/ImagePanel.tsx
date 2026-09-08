@@ -120,6 +120,44 @@ export function ImagePanel({
         </p>
       )}
 
+      <div className="mb-3 border-t border-divider pt-3">
+        <div className="kicker mb-1">3D-modell</div>
+        <p className="mb-2 text-[11px] leading-relaxed text-muted">
+          Tas fram med <code className="num">scripts/step-to-glb.mjs</code> ur maskinens
+          STEP-fil. Modellen visas i vyn Modell. Utan modell ritas maskinen som sitt
+          fotavtryck.
+        </p>
+        <Grid cols={2}>
+          <TextField
+            label="GLB"
+            mono
+            value={machine.model?.glb ?? ""}
+            placeholder="/models/tsl-enkel.glb"
+            onChange={(v) =>
+              onChange({
+                ...machine,
+                model: v ? { glb: v, proxy: machine.model?.proxy } : undefined,
+              })
+            }
+          />
+          <TextField
+            label="Proxy-GLB"
+            mono
+            hint="valfri"
+            value={machine.model?.proxy ?? ""}
+            placeholder="/models/tsl-enkel.proxy.glb"
+            onChange={(v) =>
+              onChange({
+                ...machine,
+                model: machine.model?.glb
+                  ? { glb: machine.model.glb, proxy: v || undefined }
+                  : machine.model,
+              })
+            }
+          />
+        </Grid>
+      </div>
+
       <Grid cols={2}>
         <TextField
           label="Länk till produktsida"

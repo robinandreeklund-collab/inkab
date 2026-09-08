@@ -5,7 +5,7 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
 import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
-import type { Tool } from "@/store/useConfigStore";
+import type { Tool, ViewMode } from "@/store/useConfigStore";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -14,6 +14,9 @@ const SNAP_MM = 250;
 const PAD_MM = 4000;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
+
+/** CadView ritar plan och isometri; läget "model" hanteras av ModelView. */
+type PlanarView = Exclude<ViewMode, "model">;
 
 /** Väggens och portens tjocklek, mm. */
 const WALL_THICKNESS_MM = 300;
@@ -84,6 +87,7 @@ export function CadView() {
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const planarView: PlanarView = view === "3d" ? "3d" : "2d";
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
   const [zoom, setZoom] = useState(1);
@@ -120,9 +124,9 @@ export function CadView() {
       const ctm = svg.getScreenCTM();
       if (!ctm) return null;
       const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
-      return view === "2d" ? { x: point.x, y: point.y } : isoUnproject(point.x, point.y);
+      return planarView === "2d" ? { x: point.x, y: point.y } : isoUnproject(point.x, point.y);
     },
-    [view],
+    [planarView],
   );
 
   const strokeUnit = viewBox.l / 900;
@@ -335,18 +339,18 @@ export function CadView() {
           />
         )}
 
-        {draft ? <DraftShape draft={draft} view={view} strokeUnit={strokeUnit} /> : null}
+        {draft ? <DraftShape draft={draft} view={planarView} strokeUnit={strokeUnit} /> : null}
 
         <FlowMarkers
           start={config.flow.startPoint}
           end={config.flow.endPoint}
           lineEnd={layout.metrics.endPointGapMm !== null ? config.flow.endPoint : null}
-          view={view}
+          view={planarView}
           strokeUnit={strokeUnit}
           onDrag={dragFlowPoint}
         />
 
-        {measure ? <MeasureLine measure={measure} view={view} strokeUnit={strokeUnit} /> : null}
+        {measure ? <MeasureLine measure={measure} view={planarView} strokeUnit={strokeUnit} /> : null}
       </svg>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
@@ -802,7 +806,7 @@ function DraftShape({
   strokeUnit,
 }: {
   draft: NonNullable<Draft>;
-  view: "2d" | "3d";
+  view: PlanarView;
   strokeUnit: number;
 }) {
   const { box } = draft;
@@ -873,7 +877,7 @@ function FlowMarkers({
   start: Vec2;
   end: Vec2 | null;
   lineEnd: Vec2 | null;
-  view: "2d" | "3d";
+  view: PlanarView;
   strokeUnit: number;
   onDrag: (which: "startPoint" | "endPoint", event: React.PointerEvent) => void;
 }) {
@@ -948,7 +952,7 @@ function MeasureLine({
   strokeUnit,
 }: {
   measure: NonNullable<Measure>;
-  view: "2d" | "3d";
+  view: PlanarView;
   strokeUnit: number;
 }) {
   const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));

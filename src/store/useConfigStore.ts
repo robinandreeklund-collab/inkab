@@ -19,7 +19,7 @@ const HISTORY_LIMIT = 60;
 const STORAGE_KEY = "inkab.config.v1";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
-export type ViewMode = "2d" | "3d";
+export type ViewMode = "2d" | "3d" | "model";
 export type Unit = "m" | "mm";
 
 type Screen = "onboarding" | "configurator" | "quote";

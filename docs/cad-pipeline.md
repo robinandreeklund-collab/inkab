@@ -5,6 +5,12 @@ Analys av den föreslagna CAD-pipelinen, och vad jag skulle ändra.
 > Kort version: grundplanen är rätt. Det mesta jag har att säga handlar om att
 > göra **mindre** än vad som föreslås, i en annan ordning.
 
+**Pipelinen är byggd och körs.** `scripts/step-to-glb.mjs` tar en STEP-fil och
+skriver en GLB plus ett katalogkort. `tests/pipeline.test.ts` kör den skarpt vid
+varje testkörning, mot en riktig STEP, och underkänner om något går sönder.
+Vyn **Modell** i konfiguratorn laddar modellerna med three.js. Se
+[Så kör du den](#så-kör-du-den) längst ned.
+
 ---
 
 ## Vad som är rätt, och varför
@@ -82,20 +88,28 @@ till proxy senare, och bara om den kan skriptas.
 
 ### 3. Tessellingstoleransen är den stora spaken, inte komprimeringen
 
-Det här är den praktiskt viktigaste punkten i hela analysen.
+Det här är den praktiskt viktigaste punkten i hela analysen, och nu mätt.
 
-En STEP tessellerad med default-tolerans ger ofta 200 000+ trianglar per
-maskin — kurvor upplösta till tiondels millimeter. På en anläggningsritning
-där maskinen är 8 cm på skärmen är det bortkastat. Samma kropp vid 5 mm
-kordatolerans är visuellt identisk och 20–50 gånger mindre.
+Samma STEP-fil, samma skript, bara toleransen ändrad:
+
+| Modell | 0,05 mm | 1 mm | 5 mm |
+|---|---|---|---|
+| Krökt kropp (turbinstjärt) | 8 548 tri | 516 tri | 254 tri |
+| Plan sammansättning (18 delar) | 5 392 tri | 5 108 tri | 4 320 tri |
+
+**Spaken är 15–35× på krökt geometri och nära noll på plana ytor.** En plan yta
+tessellerar till två trianglar oavsett tolerans; det är fillets, cylindrar och
+plåtbockningar som exploderar. En verklig maskin har gott om båda, så räkna med
+en rejäl men ojämn vinst — och mät per maskin i stället för att gissa.
 
 Att komprimera bort överskottet är att lösa fel problem. Ställ toleransen
 rätt först, komprimera sedan.
 
 Näst största spaken: **ta bort det som inte syns** innan tessellering.
 Skruvar, lager, invändiga mekanismer, kablage. Det är där 80 MB kommer
-ifrån. Går att regelstyra i CAD-systemet — dölj allt vars omslutande låda är
-mindre än säg 50 mm.
+ifrån. Skriptets `--min-part` gör det automatiskt: allt vars omslutande låda är
+mindre än gränsen utelämnas, standard 50 mm. Det kräver ingen handpåläggning i
+CAD, men en genomgång där ger ännu mer.
 
 När det är gjort: **meshopt framför Draco.** Liknande storlek efter gzip, men
 väsentligt snabbare avkodning, och avkodningstiden är vad kunden känner när
@@ -170,12 +184,59 @@ pakethantering, och att grader bara flyttar in en felkälla.
 
 | Val | Bedömning |
 |---|---|
-| **three.js WebGPURenderer** | Produktionsklar sedan r171 med automatisk WebGL2-fallback, och WebGPU finns numera i Chrome, Edge, Firefox och Safari. Använd den — men den räddar ingen som laddar 80 MB. Låt den inte bli anledningen att skjuta upp resten. |
+| **three.js WebGPURenderer** | Produktionsklar sedan r171 med automatisk WebGL2-fallback, och WebGPU finns numera i Chrome, Edge, Firefox och Safari. Vyn använder i dag WebGLRenderer, vilket räcker gott för några tusen trianglar; bytet är en rad när det behövs. Den räddar ändå ingen som laddar 80 MB. |
 | **Instansiering per SKU** | Ja. Det är den avgörande optimeringen i en anläggning, inte renderarvalet. |
 | **HDRI + mjuka skuggor + AO** | Ja, men en enkel studio-HDRI räcker. Fotorealism säljer inte en pakethanteringslinje; läsbarhet gör det. |
 | **PixiJS / Konva för 2D** | Nej, se punkt 1. |
 | **meshopt** | Ja, framför Draco. |
 | **KTX2** | Låg prioritet för de här modellerna. |
+
+---
+
+## Så kör du den
+
+```bash
+node scripts/step-to-glb.mjs maskiner/tsl-enkel.step \
+  --id tsl-enkel --tolerance 2 --min-part 50
+```
+
+Skriver `public/models/tsl-enkel.glb` och `tsl-enkel.card.json`. Kortet
+innehåller fotavtryck, höjd, ett portförslag och mätvärden — trianglar in,
+filstorlek, hur många delar som utelämnades, hur lång tid det tog.
+
+Klistra sedan in `/models/tsl-enkel.glb` i fältet **GLB** på maskinen i admin
+och byt till vyn **Modell**.
+
+### Vad skriptet gör åt dig
+
+- **Normaliserar geometrin.** Origo till inmatningsporten i golvnivå, X i
+  flödesriktningen, Z upp, millimeter till meter. Samma konvention som solvern,
+  så modellen och layouten hamnar på samma plats utan efterjustering.
+- **Utelämnar smådelar** enligt `--min-part`.
+- **Svetsar, avdubblar, kvantiserar och komprimerar** med meshopt.
+- **Varnar för fel längdenhet.** Är största måttet under en halvmeter eller
+  över sextio meter säger den till — tum tolkade som millimeter är det
+  vanligaste felet i en STEP-leverans, och det syns direkt på
+  storleksordningen.
+- **Föreslår portar** på fotavtryckets kanter, och markerar kortet som
+  `dimensionsVerified: false`. Portlägen är gissningar tills en konstruktör
+  bekräftat dem.
+
+### 3D-vyn granskar datan
+
+Vyn **Modell** laddar varje SKU en gång och instansierar den, laddar lat vid
+byte av vy, och ritar maskiner utan modell som sitt fotavtryck — så den
+fungerar medan biblioteket fylls på.
+
+Den skalar modellen likformigt till bibliotekets längd. Skiljer sig måtten mer
+än fem procent säger den ifrån:
+
+> **Modell och mått skiljer sig.** Truckströläggare – enkel: modellen är
+> 0,20 × 0,15 m men biblioteket säger 4,20 × 5,00 m.
+
+Det är inte en bugg utan poängen. 3D-vyn blir en kontroll av maskindatan, inte
+bara en bild av den. Admin-vyn visar samma sak i siffror: hur många maskiner
+som har kontrollerade mått, modell, bilder och beskrivning.
 
 ---
 
@@ -187,16 +248,17 @@ enda 3D-modell, så den kan levereras i etapper.
 1. **Verkliga fotavtryck och portar för alla 17 maskiner.** Ingen CAD-pipeline
    behövs — det är mätvärden in i admin-vyn. Det här låser upp allt annat och
    är det enda som står mellan prototypen och något ni kan visa en kund.
-2. **Förenklingspasset i CAD** för de 3–5 maskiner som finns med i de flesta
+2. **Kör skriptet på en riktig maskin-STEP.** Ta den tyngsta filen ni har.
+   Notera trianglar, filstorlek och tid, och prova ett par toleranser. Efter en
+   halvtimme vet ni om siffrorna håller — och det är det beskedet som gör det
+   till ett säljargument i offerten i stället för ett löfte.
+3. **Förenklingspasset i CAD** för de 3–5 maskiner som finns med i de flesta
    offerter. Ger både envelope-STEP till kund och underlag till webben.
-3. **Tessellera och exportera hero-GLB** för de maskinerna. Mät filstorlek och
-   laddtid på riktigt innan resten görs.
-4. **3D-vyn byggd på hero-GLB**, med instansiering och lat laddning per SKU.
-   Behåll SVG-vyn som den är.
-5. **Resten av maskinerna**, i den takt de dyker upp i verkliga förfrågningar.
+4. **Resten av maskinerna**, i den takt de dyker upp i verkliga förfrågningar.
 
-Steg 1 är dagar av arbete och ger merparten av värdet. Steg 2–3 är där CAD-
-tiden ligger. Bygg inte hela pipelinen innan ni vet att layouterna stämmer.
+Steg 1 är dagar av arbete och ger merparten av värdet. Steg 2 är en halvtimme
+och avgör om resten är värt att göra. Bygg inte hela pipelinen innan ni vet att
+layouterna stämmer.
 
 ---
 

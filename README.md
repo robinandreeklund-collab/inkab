@@ -102,6 +102,8 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
+| **CAD-kedja** | `scripts/step-to-glb.mjs` tar en STEP och skriver GLB plus katalogkort: normaliserar origo och enheter, utelämnar smådelar, komprimerar med meshopt, föreslår portar och varnar för fel längdenhet. `tests/pipeline.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
+| **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Skalar likformigt och **varnar när modellens mått inte stämmer med bibliotekets** — 3D blir en kontroll av datan, inte bara en bild. |
 | **Övrigt** | Ångra/gör om, autospar, delningslänk med konfigurationen i URL:en, offertunderlag med utskrift till PDF, fyra startmallar, tangentbordsgenvägar. |
 
 ### Inte byggt — och medvetet så
@@ -114,7 +116,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Auth.js** | Konton är riktiga — e-post, scrypt-hashade lösenord, HMAC-signerad sessionscookie — men lösenordshanteringen ligger i appen. Ska bli magisk länk för kund och Entra ID internt. |
 | **Sparade projekt** | Konfigurationen lever i webbläsaren och i delningslänken. Kontot bär roll, inte projekt. Ingen offerthistorik. |
 | **Server-renderad PDF** | Utskrift via webbläsaren. Skarpt läge ska rendera måttsatt vektorritning på servern. |
-| **three.js och GLB-modeller** | 3D-vyn är SVG-isometri. Det bär inte riktiga maskinmodeller, men det finns inga sådana ännu — bytet görs när modellerna finns. |
+| **Maskinmodeller** | CAD-kedjan är byggd och körs (`scripts/step-to-glb.mjs`, vyn **Modell**), men inga verkliga maskinmodeller är framtagna. `public/models/exempel.glb` visar att den fungerar. Se [`docs/cad-pipeline.md`](docs/cad-pipeline.md). |
 | **DXF- och Excel-export** | Knappar finns, avstängda. |
 
 ---
@@ -162,6 +164,8 @@ vänster `−Y`** — den konventionen avgör vad de fyra sidofrågorna betyder.
 ### Filträd
 
 ```
+scripts/
+└── step-to-glb.mjs       STEP → GLB + katalogkort (körs offline)
 src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
@@ -185,7 +189,7 @@ src/
 │       ├── auth.ts       Konton, scrypt, signerad sessionscookie
 │       ├── store.ts      Bibliotek och konton: seed → Postgres → minne
 │       └── context.ts    Det aktiva biblioteket och prisboken
-├── components/           Skal, sidebar, CAD-vy, inspektor, AI-panel, offert
+├── components/           Skal, sidebar, CAD-vy, modellvy, inspektor, offert
 │   └── admin/            Maskinformulär, parametrar, bilder, prisbok, konton
 ├── store/                Zustand med historik och autospar
 └── app/
@@ -274,7 +278,7 @@ valideras mot regelverket, så ett felaktigt portpar upptäcks direkt.
 
 | Tangent | Gör |
 |---|---|
-| `1` / `2` | Planvy / isometrisk vy |
+| `1` / `2` / `3` | Planvy / isometrisk vy / modellvy |
 | `V` `W` `D` `T` `N` `M` | Markera · vägg · port · truckgata · no-go · mät |
 | `Z` / `P` | Visa zoner / portar |
 | `F` | Fäll in inspektorn |

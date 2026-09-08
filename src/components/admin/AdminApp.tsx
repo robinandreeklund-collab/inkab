@@ -298,6 +298,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
 
           {tab === "machines" ? (
             <div className="p-2">
+              <CadStatus machines={doc.machines} />
               <Button
                 size="sm"
                 className="mb-2 w-full"
@@ -427,6 +428,53 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
             <p className="text-sm text-muted">Ingen maskin vald.</p>
           )}
         </main>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Vad som återstår innan biblioteket kan visas för kund. Måtten är det som
+ * betyder något; modellerna är grädden. Siffrorna gör det synligt i stället
+ * för att ligga i någons huvud.
+ */
+function CadStatus({ machines }: { machines: Machine[] }) {
+  const verified = machines.filter((m) => m.dimensionsVerified).length;
+  const withModel = machines.filter((m) => m.model?.glb).length;
+  const withImage = machines.filter((m) => m.images?.length).length;
+  const withDescription = machines.filter((m) => (m.aiDescription ?? "").length > 200).length;
+
+  const rows: [string, number, string][] = [
+    ["Kontrollerade mått", verified, "fotavtryck och portar mot ritning"],
+    ["3D-modeller", withModel, "scripts/step-to-glb.mjs"],
+    ["Bilder", withImage, "visas för kunden"],
+    ["Beskrivningar", withDescription, "assistentens underlag"],
+  ];
+
+  return (
+    <div className="mb-3 border border-divider bg-paper p-2">
+      <div className="kicker mb-1.5">Status · {machines.length} maskiner</div>
+      <div className="space-y-1.5">
+        {rows.map(([label, count, hint]) => {
+          const share = machines.length ? count / machines.length : 0;
+          return (
+            <div key={label}>
+              <div className="flex items-baseline justify-between gap-2">
+                <span className="text-[11px]">{label}</span>
+                <span className="num text-[11px] text-muted">
+                  {count}/{machines.length}
+                </span>
+              </div>
+              <div className="mt-0.5 h-1 w-full bg-divider">
+                <div
+                  className={cx("h-full", share === 1 ? "bg-accent" : "bg-warn")}
+                  style={{ width: `${Math.round(share * 100)}%` }}
+                />
+              </div>
+              <div className="kicker mt-0.5 truncate">{hint}</div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );

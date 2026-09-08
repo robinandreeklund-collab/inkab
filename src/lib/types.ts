@@ -162,6 +162,15 @@ export type Machine = {
   parameters?: MachineParameter[];
   /** Id på bilder i biblioteksdokumentets assets. */
   images?: string[];
+  /**
+   * Webbmodeller framtagna av scripts/step-to-glb.mjs. GLB ligger i
+   * objektlagring eller under public/, aldrig i biblioteksdokumentet.
+   */
+  model?: {
+    glb: string;
+    /** Kraftigt förenklad variant för översikt. Valfri. */
+    proxy?: string;
+  };
   /** Länkar till produktkatalog och datablad. */
   productUrl?: string;
   datasheetUrl?: string;

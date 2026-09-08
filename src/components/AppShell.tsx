@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
+import { ModelView } from "./ModelView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { Inspector } from "./Inspector";
 import { LineStrip } from "./LineStrip";
@@ -21,6 +22,7 @@ export function AppShell() {
     config,
     screen,
     inspectorOpen,
+    view,
     tool,
     hydrate,
     hydrated,
@@ -112,6 +114,9 @@ export function AppShell() {
           break;
         case "2":
           setView("3d");
+          break;
+        case "3":
+          setView("model");
           break;
         case "v":
           setTool("select");
@@ -220,7 +225,7 @@ export function AppShell() {
 
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
-            <CadView />
+            {view === "model" ? <ModelView /> : <CadView />}
             <DiagnosticsPanel />
             <AiPanel />
             <ToolRail />

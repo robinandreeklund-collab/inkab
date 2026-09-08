@@ -1,0 +1,61 @@
+{
+  "id": "exempel",
+  "source": "as1-oc-214.stp",
+  "generatedAt": "2026-09-08T18:11:43.391Z",
+  "footprint": {
+    "lengthMm": 200,
+    "widthMm": 150,
+    "heightMm": 84
+  },
+  "ports": [
+    {
+      "id": "in",
+      "role": "in",
+      "pos": {
+        "x": 0,
+        "y": 75
+      },
+      "dir": "x+",
+      "levelMm": 900,
+      "widthMm": [
+        600,
+        1600
+      ],
+      "allowsDirectionChange": false
+    },
+    {
+      "id": "out",
+      "role": "out",
+      "pos": {
+        "x": 200,
+        "y": 75
+      },
+      "dir": "x+",
+      "levelMm": 900,
+      "widthMm": [
+        600,
+        1600
+      ],
+      "allowsDirectionChange": false
+    }
+  ],
+  "model": {
+    "glb": "/models/exempel.glb",
+    "proxy": null
+  },
+  "stats": {
+    "stepBytes": 441968,
+    "glbBytes": 39044,
+    "partsIn": 18,
+    "partsKept": 18,
+    "trianglesIn": 4852,
+    "toleranceMm": 1,
+    "minPartMm": 5,
+    "seconds": 1.8
+  },
+  "dimensionsVerified": false,
+  "warnings": [
+    "Största måttet är bara 0,20 m. Kontrollera längdenheten i STEP-filen — en maskin brukar vara meter, inte centimeter.",
+    "Höjden 0,08 m är för låg för en maskin i biblioteket."
+  ]
+}

@@ -38,6 +38,10 @@ export type ToolContext = {
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
 
+/** Intervallen ligger här i stället för i schemat — se toolDefinitions. */
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(max, Math.max(min, value));
+
 /** Hallens portar, som assistenten behöver för att resonera om truckens väg. */
 function doorSummary(config: Configuration) {
   return config.drawn
@@ -98,6 +102,13 @@ export function layoutSummary(
 
 const SIDE = { type: "string", enum: ["right", "left"] } as const;
 
+/**
+ * Intervall klipps på servern i stället för i schemat: med strict: true tar
+ * API:t inte emot minimum/maximum, minLength/maxLength eller multipleOf.
+ * Gränserna står i beskrivningen så att modellen ändå känner dem, och
+ * executeTool ser till att de hålls. Testet i tests/ai-tools.test.ts vaktar
+ * att inget otillåtet schlinker in igen.
+ */
 export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
   return [
     {
@@ -147,8 +158,7 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           truckPickupSide: SIDE,
           finalConveyorLengthMm: {
             type: "integer",
-            minimum: 1000,
-            maximum: 40000,
+            description: "Längd i millimeter, mellan 1000 och 40000. Värden utanför klipps.",
           },
         },
         required: [],
@@ -169,8 +179,7 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           },
           atIndex: {
             type: "integer",
-            minimum: 0,
-            description: "Position i kedjan. Utelämna för att lägga sist.",
+            description: "Position i kedjan, 0 eller större. Utelämna för att lägga sist.",
           },
         },
         required: ["machineId"],
@@ -196,9 +205,18 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
       input_schema: {
         type: "object" as const,
         properties: {
-          lengthMm: { type: "integer", minimum: 5000, maximum: 300000 },
-          widthMm: { type: "integer", minimum: 5000, maximum: 150000 },
-          clearHeightMm: { type: "integer", minimum: 2000, maximum: 30000 },
+          lengthMm: {
+            type: "integer",
+            description: "Hallens längd i millimeter, mellan 5000 och 300000.",
+          },
+          widthMm: {
+            type: "integer",
+            description: "Hallens bredd i millimeter, mellan 5000 och 150000.",
+          },
+          clearHeightMm: {
+            type: "integer",
+            description: "Fri höjd i millimeter, mellan 2000 och 30000.",
+          },
         },
         required: [],
         additionalProperties: false,
@@ -283,7 +301,10 @@ export function executeTool(
       return layoutSummary(ctx.draft, ctx.library);
 
     case "set_flow": {
-      const patch = input as Partial<Configuration["flow"]>;
+      const patch = { ...(input as Partial<Configuration["flow"]>) };
+      if (typeof patch.finalConveyorLengthMm === "number") {
+        patch.finalConveyorLengthMm = clamp(patch.finalConveyorLengthMm, 1000, 40000);
+      }
       Object.assign(ctx.draft.flow, patch);
       return { applied: patch, layout: layoutSummary(ctx.draft, ctx.library) };
     }
@@ -329,7 +350,16 @@ export function executeTool(
     }
 
     case "set_hall": {
-      Object.assign(ctx.draft.hall, input);
+      const hall = input as Partial<Configuration["hall"]>;
+      if (typeof hall.lengthMm === "number") {
+        ctx.draft.hall.lengthMm = clamp(Math.round(hall.lengthMm), 5000, 300_000);
+      }
+      if (typeof hall.widthMm === "number") {
+        ctx.draft.hall.widthMm = clamp(Math.round(hall.widthMm), 5000, 150_000);
+      }
+      if (typeof hall.clearHeightMm === "number") {
+        ctx.draft.hall.clearHeightMm = clamp(Math.round(hall.clearHeightMm), 2000, 30_000);
+      }
       return {
         hall: ctx.draft.hall,
         layout: layoutSummary(ctx.draft, ctx.library),

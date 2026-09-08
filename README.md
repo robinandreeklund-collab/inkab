@@ -298,6 +298,11 @@ Skyddsräcken:
 - **Applicerar aldrig åt kunden.** `propose_variant` sparar ett förslag och
   återställer arbetskopian. Kunden klickar själv.
 - **Tak per tur.** Högst tolv verktygsrundor.
+- **Schemabegränsning.** Med `strict: true` tar Messages API inte emot
+  `minimum`, `maximum`, `multipleOf`, `minLength` eller `maxLength`. Intervallen
+  står därför i verktygens beskrivningar och klipps i `executeTool`.
+  `tests/ai-tools.test.ts` vaktar att inget otillåtet nyckelord smyger in — ett
+  sådant fel syns annars först i produktion, som ett 400 från Anthropic.
 - **Degraderar rent.** Utan nyckel, vid API-fel eller vid ett avböjt svar
   fortsätter verktyget att fungera fullt ut.
 

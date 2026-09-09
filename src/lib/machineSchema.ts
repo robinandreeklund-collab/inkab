@@ -348,6 +348,17 @@ export const libraryDocumentSchema = z
     machines: z.array(machineSchema).max(200),
     priceBook: priceBookSchema,
     assets: z.array(assetSchema).max(200).default([]),
+    /**
+     * Riktningen nya CAD-modeller tolkas med. Hör till CAD-systemet, inte
+     * till maskinen: alla filer ur samma system delar konvention.
+     */
+    modelDefaults: z
+      .object({
+        upAxis: z.enum(["z", "y"]).optional(),
+        yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        flipped: z.boolean().optional(),
+      })
+      .optional(),
     updatedAt: z.string().optional(),
     updatedBy: z.string().max(80).optional(),
   })
@@ -384,6 +395,8 @@ export type LibraryDocument = {
   machines: Machine[];
   priceBook: z.infer<typeof priceBookSchema>;
   assets: LibraryAsset[];
+  /** Riktningen nya CAD-modeller tolkas med. Se DEFAULT_ORIENTATION. */
+  modelDefaults?: { upAxis?: "z" | "y"; yawDeg?: 0 | 90 | 180 | 270; flipped?: boolean };
   updatedAt?: string;
   updatedBy?: string;
 };

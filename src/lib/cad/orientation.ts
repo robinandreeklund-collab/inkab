@@ -23,6 +23,20 @@ export type ModelOrientation = {
 export const YAW_STEPS = [0, 90, 180, 270] as const;
 
 /**
+ * Riktningen hör till CAD-systemet, inte till maskinen.
+ *
+ * INKAB:s sammanställningar ritas med X tvärs maskinen, Y upp och Z i
+ * flödesriktningen — mätt på både en rullbana (1,57 × 0,60 × 3,00) och en
+ * lättpress (2,44 × 1,83 × 0,18), som ser helt olika ut men delar konvention.
+ * Att i stället gissa riktningen per maskin ur bibliotekets uppskattade mått
+ * gav rätt svar för den ena och fel för den andra, vilket är precis vad man
+ * ska vänta sig av en gissning mot osäker referens.
+ *
+ * Därför en inställning för hela biblioteket, med det här som utgångsläge.
+ */
+export const DEFAULT_ORIENTATION: ModelOrientation = { upAxis: "y", yawDeg: 270 };
+
+/**
  * Rotationen i radianer, i three.js koordinater (Y upp).
  *
  * Konverteraren lägger källans Z på glTF:ens Y. Var källan i själva verket

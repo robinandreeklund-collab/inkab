@@ -9,6 +9,7 @@ import { ParameterPanel } from "./ParameterPanel";
 import { ImagePanel } from "./ImagePanel";
 import { ModelPanel } from "./ModelPanel";
 import { VariantPanel } from "./VariantPanel";
+import type { ModelOrientation } from "@/lib/cad/orientation";
 import {
   CheckField,
   Grid,
@@ -43,6 +44,8 @@ export function MachineForm({
   price,
   allMachines,
   assets,
+  modelDefaults,
+  onModelDefaultsChange,
   onChange,
   onPriceChange,
   onAssetsChange,
@@ -53,6 +56,8 @@ export function MachineForm({
   price: PriceEntry;
   allMachines: Machine[];
   assets: LibraryAsset[];
+  modelDefaults: ModelOrientation | undefined;
+  onModelDefaultsChange: (orientation: ModelOrientation) => void;
   onChange: (machine: Machine) => void;
   onPriceChange: (price: PriceEntry) => void;
   onAssetsChange: (assets: LibraryAsset[]) => void;
@@ -466,10 +471,16 @@ export function MachineForm({
             onAssetsChange={onAssetsChange}
           />
 
-          <ModelPanel machine={machine} onChange={onChange} />
+          <ModelPanel
+            machine={machine}
+            modelDefaults={modelDefaults}
+            onModelDefaultsChange={onModelDefaultsChange}
+            onChange={onChange}
+          />
 
           <VariantPanel
             machine={machine}
+            modelDefaults={modelDefaults}
             price={price}
             onChange={onChange}
             onPriceChange={onPriceChange}

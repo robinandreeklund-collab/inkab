@@ -232,25 +232,37 @@ Panelen visar sedan:
 
 Reglagen är desamma som skriptets: tolerans, minsta del, proxy.
 
-#### Riktningen ställs efteråt, inte vid konverteringen
+#### Riktningen är CAD-systemets, inte maskinens
 
 En STEP kommer sällan in rättvänd. CAD-system är oense om vilken axel som är
-upp — SolidWorks och Inventor ritar Z upp, en del exportkedjor Y — och
-konstruktören som ritade maskinen valde inte nödvändigtvis flödesriktningen
-som X. Det är inte fel i filen, bara en annan konvention.
+upp, och konstruktören som ritade maskinen valde inte nödvändigtvis
+flödesriktningen som X. Det är inte fel i filen, bara en annan konvention.
 
-Riktningen gissas därför inte ur en konvention — den räknas fram. Vid
-konverteringen provas alla fyra måttgivande lägen (Z eller Y upp, 0° eller 90°)
-mot maskinens fotavtryck i biblioteket, och det som ger rätt form väljs.
-Jämförelsen görs på **proportioner**, inte på absoluta mått: bibliotekets
-siffror är ofta uppskattningar, och även den rätta riktningen kan då ligga
-långt fel i meter medan formen ändå pekar entydigt. Skiljer formen inte lägena
-åt — en nästan kvadratisk maskin — avstår verktyget och säger det, i stället
-för att singla slant.
+Konventionen hör till systemet, inte till maskinen. Mätt på två verkliga
+filer ur INKAB:s CAD:
 
-Kvar åt ögat är bara vilket håll maskinen pekar åt: ett halvt varv ändrar inga
-mått, och spegling inte heller. Av 90° och 270° väljs den som lägger längden
-längs +X — måtten kan inte skilja dem åt, men riktningen kan.
+| | X | Y | Z |
+|---|---|---|---|
+| Rullbana | 1,57 m tvärs | 0,60 m upp | 3,00 m i flödet |
+| Lättpress | 2,44 m tvärs | 1,83 m upp | 0,18 m i flödet |
+
+Maskinerna ser inget lika ut — den ena är en tre meter lång bana, den andra en
+portal som trycker ihop paketet från sidan — men de delar konvention. Därför
+är riktningen **en inställning för hela biblioteket**, inte något som räknas
+fram per maskin.
+
+Ett tidigare försök gjorde just det: provade alla lägen mot maskinens
+fotavtryck och valde det som gav rätt form. Det gav rätt svar för rullbanan
+och fel för lättpressen, eftersom referensen — bibliotekets uppskattade mått —
+inte liknade den verkliga maskinen. Ett verktyg som har rätt ibland är inte
+ett verktyg man kan lita på. Formjämförelsen finns kvar, men bara som ett tips
+och bara när maskinens fotavtryck är kontrollerat mot ritning, alltså när
+referensen är värd att lita på.
+
+Kvar åt ögat är vilket håll maskinen pekar åt: ett halvt varv ändrar inga
+mått, och spegling inte heller. Upp-axel, vridning och spegling sitter på
+maskinen och tillämpas vid uppritningen, med en 3D-förhandsgranskning i
+panelen som visar ändringen direkt.
 
 En fälla värd att känna till: vridningen måste ske kring den lodräta axeln,
 alltså **efter** att modellen rests upp. three.js standardordning för Euler-
@@ -260,38 +272,7 @@ noll vridning märks det inte, så felet kan ligga kvar tills någon vrider en
 modell ett kvarts varv. `orientationEuler` returnerar därför ordningen `YXZ`
 tillsammans med vinklarna, och `tests/models.test.ts` räknar på den faktiska
 rotationsmatrisen och kräver att uppriktningen står lodrätt vid varje
-vridning. Upp-axel, vridning och spegling sitter på
-maskinen och tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen
-som visar ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
-runda till med filen. Måtten ur modellen permuteras med vridningen — reser man
-en liggande modell byter bredd och höjd plats — så jämförelsen mot biblioteket
-gäller den modell som faktiskt visas. Ett test kör samma STEP genom
-konverterarens egen upp-axel och genom permutationen och kräver att de ger
-identiska mått — de två vägarna får inte kunna säga olika saker.
-
-#### Varför inte på servern
-
-Första versionen tessellerade i webbservern. Den fungerade lokalt och gav
-**502 utan läsbart innehåll** i drift, vilket är det svar man får när det inte
-finns någon server kvar att svara.
-
-Räkningen är enkel. Webbinstansen på Render har 512 MB. Next själv tar runt
-110 MB. En uppladdad 80 MB-fil buffras av `formData()` och sedan en gång till
-av `arrayBuffer()` — 160 MB innan något har hänt. Tesselleringen av en tung
-sammanställning tar hundratals megabyte till. Då dödar cgroupen processen, och
-en dödad process kastar inget fel som går att fånga: den försvinner, och
-proxyn svarar 502. Felhanteringen i rutten var därför verkningslös — den
-kunde aldrig köras.
-
-En bärbar dator har 8–32 GB. Arbetet hör hemma där minnet finns. Att flytta
-det till webbläsaren löser tre saker på en gång: uppladdningen försvinner,
-serverns minnestak slutar spela roll, och en misslyckad konvertering kan inte
-längre fälla sajten för alla andra.
-
-Priset är att OpenCascades wasm — 7,6 MB — hämtas första gången någon
-konverterar. Den kopieras till `public/occt/` vid bygget av
-`scripts/copy-occt-wasm.mjs`, så den kan aldrig bli en annan version än den
-`occt-import-js` i `node_modules` förväntar sig.
+vridning.
 
 #### Utföranden
 

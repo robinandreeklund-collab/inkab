@@ -386,6 +386,10 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
               price={doc.priceBook.entries[selected.id] ?? EMPTY_PRICE}
               allMachines={doc.machines}
               assets={doc.assets ?? []}
+              modelDefaults={doc.modelDefaults}
+              onModelDefaultsChange={(modelDefaults) =>
+                update((d) => void (d.modelDefaults = modelDefaults))
+              }
               onAssetsChange={(assets) => update((d) => void (d.assets = assets))}
               onChange={(machine) =>
                 update((d) => {

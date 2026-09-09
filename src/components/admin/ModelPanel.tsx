@@ -7,6 +7,7 @@ import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import {
   bestOrientation,
+  DEFAULT_ORIENTATION,
   orientationLabel,
   orientedFootprint,
   YAW_STEPS,
@@ -34,24 +35,22 @@ type StoredModel = {
   createdAt: string;
 };
 
-/**
- * Reservriktning när måtten inte kan avgöra saken — en nästan kvadratisk
- * maskin, eller ett fotavtryck i biblioteket som inte liknar något. INKAB:s
- * CAD ritar Y upp, så det är den bästa gissningen när gissa är allt som
- * återstår.
- */
-const FALLBACK_UP_AXIS = "y" as const;
-
 const mb = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1).replace(".", ",")} MB`;
 const meters = (mm: number) => `${(mm / 1000).toFixed(2).replace(".", ",")} m`;
 
 export function ModelPanel({
   machine,
+  modelDefaults,
+  onModelDefaultsChange,
   onChange,
 }: {
   machine: Machine;
+  /** Riktningen nya modeller tolkas med. Gäller hela biblioteket. */
+  modelDefaults: ModelOrientation | undefined;
+  onModelDefaultsChange: (orientation: ModelOrientation) => void;
   onChange: (machine: Machine) => void;
 }) {
+  const defaults = modelDefaults ?? DEFAULT_ORIENTATION;
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [tolerance, setTolerance] = useState(2);
   const [minPart, setMinPart] = useState(50);
@@ -114,22 +113,32 @@ export function ModelPanel({
     loadStored();
 
     /*
-     * Riktningen räknas ut ur måtten i stället för att gissas ur en
-     * konvention. Alla fyra lägen provas mot maskinens fotavtryck, och det
-     * som ger rätt form vinner — även när bibliotekets mått bara är en
-     * uppskattning, eftersom jämförelsen görs på proportioner.
+     * Riktningen kommer ur bibliotekets inställning. Alla filer ur samma CAD
+     * delar konvention — en rullbana och en lättpress ser inget lika ut men
+     * ritas likadant — så det är ingenting att räkna fram per maskin. Att
+     * gissa den ur bibliotekets uppskattade mått gav rätt för den ena och
+     * fel för den andra.
+     *
+     * En riktning som redan är inställd för hand står över: har någon vridit
+     * maskinen rätt ska en ny konvertering inte slå bort det.
+     */
+    const orientation: ModelOrientation = {
+      upAxis: machine.model?.upAxis ?? defaults.upAxis,
+      yawDeg: machine.model?.yawDeg ?? defaults.yawDeg,
+      flipped: machine.model?.flipped ?? defaults.flipped,
+    };
+
+    /*
+     * Måtten får ändå säga sitt, men bara som ett tips och bara när
+     * referensen är värd att lita på. Är fotavtrycket kontrollerat mot
+     * ritning och formen pekar entydigt åt ett annat håll är det värt att
+     * nämna — annars är det brus.
      */
     const fit = bestOrientation(converted.footprint, machine.footprint);
-    const auto = fit.confident
-      ? fit.orientation
-      : { upAxis: FALLBACK_UP_AXIS, yawDeg: 0 as const };
-    setAutoFit(machine.model?.upAxis ? null : fit);
-
-    const orientation: ModelOrientation = {
-      upAxis: machine.model?.upAxis ?? auto.upAxis,
-      yawDeg: machine.model?.yawDeg ?? auto.yawDeg,
-      flipped: machine.model?.flipped,
-    };
+    const disagrees =
+      fit.orientation.upAxis !== orientation.upAxis ||
+      (fit.orientation.yawDeg ?? 0) % 180 !== (orientation.yawDeg ?? 0) % 180;
+    setAutoFit(machine.dimensionsVerified === true && fit.confident && disagrees ? fit : null);
 
     // Modellen är ritningen: måtten ur den tas över utan att någon behöver
     // trycka på något. Går det inte utan att bryta mot schemat lämnas
@@ -379,29 +388,16 @@ export function ModelPanel({
         <div className="mt-3 border-t border-divider pt-3">
           <div className="kicker mb-1">Modellens riktning</div>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Riktningen räknas fram ur måtten vid konverteringen. Kvar är bara vilket håll
-            maskinen pekar åt — vrid ett halvt varv om den står bakvänd, och spegla om den är
-            ritad åt andra hållet. Ändringen syns direkt.
+            Nya modeller tolkas med bibliotekets standardriktning (
+            {orientationLabel(defaults)}). Stämmer det inte för just den här filen ändrar du
+            nedan — ändringen syns direkt och gäller bara den här maskinen.
           </p>
 
           {autoFit ? (
-            <p
-              className={`mb-2 border px-2 py-1 text-xs ${
-                autoFit.confident ? "border-accent text-accent" : "border-warn text-warn"
-              }`}
-            >
-              {autoFit.confident ? (
-                <>
-                  Riktningen sattes automatiskt till{" "}
-                  <strong>{orientationLabel(autoFit.orientation)}</strong> — det är den enda som
-                  ger modellen ungefär maskinens form.
-                </>
-              ) : (
-                <>
-                  Måtten kunde inte avgöra riktningen — maskinen är för nära kvadratisk. Ställ
-                  den för hand.
-                </>
-              )}
+            <p className="mb-2 border border-warn px-2 py-1 text-xs text-warn">
+              Måtten antyder <strong>{orientationLabel(autoFit.orientation)}</strong> i stället.
+              Maskinens fotavtryck är kontrollerat mot ritning, så det är värt att titta på —
+              men kontrollera i vyn innan du ändrar.
             </p>
           ) : null}
 
@@ -483,6 +479,46 @@ export function ModelPanel({
           </ul>
         </div>
       ) : null}
+
+      <div className="mt-3 border-t border-divider pt-3">
+        <div className="kicker mb-1">Standardriktning för nya modeller</div>
+        <p className="mb-2 text-[11px] leading-relaxed text-muted">
+          Gäller <strong>hela biblioteket</strong>, inte bara den här maskinen. Riktningen hör
+          till CAD-systemet: alla filer ur samma system delar konvention, oavsett hur olika
+          maskinerna ser ut. Ändra den här om ni byter CAD eller exportinställning.
+        </p>
+        <Grid cols={3}>
+          <SelectField
+            label="Upp-axel"
+            value={defaults.upAxis ?? "z"}
+            options={[
+              { value: "y", label: "Y upp" },
+              { value: "z", label: "Z upp" },
+            ]}
+            onChange={(v) => onModelDefaultsChange({ ...defaults, upAxis: v === "y" ? "y" : "z" })}
+          />
+          <SelectField
+            label="Vridning"
+            value={String(defaults.yawDeg ?? 0)}
+            options={YAW_STEPS.map((deg) => ({ value: String(deg), label: `${deg}°` }))}
+            onChange={(v) =>
+              onModelDefaultsChange({
+                ...defaults,
+                yawDeg: Number(v) as (typeof YAW_STEPS)[number],
+              })
+            }
+          />
+          <SelectField
+            label="Spegling"
+            value={defaults.flipped ? "ja" : "nej"}
+            options={[
+              { value: "nej", label: "Som ritad" },
+              { value: "ja", label: "Speglad" },
+            ]}
+            onChange={(v) => onModelDefaultsChange({ ...defaults, flipped: v === "ja" })}
+          />
+        </Grid>
+      </div>
 
       <div className="mt-3 border-t border-divider pt-3">
         <Grid cols={2}>

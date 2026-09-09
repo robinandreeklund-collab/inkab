@@ -7,6 +7,7 @@ import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { Euler, Matrix4, Vector3 } from "three";
 import {
   bestOrientation,
+  DEFAULT_ORIENTATION,
   orientationEuler,
   orientationLabel,
   orientedFootprint,
@@ -365,5 +366,56 @@ describe("rotationen som three.js faktiskt utför", () => {
     const o = { upAxis: "z", yawDeg: 0 } as const;
     near(apply(o, new Vector3(1, 0, 0)), 1, 0, 0);
     near(apply(o, new Vector3(0, 1, 0)), 0, 1, 0);
+  });
+});
+
+describe("riktningen är CAD-systemets, inte maskinens", () => {
+  /*
+   * Två verkliga filer ur samma CAD, uppmätta ur STEP:
+   *
+   *   Rullbana   X=1,57  Y=0,60  Z=3,00   en tre meter lång bana
+   *   Lättpress  X=2,44  Y=1,83  Z=0,18   en portal som trycker från sidan
+   *
+   * De ser inget lika ut, men delar konvention: X tvärs, Y upp, Z i flödet.
+   * Samma riktning ska alltså göra båda rätt — och det gör bibliotekets
+   * standardriktning, till skillnad från en gissning ur uppskattade mått.
+   */
+  const rullbana = { lengthMm: 1570, widthMm: 600, heightMm: 3000 };
+  const lattpress = { lengthMm: 2440, widthMm: 1832, heightMm: 180 };
+
+  it("ger rätt mått åt båda med bibliotekets standardriktning", () => {
+    expect(orientedFootprint(rullbana, DEFAULT_ORIENTATION)).toEqual({
+      lengthMm: 3000,
+      widthMm: 1570,
+      heightMm: 600,
+    });
+    expect(orientedFootprint(lattpress, DEFAULT_ORIENTATION)).toEqual({
+      // Pressen är grund i flödesriktningen och bred tvärs — den trycker
+      // ihop paketet från sidan.
+      lengthMm: 180,
+      widthMm: 2440,
+      heightMm: 1832,
+    });
+  });
+
+  it("visar varför gissningen ur uppskattade mått inte höll", () => {
+    // Rullbanan råkade bli rätt, lättpressen fel. Ett verktyg som har rätt
+    // ibland är inte ett verktyg man kan lita på.
+    const gissadRullbana = bestOrientation(rullbana, { lengthMm: 6000, widthMm: 1800, heightMm: 700 });
+    const gissadPress = bestOrientation(lattpress, { lengthMm: 2600, widthMm: 3400, heightMm: 2600 });
+
+    expect(gissadRullbana.orientation).toEqual(DEFAULT_ORIENTATION);
+    expect(gissadPress.orientation).not.toEqual(DEFAULT_ORIENTATION);
+  });
+
+  it("står upprätt i uppritningen för båda", () => {
+    // Upp ska vara upp oavsett vilken av maskinerna det gäller.
+    const e = orientationEuler(DEFAULT_ORIENTATION);
+    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    const up = new Vector3(0, 0, 1).applyMatrix4(m);
+    expect(up.y).toBeCloseTo(1, 5);
+    // Och flödet, som ligger på glTF:ens Y efter konverteringen, hamnar på X.
+    const flow = new Vector3(0, 1, 0).applyMatrix4(m);
+    expect(flow.x).toBeCloseTo(1, 5);
   });
 });

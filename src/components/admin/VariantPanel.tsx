@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, TextField } from "./fields";
-import { bestOrientation, orientedFootprint, type ModelOrientation } from "@/lib/cad/orientation";
+import { DEFAULT_ORIENTATION, orientedFootprint, type ModelOrientation } from "@/lib/cad/orientation";
 import { collectIssues, variantSchema } from "@/lib/machineSchema";
 import { STAGE_TEXT, useStepConversion } from "./useStepConversion";
 import type { Machine, MachineVariant } from "@/lib/types";
@@ -27,11 +27,13 @@ const meters = (mm: number) => `${m(mm)} m`;
 
 export function VariantPanel({
   machine,
+  modelDefaults,
   price,
   onChange,
   onPriceChange,
 }: {
   machine: Machine;
+  modelDefaults: ModelOrientation | undefined;
   price: PriceEntry;
   onChange: (machine: Machine) => void;
   onPriceChange: (price: PriceEntry) => void;
@@ -98,6 +100,7 @@ export function VariantPanel({
               <VariantRow
                 key={variant.id}
                 machine={machine}
+                modelDefaults={modelDefaults}
                 variant={variant}
                 isDefault={index === 0}
                 price={price.variants?.[variant.id]}
@@ -120,6 +123,7 @@ export function VariantPanel({
 
 function VariantRow({
   machine,
+  modelDefaults,
   variant,
   isDefault,
   price,
@@ -128,6 +132,7 @@ function VariantRow({
   onRemove,
 }: {
   machine: Machine;
+  modelDefaults: ModelOrientation | undefined;
   variant: MachineVariant;
   isDefault: boolean;
   price?: { list: number; cost: number };
@@ -149,12 +154,9 @@ function VariantRow({
     });
     if (!converted) return;
 
-    // Riktningen räknas fram mot maskinens fotavtryck — utförandena har samma
-    // form, bara olika längd, så basmaskinen duger som jämförelse.
-    const fit = bestOrientation(converted.footprint, machine.footprint);
-    const orientation: ModelOrientation = fit.confident
-      ? fit.orientation
-      : { upAxis: "y", yawDeg: 0 };
+    // Riktningen kommer ur bibliotekets inställning. Alla filer ur samma CAD
+    // delar konvention, så det är ingenting att räkna fram per utförande.
+    const orientation: ModelOrientation = modelDefaults ?? DEFAULT_ORIENTATION;
 
     const footprint = orientedFootprint(converted.footprint, orientation);
     const model = { glb: converted.model.glb, proxy: converted.model.proxy, ...orientation };

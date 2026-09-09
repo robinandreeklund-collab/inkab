@@ -434,13 +434,29 @@ export function MachineForm({
                 onChange={(v) => set("foundation", { ...machine.foundation, pointLoadKn: v })}
               />
             </Grid>
-            <div className="mt-3 max-w-xs">
-              <NumField
-                label="Leveranstid"
-                unit="veckor"
-                value={machine.leadTimeWeeks}
-                onChange={(v) => set("leadTimeWeeks", v)}
-              />
+            <div className="mt-3">
+              <Grid cols={3}>
+                <NumField
+                  label="Leveranstid"
+                  unit="veckor"
+                  value={machine.leadTimeWeeks}
+                  onChange={(v) => set("leadTimeWeeks", v)}
+                />
+                <NumField
+                  label="Tillverkning"
+                  unit="h"
+                  hint="verkstad"
+                  value={machine.manufacturingHours ?? 0}
+                  onChange={(v) => set("manufacturingHours", v || undefined)}
+                />
+                <NumField
+                  label="Montage"
+                  unit="h"
+                  hint="på plats"
+                  value={machine.assemblyHours ?? 0}
+                  onChange={(v) => set("assemblyHours", v || undefined)}
+                />
+              </Grid>
             </div>
           </Panel>
 

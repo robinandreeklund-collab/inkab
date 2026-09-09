@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { ProposalDialog } from "./ProposalDialog";
 import { AuthDialog, type SessionUser } from "./AuthDialog";
 import { Button, Segmented } from "./ui";
 
@@ -26,6 +27,7 @@ export function Topbar({
   const { config, view, unit, past, future, setView, setUnit, undo, redo, update, setScreen } =
     useConfigStore();
   const [authOpen, setAuthOpen] = useState(false);
+  const [proposalsOpen, setProposalsOpen] = useState(false);
 
   useEffect(() => {
     if (autoOpenLogin && !user) setAuthOpen(true);
@@ -111,6 +113,12 @@ export function Topbar({
 
         {user ? (
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => setProposalsOpen(true)}
+              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+            >
+              Mina förslag
+            </button>
             <span className="hidden text-right leading-tight sm:block">
               <span className="block text-xs text-paper">{user.name || user.email}</span>
               <span className="kicker text-paper/50">{ROLE_LABEL[user.role] ?? user.role}</span>
@@ -134,6 +142,8 @@ export function Topbar({
           </button>
         )}
       </div>
+
+      {proposalsOpen ? <ProposalDialog onClose={() => setProposalsOpen(false)} /> : null}
 
       {authOpen ? (
         <AuthDialog

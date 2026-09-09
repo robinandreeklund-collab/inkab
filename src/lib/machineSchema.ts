@@ -197,6 +197,8 @@ export const machineSchema = z
 
     stepFile: z.string().max(120).optional(),
     leadTimeWeeks: z.number().int().min(0).max(200),
+    manufacturingHours: z.number().min(0).max(100_000).optional(),
+    assemblyHours: z.number().min(0).max(100_000).optional(),
     catalogueNumber: z.string().max(10).optional(),
     dimensionsVerified: z.boolean().optional(),
     options: z.array(optionSchema).max(20),

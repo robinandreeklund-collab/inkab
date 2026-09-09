@@ -542,3 +542,157 @@ export async function deleteModel(id: string): Promise<void> {
   }
   memoryModels.delete(id);
 }
+
+
+/* ── Sparade förslag ───────────────────────────────────────────────────── */
+
+/**
+ * Kundens egna förslag.
+ *
+ * En konfiguration lever annars i webbläsaren och i delningslänken. Det
+ * räcker för att skicka något vidare, men inte för att komma tillbaka till
+ * det man höll på med förra veckan — och en säljare som jobbar på tre
+ * varianter samtidigt behöver dem åtskilda och namngivna.
+ *
+ * Förslagen hör till kontot. Utan DATABASE_URL lever de bara så länge servern
+ * gör det, precis som allt annat, och vyn säger det.
+ */
+
+export type StoredProposal = {
+  id: string;
+  userId: string;
+  name: string;
+  /** Underlagsnumret vid sparandet, för att känna igen det i listan. */
+  reference: string;
+  config: unknown;
+  updatedAt: string;
+};
+
+const memoryProposals = new Map<string, StoredProposal>();
+
+async function ensureProposalTable(pool: PgPool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS proposal (
+      id         text PRIMARY KEY,
+      user_id    text NOT NULL,
+      name       text NOT NULL,
+      reference  text NOT NULL DEFAULT '',
+      config     jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS proposal_user ON proposal (user_id)");
+}
+
+type ProposalRow = {
+  id: string;
+  user_id: string;
+  name: string;
+  reference: string;
+  config: unknown;
+  updated_at: Date;
+};
+
+const fromProposalRow = (row: ProposalRow): StoredProposal => ({
+  id: row.id,
+  userId: row.user_id,
+  name: row.name,
+  reference: row.reference,
+  config: row.config,
+  updatedAt: row.updated_at.toISOString(),
+});
+
+export async function saveProposal(proposal: {
+  id: string;
+  userId: string;
+  name: string;
+  reference: string;
+  config: unknown;
+}): Promise<{ persisted: boolean; reason: string | null }> {
+  const stored: StoredProposal = { ...proposal, updatedAt: new Date().toISOString() };
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      await pool.query(
+        `INSERT INTO proposal (id, user_id, name, reference, config, updated_at)
+         VALUES ($1, $2, $3, $4, $5, now())
+         ON CONFLICT (id) DO UPDATE
+           SET name = $3, reference = $4, config = $5, updated_at = now()
+         WHERE proposal.user_id = $2`,
+        [stored.id, stored.userId, stored.name, stored.reference, JSON.stringify(stored.config)],
+      );
+      degradedReason = null;
+      return { persisted: true, reason: null };
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+      memoryProposals.set(stored.id, stored);
+      return { persisted: false, reason: degradedReason };
+    }
+  }
+
+  memoryProposals.set(stored.id, stored);
+  return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
+}
+
+export async function listProposals(userId: string): Promise<StoredProposal[]> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      const result = await pool.query<ProposalRow>(
+        "SELECT * FROM proposal WHERE user_id = $1 ORDER BY updated_at DESC",
+        [userId],
+      );
+      degradedReason = null;
+      return result.rows.map(fromProposalRow);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return [...memoryProposals.values()]
+    .filter((p) => p.userId === userId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** Ett förslag, men bara till den som äger det. */
+export async function readProposal(id: string, userId: string): Promise<StoredProposal | null> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      const result = await pool.query<ProposalRow>(
+        "SELECT * FROM proposal WHERE id = $1 AND user_id = $2",
+        [id, userId],
+      );
+      degradedReason = null;
+      return result.rows[0] ? fromProposalRow(result.rows[0]) : null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  const found = memoryProposals.get(id);
+  return found && found.userId === userId ? found : null;
+}
+
+export async function deleteProposal(id: string, userId: string): Promise<void> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      await pool.query("DELETE FROM proposal WHERE id = $1 AND user_id = $2", [id, userId]);
+      degradedReason = null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+  const found = memoryProposals.get(id);
+  if (found && found.userId === userId) memoryProposals.delete(id);
+}

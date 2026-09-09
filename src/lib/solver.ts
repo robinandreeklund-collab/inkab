@@ -602,6 +602,13 @@ function computeMetrics(
     totalAirNlPerMin: placements.reduce((a, p) => a + p.machine.utilities.airNlPerMin, 0),
     pitCount: placements.filter((p) => p.machine.foundation.pitDepthMm > 0).length,
     leadTimeWeeks: Math.max(0, ...placements.map((p) => p.machine.leadTimeWeeks)),
+    /*
+     * Arbetstiden summeras, till skillnad från leveranstiden som är den
+     * längsta: maskinerna byggs efter varandra av samma verkstad, medan de
+     * beställs parallellt.
+     */
+    manufacturingHours: placements.reduce((h, p) => h + (p.machine.manufacturingHours ?? 0), 0),
+    assemblyHours: placements.reduce((h, p) => h + (p.machine.assemblyHours ?? 0), 0),
     endPointGapMm,
   };
 }

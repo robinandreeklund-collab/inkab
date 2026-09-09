@@ -4,6 +4,7 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
+import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 
@@ -19,7 +20,7 @@ type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 type PlanarView = Exclude<ViewMode, "model">;
 
 /** Väggens och portens tjocklek, mm. */
-const WALL_THICKNESS_MM = 300;
+
 type Measure = { from: Vec2; to: Vec2 } | null;
 
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
@@ -29,8 +30,16 @@ const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
  * man drar i grova drag åt det håll man menar och får en ren linje.
  * Truckzoner och no-go-zoner ritas som fria rektanglar.
  */
-function draftBox(kind: Exclude<Tool, "select" | "measure">, from: Vec2, to: Vec2): Box {
+function draftBox(
+  kind: Exclude<Tool, "select" | "measure">,
+  from: Vec2,
+  to: Vec2,
+  walls: DrawnObject[] = [],
+): Box {
   if (kind === "wall" || kind === "door") {
+    // Ändarna dras till befintliga väggar så att linjerna möts där man siktar.
+    from = snapToWalls(from, walls);
+    to = snapToWalls(to, walls);
     const dx = to.x - from.x;
     const dy = to.y - from.y;
     const half = WALL_THICKNESS_MM / 2;
@@ -54,6 +63,17 @@ function draftBox(kind: Exclude<Tool, "select" | "measure">, from: Vec2, to: Vec
     l: Math.max(0, snap(Math.abs(to.x - from.x))),
     w: Math.max(0, snap(Math.abs(to.y - from.y))),
   };
+}
+
+/**
+ * Färdigställer det ritade: väggar får sina hörn stängda, portar sätts in i
+ * väggen de ritades på. Utan det blir en port en ruta på golvet och ett hörn
+ * ett hål på en halv väggtjocklek.
+ */
+function finishDraft(kind: DrawnKind, box: Box, walls: DrawnObject[]): Box {
+  if (kind === "wall") return closeCorners(box, walls);
+  if (kind === "door") return fitDoorToWall(box, walls) ?? box;
+  return box;
 }
 
 const KIND_LABEL: Record<DrawnKind, string> = {
@@ -130,6 +150,8 @@ export function CadView() {
   );
 
   const strokeUnit = viewBox.l / 900;
+  /** Befintliga väggar, som nya väggar och portar fäster mot. */
+  const walls = config.drawn.filter((d) => d.kind === "wall");
 
   /* ── Drag av maskin ──────────────────────────────────────────────────── */
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
@@ -202,20 +224,21 @@ export function CadView() {
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
       if (!now) return;
-      setDraft({ kind, box: draftBox(kind, start, now) });
+      setDraft({ kind, box: draftBox(kind, start, now, walls) });
     };
 
     const up = () => {
       setDraft((current) => {
         if (current && current.box.l >= 200 && current.box.w >= 100) {
+          const box = finishDraft(current.kind, current.box, walls);
           const object: DrawnObject = {
             id: `${current.kind}-${Date.now().toString(36)}`,
             kind: current.kind,
             name: nextName(current.kind, config.drawn),
-            x: Math.round(current.box.x),
-            y: Math.round(current.box.y),
-            l: Math.round(current.box.l),
-            w: Math.round(current.box.w),
+            x: Math.round(box.x),
+            y: Math.round(box.y),
+            l: Math.round(box.l),
+            w: Math.round(box.w),
             h: current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
           };
           addDrawn(object);

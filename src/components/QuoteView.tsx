@@ -254,6 +254,12 @@ export function QuoteView({
               <Line label="Fri takhöjd" value={`≥ ${meters(metrics.maxHeightMm + 800)} m`} />
               <Line label="Hall" value={`${meters(config.hall.lengthMm)} × ${meters(config.hall.widthMm)} m`} />
               <Line label="Leveranstid" value={`${metrics.leadTimeWeeks} veckor`} />
+              {metrics.manufacturingHours > 0 ? (
+                <Line label="Tillverkning" value={`${metrics.manufacturingHours} h`} />
+              ) : null}
+              {metrics.assemblyHours > 0 ? (
+                <Line label="Montage på plats" value={`${metrics.assemblyHours} h`} />
+              ) : null}
               <Line
                 label="Flaskhals"
                 value={metrics.bottleneck ? metrics.bottleneck.name : "Ingen identifierad"}

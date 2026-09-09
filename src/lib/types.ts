@@ -156,6 +156,13 @@ export type Machine = {
 
   stepFile?: string;
   leadTimeWeeks: number;
+  /**
+   * Arbetstid, timmar. Tillverkning i verkstad och montage på plats hålls
+   * isär: de utförs av olika personer, faktureras olika och behöver planeras
+   * var för sig.
+   */
+  manufacturingHours?: number;
+  assemblyHours?: number;
   /** Nummer i INKAB:s produktkatalog. "—" för poster utanför katalogen. */
   catalogueNumber?: string;
   /**
@@ -393,6 +400,9 @@ export type Metrics = {
   totalAirNlPerMin: number;
   pitCount: number;
   leadTimeWeeks: number;
+  /** Summerad arbetstid för anläggningen, timmar. */
+  manufacturingHours: number;
+  assemblyHours: number;
   /** Avstånd mellan linjens faktiska slut och önskad slutpunkt, mm. */
   endPointGapMm: number | null;
 };

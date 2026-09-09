@@ -65,6 +65,8 @@ export function machineListCsv(
     ["Kapacitet (pkt/h)", layout.metrics.throughputPerHour],
     ["Effekt (kW)", layout.metrics.totalPowerKw],
     ["Leveranstid (veckor)", layout.metrics.leadTimeWeeks],
+    ["Tillverkning (h)", layout.metrics.manufacturingHours],
+    ["Montage (h)", layout.metrics.assemblyHours],
   ];
 
   // Semikolon och BOM: svensk Excel läser komma som decimaltecken och

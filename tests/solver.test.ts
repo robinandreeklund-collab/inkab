@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeLayout } from "@/lib/layout";
 import { effectiveMachine, solveLayout } from "@/lib/solver";
-import { getMachine } from "@/lib/library";
+import { BUILTIN_MACHINES, getMachine, makeLibrary } from "@/lib/library";
 import { defaultConfig, lineItem, templateConfig } from "@/lib/templates";
 import type { Configuration } from "@/lib/types";
 
@@ -175,5 +175,64 @@ describe("tom och trasig indata", () => {
     const config = defaultConfig();
     config.line.push(lineItem("finns-inte"));
     expect(() => computeLayout(config)).not.toThrow();
+  });
+});
+
+describe("maskinzonen gäller per sida", () => {
+  /*
+   * Zonen räknades tidigare som en kvadratisk marginal med det största av de
+   * fyra måtten åt alla håll. En rullbana med 0,8 m åt sidorna fick då 0,8 m
+   * framåt fast fram är 0,4, och det knuffade nästnästa maskin i kedjan en
+   * halvmeter bort — utan att något i gränssnittet kunde förklara varför.
+   */
+  const rullbana = BUILTIN_MACHINES.find((m) => m.id === "rullbana")!;
+  const sides = { backMm: 400, frontMm: 400, leftMm: 800, rightMm: 800 };
+
+  const line = (ids: string[]): Configuration => {
+    const template = templateConfig("strolinje");
+    return {
+      ...template,
+      line: ids.map((machineId, i) => ({
+        instanceId: `i${i}`,
+        machineId,
+        selectedOptions: [],
+      })),
+    };
+  };
+
+  const library = makeLibrary(
+    BUILTIN_MACHINES.map((m) => {
+      // Modell så att den steglösa längden inte tar över måttet.
+      if (m.id === "rullbana")
+        return {
+          ...m,
+          clearance: sides,
+          model: { glb: "/x" },
+          footprint: { lengthMm: 3000, widthMm: 1600, heightMm: 600 },
+          ports: m.ports.map((p) => ({
+            ...p,
+            pos: { x: p.role === "in" ? 0 : 3000, y: 800 },
+          })),
+        };
+      return m;
+    }),
+  );
+
+  it("låter maskiner i kedjan stå tätt trots bred sidozon", () => {
+    const layout = computeLayout(line(["rullbana", "rullbana", "rullbana"]), library);
+    for (let i = 1; i < layout.placements.length; i++) {
+      const before = layout.placements[i - 1];
+      const gap = layout.placements[i].bbox.x - (before.bbox.x + before.bbox.l);
+      expect(gap).toBe(0);
+    }
+  });
+
+  it("håller kvar sidozonen i geometrin", () => {
+    // Zonen ska finnas och vara bredare än maskinen — den ska bara inte
+    // räknas som ett hinder framåt.
+    const placement = computeLayout(line(["rullbana"]), library).placements[0];
+    const zone = placement.zones.find((z) => z.type === "clearance")!;
+    expect(zone.box.w).toBe(1600 + sides.leftMm + sides.rightMm);
+    expect(zone.box.l).toBe(3000 + sides.frontMm + sides.backMm);
   });
 });

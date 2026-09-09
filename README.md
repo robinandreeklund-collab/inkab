@@ -98,6 +98,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
 | **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
 | **Start- och slutpunkt** | Dras direkt i ritningen eller skrivs in i meter. Slås "anpassa längden automatiskt" på sätter solvern sista kedjetransportörens längd så att linjen slutar exakt i punkten. |
+| **Maskinzon** | Fritt utrymme per sida — fram, bak, vänster, höger — i maskinens eget system, vridet ut i världen med maskinen. De fyra måtten får skilja sig och gör det: en bred sidozon knuffar inte nästa maskin i kedjan framåt. |
 | **Ritade objekt** | Väggar, portar, truckgator och no-go-zoner. Väggar och portar låses till närmaste axel så att de blir raka i både x- och y-led, med måttet utskrivet medan du drar. Allt går också att skriva in exakt i inspektorn, vrida 90° och namnge. |
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |

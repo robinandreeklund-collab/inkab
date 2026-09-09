@@ -279,14 +279,6 @@ function fitMachine(
 
 /** Boxen utvidgad med maskinens frigång. Riktningsoberoende — vi tar den
  *  största sidan så att zonen respekteras oavsett hur maskinen roterats. */
-function expandByClearance(box: Box, m: EffectiveMachine): Box {
-  const c = m.clearance;
-  if (!c) return box;
-  const pad = Math.max(c.frontMm, c.backMm, c.leftMm, c.rightMm);
-  if (pad <= 0) return box;
-  return { x: box.x - pad, y: box.y - pad, l: box.l + pad * 2, w: box.w + pad * 2 };
-}
-
 /**
  * Hur långt markören måste flyttas längs `dir` för att `box` ska gå fri från
  * redan placerade maskiner. Behövs framför allt efter en riktningsändring, då
@@ -314,7 +306,7 @@ function placeOne(
   pos: number,
   cursor: Cursor,
   preferMirrored: boolean,
-): { placement: Placement; idealBbox: Box; next: Cursor } | null {
+): { placement: Placement; idealBbox: Box; idealClearBox: Box; next: Cursor } | null {
   const fit = fitMachine(m, cursor, preferMirrored);
   if (!fit) return null;
 
@@ -382,7 +374,21 @@ function placeOne(
     { ...opts, origin },
   );
 
-  return { placement, idealBbox, next };
+  /*
+   * Maskinzonen i världen, sida för sida.
+   *
+   * Den räknades tidigare som en kvadratisk marginal med det största av de
+   * fyra måtten åt alla håll. En maskin med 0,8 m åt sidorna fick då 0,8 m
+   * framåt också, fast fram är 0,4 — och det knuffade nästnästa maskin i
+   * kedjan en halvmeter bort utan att något i gränssnittet kunde förklara
+   * varför. Hela poängen med fyra mått är att de får skilja sig, så zonen
+   * byggs i maskinens eget system och vrids ut i världen på samma sätt som
+   * de ritade zonerna.
+   */
+  const clearLocal = clearanceZone(m)?.box ?? { x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm };
+  const idealClearBox = boxToWorld(clearLocal, { ...opts, origin });
+
+  return { placement, idealBbox, idealClearBox, next };
 }
 
 /**
@@ -651,7 +657,7 @@ function walkChain(
 
     placements.push(result.placement);
     idealBoxes.push(result.idealBbox);
-    idealClearBoxes.push(expandByClearance(result.idealBbox, eff));
+    idealClearBoxes.push(result.idealClearBox);
     cursor = result.next;
     if (cursor.dir === "x+") turnedToMainAxis = true;
   });

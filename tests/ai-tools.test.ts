@@ -477,3 +477,59 @@ describe("skalflaggan följer med ut ur körningen", () => {
     expect(ctx.scaleVerified).toBe(true);
   });
 });
+
+describe("propose_variant säger ifrån om tomma förslag", () => {
+  it("varnar när förslaget saknar maskiner", () => {
+    const config = defaultConfig();
+    const ctx = context(config);
+    executeTool("clear_line", {}, ctx);
+    const result = executeTool(
+      "propose_variant",
+      { name: "Lokalen", description: "Bara hallen." },
+      ctx,
+    ) as { warnings?: string[] };
+    expect(result.warnings?.join(" ")).toContain("inga maskiner");
+  });
+
+  it("varnar när förslaget är kundens egen konfiguration", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "propose_variant",
+      { name: "Oförändrat", description: "Samma som förut." },
+      ctx,
+    ) as { warnings?: string[] };
+    expect(result.warnings?.join(" ")).toContain("identiskt");
+  });
+
+  it("varnar inte om ett riktigt förslag", () => {
+    const ctx = context(defaultConfig());
+    executeTool("add_machine", { machineId: "rullbana" }, ctx);
+    const result = executeTool(
+      "propose_variant",
+      { name: "Med rullbana", description: "En rullbana till." },
+      ctx,
+    ) as { warnings?: string[] };
+    expect(result.warnings).toBeUndefined();
+  });
+});
+
+describe("skalan räknas som belagd av måttet, inte av kategorin", () => {
+  it("räcker med scaleNote", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      {
+        lengthM: 15,
+        widthM: 9,
+        scaleNote: "15 m längs överkant, 9 m nederkant",
+        walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
+      },
+      ctx,
+    ) as { scale: { verified: boolean; source: string | null } };
+
+    // Att inte fylla i en kategori gör inte måttet mindre uppmätt.
+    expect(result.scale.verified).toBe(true);
+    expect(result.scale.source).toBe("dimension_on_drawing");
+    expect(ctx.scaleVerified).toBe(true);
+  });
+});

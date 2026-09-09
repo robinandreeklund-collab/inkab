@@ -41,7 +41,7 @@ const JOB_PROMPT = `Kunden har laddat upp underlag och vill ha ett färdigt för
 
 1. Läs bilagorna. Skriv först vad du ser: en ritning över lokalen, ett flödesschema, en skiss, ett foto.
 2. Är det en ritning över lokalen — sätt hallens mått och rita upp den med draw_hall. Går skalan inte att fastställa ur ritningen eller ur kundens egna ord: rita inte. Skriv i stället vilket mått du behöver för att kunna göra det.
-3. Visar underlaget maskiner eller ett flöde — bygg linjen. clear_line först om du börjar om, sedan add_machine i den ordning flödet går, och set_flow för de fem flödesvalen.
+3. Visar underlaget maskiner eller ett flöde — bygg linjen. clear_line först om du börjar om, sedan add_machine i den ordning flödet går, och set_flow för de fem flödesvalen. Att kundens linje är tom är själva anledningen till att du är här; bygg den efter bilden.
 4. Kontrollera med get_current_layout och rätta det du kan innan du sparar.
 5. Spara med propose_variant. Är du osäker på en tolkning: spara den rimligaste och beskriv osäkerheten i förslagets beskrivning.
 
@@ -206,11 +206,21 @@ async function run(
 
     // Är kunden inloggad ska förslaget finnas kvar även om fliken stängs.
     if (current.userId && variants.length > 0) {
-      const config = variants[0].config as Configuration;
+      /*
+       * Det fylligaste förslaget sparas, inte det första. Assistenten sparar
+       * ibland en halvfärdig variant innan den bygger klart, och det som ligger
+       * kvar i "Mina förslag" ska vara det som faktiskt innehåller något.
+       */
+      const best = [...variants].sort(
+        (a, b) =>
+          ((b.config as Configuration).line?.length ?? 0) -
+          ((a.config as Configuration).line?.length ?? 0),
+      )[0];
+      const config = best.config as Configuration;
       await saveProposal({
         id: `p-${current.id.slice(4, 20)}`,
         userId: current.userId,
-        name: variants[0].name,
+        name: best.name,
         reference: quoteReference(config),
         config,
       });

@@ -688,8 +688,21 @@ export function executeTool(
        * uteblivet svar.
        */
       const note = String(input.scaleNote ?? "").trim();
-      const source = typeof input.scaleSource === "string" ? input.scaleSource : null;
-      const scaleVerified = !!note && !!source;
+      /*
+       * Beläggningen sitter i anteckningen, inte i kategorin.
+       *
+       * Först krävdes båda fälten, och då kunde assistenten skriva "skalad
+       * efter måttet 15 m" och ändå få skalan stämplad som obelagd för att den
+       * inte fyllt i vilken sorts källa det var. Det är att låta en etikett
+       * väga tyngre än måttet den etiketterar.
+       */
+      const source =
+        typeof input.scaleSource === "string" && input.scaleSource
+          ? input.scaleSource
+          : note
+            ? "dimension_on_drawing"
+            : null;
+      const scaleVerified = !!note;
 
       if (typeof input.lengthM === "number") {
         ctx.draft.hall.lengthMm = clamp(Math.round(input.lengthM * 1000), 5000, 300_000);
@@ -761,12 +774,37 @@ export function executeTool(
       };
       ctx.variants.push(variant);
       const summary = layoutSummary(variant.config, ctx.library, { full: true });
+
+      /*
+       * Ett förslag utan maskiner är sällan ett förslag.
+       *
+       * Det händer att assistenten ritar upp lokalen, konstaterar att kundens
+       * linje är tom och sparar den tomheten som ett förslag. Kundens
+       * utgångsläge är just ett utgångsläge — visar underlaget maskiner ska de
+       * byggas. Varningen står i svaret så att den kan rätta till det innan
+       * turen är slut.
+       */
+      const warnings: string[] = [];
+      if (variant.config.line.length === 0) {
+        warnings.push(
+          "Förslaget innehåller inga maskiner. Att kundens linje var tom är inte ett skäl " +
+            "att lämna den tom — visar underlaget maskiner ska du bygga linjen med " +
+            "add_machine och spara ett nytt förslag.",
+        );
+      }
+      if (JSON.stringify(variant.config) === JSON.stringify(ctx.original)) {
+        warnings.push(
+          "Förslaget är identiskt med kundens nuvarande konfiguration. Det säger inget " +
+            "nytt — ändra något eller låt bli att spara.",
+        );
+      }
       // Arbetskopian nollställs så att nästa förslag utgår från kundens layout.
       ctx.draft = clone(ctx.original);
       return {
         saved: variant.id,
         name: variant.name,
         layout: summary,
+        ...(warnings.length ? { warnings } : {}),
         note: "Arbetskopian är återställd till kundens ursprungliga layout.",
       };
     }

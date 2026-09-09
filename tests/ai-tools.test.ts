@@ -580,3 +580,22 @@ describe("propose_variant när add_machine aldrig anropats", () => {
     expect(result.warnings?.join(" ")).not.toContain("inte anropat add_machine");
   });
 });
+
+describe("draw_hall med ett tomt anrop", () => {
+  it("svarar med fel i stället för att låtsas ha ritat", () => {
+    // Ett tomt anrop svarade förr "klart, 0 objekt" — och dolde därmed att
+    // argumenten aldrig kom fram.
+    const result = executeTool("draw_hall", {}, context(defaultConfig())) as { error?: string };
+    expect(result.error).toContain("ingenting att rita");
+    expect(result.error).toContain("lengthM");
+  });
+
+  it("godtar ett anrop som bara sätter hallens mått", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool("draw_hall", { lengthM: 15, widthM: 9 }, ctx) as {
+      error?: string;
+    };
+    expect(result.error).toBeUndefined();
+    expect(ctx.draft.hall.lengthMm).toBe(15_000);
+  });
+});

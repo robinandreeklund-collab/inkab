@@ -313,6 +313,20 @@ export async function runAssistant(input: {
 
       let currentBlock: "thinking" | "text" | null = null;
       let streamed = "";
+      /*
+       * Verktygsargumenten, hämtade ur strömmen med egna händer.
+       *
+       * Protokollet tillåter två sätt att skicka dem: hela objektet när blocket
+       * öppnas, eller bit för bit som input_json_delta. Klientens hopsättning
+       * räknar med det andra, och en leverantör som gör det första lämnar då
+       * ett tomt objekt — verktyget svarar "argumentet saknas", modellen
+       * förstår inte varför, och gör om anropet. Båda formerna sparas därför
+       * undan här, så att anropet kan lagas när det färdiga blocket är tomt.
+       */
+      const inputAtStart = new Map<string, unknown>();
+      const idByIndex = new Map<number, string>();
+      const jsonByIndex = new Map<number, string>();
+
       for await (const event of response) {
         if (event.type === "content_block_start") {
           currentBlock =
@@ -323,8 +337,18 @@ export async function runAssistant(input: {
                 : null;
           if (event.content_block.type === "tool_use") {
             emit({ type: "tool", name: event.content_block.name, phase: "start" });
+            idByIndex.set(event.index, event.content_block.id);
+            if (hasContent(event.content_block.input)) {
+              inputAtStart.set(event.content_block.id, event.content_block.input);
+            }
           }
         } else if (event.type === "content_block_delta") {
+          if (event.delta.type === "input_json_delta") {
+            jsonByIndex.set(
+              event.index,
+              (jsonByIndex.get(event.index) ?? "") + event.delta.partial_json,
+            );
+          }
           if (event.delta.type === "thinking_delta" && currentBlock === "thinking") {
             emit({ type: "thinking", text: event.delta.thinking });
           } else if (event.delta.type === "text_delta" && currentBlock === "text") {
@@ -390,9 +414,32 @@ export async function runAssistant(input: {
         if (block.type !== "tool_use") continue;
         emit({ type: "tool", name: block.name, phase: "run" });
         const toolStarted = Date.now();
+        // Det färdiga blocket först; är det tomt lagas anropet ur strömmen.
+        const args = hasContent(block.input)
+          ? block.input
+          : (inputAtStart.get(block.id) ??
+             jsonFor(block.id, idByIndex, jsonByIndex) ??
+             block.input);
+
+        /*
+         * Tomma argument ska inte bara noteras som tomma.
+         *
+         * Ett verktygsanrop utan argument kan bero på två helt olika saker:
+         * modellen skickade inga, eller den skickade något som inte gick att
+         * sätta ihop. De kräver olika åtgärder, och skillnaden syns bara i
+         * råmaterialet. Därför sparas det undan när argumenten uteblir.
+         */
+        const raw = rawJsonFor(block.id, idByIndex, jsonByIndex);
+        const argsNote = hasContent(args)
+          ? null
+          : raw
+            ? `tomma argument — strömmen bar ${raw.length} tecken som inte gick att tolka: ` +
+              raw.slice(0, 200)
+            : "tomma argument — modellen skickade inga argument alls, varken i blocket " +
+              "eller som deltan";
         let output: unknown;
         try {
-          output = executeTool(block.name, block.input as Record<string, unknown>, ctx);
+          output = executeTool(block.name, args as Record<string, unknown>, ctx);
         } catch (error) {
           output = { error: error instanceof Error ? error.message : "Verktyget misslyckades." };
         }
@@ -407,7 +454,9 @@ export async function runAssistant(input: {
           name: block.name,
           ok: !failure,
           ms,
-          ...(failure ? { error: failure, input: JSON.stringify(block.input).slice(0, 400) } : {}),
+          ...(failure
+            ? { error: failure, input: argsNote ?? JSON.stringify(args).slice(0, 400) }
+            : {}),
         });
 
         /*
@@ -567,6 +616,46 @@ function providerMessage(error: InstanceType<typeof Anthropic.APIError>): string
     error.message;
   if (!found) return null;
   return String(found).slice(0, 600);
+}
+
+/** Sant för ett argumentobjekt som faktiskt innehåller något. */
+function hasContent(value: unknown): boolean {
+  if (typeof value === "string") return value.trim().length > 0;
+  if (!value || typeof value !== "object") return false;
+  return Object.keys(value as Record<string, unknown>).length > 0;
+}
+
+/** Råtexten ur input_json_delta, oavsett om den går att tolka. */
+function rawJsonFor(
+  id: string,
+  idByIndex: Map<number, string>,
+  jsonByIndex: Map<number, string>,
+): string | null {
+  for (const [index, blockId] of idByIndex) {
+    if (blockId !== id) continue;
+    const raw = jsonByIndex.get(index);
+    return raw?.trim() ? raw : null;
+  }
+  return null;
+}
+
+/** Argumenten hopsatta ur input_json_delta, för det block id:t hör till. */
+function jsonFor(
+  id: string,
+  idByIndex: Map<number, string>,
+  jsonByIndex: Map<number, string>,
+): unknown {
+  for (const [index, blockId] of idByIndex) {
+    if (blockId !== id) continue;
+    const raw = jsonByIndex.get(index);
+    if (!raw?.trim()) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 
 /**

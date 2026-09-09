@@ -713,6 +713,27 @@ export function executeTool(
        * ända fram till kunden. Ett omätt underlag som syns är bättre än ett
        * uteblivet svar.
        */
+      /*
+       * Ett anrop utan innehåll är inte en ritning. Utan den här kontrollen
+       * svarar verktyget "klart, 0 objekt ritade" på ett tomt anrop, och det
+       * verkliga felet — att argumenten aldrig kom fram — göms bakom ett ok.
+       */
+      const hasPlan =
+        typeof input.lengthM === "number" ||
+        typeof input.widthM === "number" ||
+        (Array.isArray(input.walls) && input.walls.length > 0) ||
+        (Array.isArray(input.doors) && input.doors.length > 0) ||
+        (Array.isArray(input.areas) && input.areas.length > 0);
+      if (!hasPlan) {
+        return {
+          error:
+            "Anropet innehöll ingenting att rita. Du skickade: " +
+            `${JSON.stringify(input).slice(0, 200)}. Skicka hallens mått och väggarna, ` +
+            't.ex. { "lengthM": 15, "widthM": 9, "walls": [{ "fromXM": 0, "fromYM": 0, ' +
+            '"toXM": 15, "toYM": 0 }] }.',
+        };
+      }
+
       const note = String(input.scaleNote ?? "").trim();
       /*
        * Beläggningen sitter i anteckningen, inte i kategorin.

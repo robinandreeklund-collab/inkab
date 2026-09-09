@@ -60,6 +60,41 @@ function toolUseMessage(name: string, input: Record<string, unknown> = {}): stri
   );
 }
 
+/**
+ * Ett verktygsanrop där argumenten ligger i blocket när det öppnas, och inga
+ * input_json_delta skickas alls. Protokollet tillåter det; klientens
+ * hopsättning räknar inte med det.
+ */
+function toolUseInStartMessage(name: string, input: Record<string, unknown>): string {
+  return (
+    sse("message_start", {
+      type: "message_start",
+      message: {
+        id: "msg_3",
+        type: "message",
+        role: "assistant",
+        model: "provsvar",
+        content: [],
+        stop_reason: null,
+        stop_sequence: null,
+        usage: { input_tokens: 10, output_tokens: 1 },
+      },
+    }) +
+    sse("content_block_start", {
+      type: "content_block_start",
+      index: 0,
+      content_block: { type: "tool_use", id: "toolu_start", name, input },
+    }) +
+    sse("content_block_stop", { type: "content_block_stop", index: 0 }) +
+    sse("message_delta", {
+      type: "message_delta",
+      delta: { stop_reason: "tool_use", stop_sequence: null },
+      usage: { output_tokens: 5 },
+    }) +
+    sse("message_stop", { type: "message_stop" })
+  );
+}
+
 /** Ett svar där hela texten ligger i blocket i stället för i deltan. */
 function textInBlockMessage(text: string): string {
   return (
@@ -419,4 +454,91 @@ describe("jobbet ger en tur till när bara lokalen ritades", () => {
     expect(finished?.detail.steps?.map((s) => s.name)).toContain("add_machine");
     expect(finished?.detail.rounds).toBeGreaterThan(3);
   }, 30_000);
+});
+
+
+describe("verktygsargument som inte kommer som deltan", () => {
+  it("hämtar dem ur blocket när det öppnas", async () => {
+    /*
+     * Det verkliga felet: modellen anropade add_machine, argumenten kom i
+     * öppningshändelsen, och verktyget fick ett tomt objekt. Felet sa "machineId
+     * saknas", modellen hade ju skickat ett, och gjorde om anropet tills turen
+     * avbröts.
+     */
+    let calls = 0;
+    const server = createServer((request, response) => {
+      calls += 1;
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.end(
+        calls === 1
+          ? toolUseInStartMessage("add_machine", { machineId: "rullbana" })
+          : textInBlockMessage("Rullbanan är inlagd."),
+      );
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const config = emptyConfig();
+    const result = await runAssistant({
+      config,
+      message: "Lägg till en rullbana.",
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL: url,
+        traits: TRAITS.grok,
+      },
+    });
+    server.close();
+
+    expect(result.steps[0]?.ok).toBe(true);
+    expect(result.draft.line).toHaveLength(1);
+    expect(result.draft.line[0].machineId).toBe("rullbana");
+    expect(result.stopReason).toBe("answered");
+  }, 20_000);
+});
+
+
+describe("när argumenten uteblir", () => {
+  it("skriver upp vad strömmen faktiskt bar", async () => {
+    /*
+     * Rapporten sa "argument: {}" och det gick inte att se varför. Två helt
+     * olika fel ser likadana ut: modellen skickade inga argument, eller den
+     * skickade något som inte gick att sätta ihop. Skillnaden måste stå i
+     * loggen, annars går det bara att gissa.
+     */
+    const server = createServer((request, response) => {
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.end(toolUseMessage("add_machine", {}));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const result = await runAssistant({
+      config: emptyConfig(),
+      message: "Bygg linjen.",
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      maxRounds: 4,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL: url,
+        traits: TRAITS.grok,
+      },
+    });
+    server.close();
+
+    // Här skickade servern "{}" som delta — alltså tomma argument, tolkade.
+    expect(result.steps[0].input).toContain("tomma argument");
+    expect(result.steps[0].error).toContain("machineId saknas");
+  }, 20_000);
 });

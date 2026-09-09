@@ -110,7 +110,7 @@ export function ModelPreview({
       const setOrientation = (next: ModelOrientation) => {
         if (!model) return;
         const euler = orientationEuler(next);
-        model.rotation.set(euler.x, euler.y, 0);
+        model.rotation.set(euler.x, euler.y, 0, euler.order);
         model.scale.set(1, 1, 1);
         model.position.set(0, 0, 0);
 

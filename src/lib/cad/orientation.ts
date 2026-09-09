@@ -28,13 +28,21 @@ export const YAW_STEPS = [0, 90, 180, 270] as const;
  * Konverteraren lägger källans Z på glTF:ens Y. Var källan i själva verket
  * Y-upp hamnar modellens uppriktning på Z, och behöver resas: en vridning om
  * −90° kring X för +Z till +Y.
+ *
+ * ORDNINGEN ÄR INTE VALFRI. Vridningen ska ske kring den lodräta axeln, alltså
+ * EFTER att modellen rests upp. three.js standardordning XYZ ger matrisen
+ * Rx·Ry·Rz, vilket vrider först och reser sedan — och då hamnar uppriktningen
+ * vågrätt, så maskinen ställer sig på högkant. YXZ ger Ry·Rx och gör rätt sak.
+ * Med noll vridning märks skillnaden inte, vilket är just varför felet kan
+ * ligga kvar tills någon vrider en modell ett kvarts varv.
  */
 export function orientationEuler(orientation: ModelOrientation | undefined): {
   x: number;
   y: number;
+  order: "YXZ";
 } {
   const yaw = ((orientation?.yawDeg ?? 0) * Math.PI) / 180;
-  return { x: orientation?.upAxis === "y" ? -Math.PI / 2 : 0, y: yaw };
+  return { x: orientation?.upAxis === "y" ? -Math.PI / 2 : 0, y: yaw, order: "YXZ" };
 }
 
 /**
@@ -122,11 +130,17 @@ export function bestOrientation(
   measured: { lengthMm: number; widthMm: number; heightMm: number },
   target: { lengthMm: number; widthMm: number; heightMm: number },
 ): OrientationFit {
+  /*
+   * Ett kvarts varv åt vilket håll? Måtten kan inte skilja 90° från 270°, så
+   * valet görs på vad som lägger längden längs +X i stället för −X: efter
+   * upprätningen är det 270° för en Y-upp-källa och 90° för en Z-upp. Blir det
+   * ändå bakvänt är det ett halvt varv till, och det avgörs med ögat.
+   */
   const candidates: ModelOrientation[] = [
     { upAxis: "z", yawDeg: 0 },
     { upAxis: "z", yawDeg: 90 },
     { upAxis: "y", yawDeg: 0 },
-    { upAxis: "y", yawDeg: 90 },
+    { upAxis: "y", yawDeg: 270 },
   ];
 
   const ranked = candidates

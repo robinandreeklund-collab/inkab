@@ -4,7 +4,14 @@ import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
-import { bestOrientation, orientationEuler, orientationLabel, orientedFootprint } from "@/lib/cad/orientation";
+import { Euler, Matrix4, Vector3 } from "three";
+import {
+  bestOrientation,
+  orientationEuler,
+  orientationLabel,
+  orientedFootprint,
+  YAW_STEPS,
+} from "@/lib/cad/orientation";
 import { BUILTIN_MACHINES } from "@/lib/library";
 
 /**
@@ -171,7 +178,7 @@ describe("modellens riktning", () => {
 
   it("låter måtten vara när inget är vridet", () => {
     expect(orientedFootprint(size, {})).toEqual(size);
-    expect(orientationEuler({})).toEqual({ x: 0, y: 0 });
+    expect(orientationEuler({})).toEqual({ x: 0, y: 0, order: "YXZ" });
   });
 
   it("reser en liggande modell och byter bredd mot höjd", () => {
@@ -254,7 +261,9 @@ describe("automatisk riktning", () => {
     const library = { lengthMm: 6000, widthMm: 1800, heightMm: 700 };
 
     const fit = bestOrientation(measured, library);
-    expect(fit.orientation).toEqual({ upAxis: "y", yawDeg: 90 });
+    // 270° och inte 90°: måtten kan inte skilja dem åt, men 270° lägger
+    // längden längs +X i stället för −X efter upprätningen.
+    expect(fit.orientation).toEqual({ upAxis: "y", yawDeg: 270 });
     expect(fit.footprint).toEqual({ lengthMm: 3000, widthMm: 1570, heightMm: 600 });
     // Avvikelsen är stor i absoluta tal — biblioteket säger 6 m där maskinen
     // är 3 — men formen pekar ändå entydigt ut rätt läge.
@@ -284,5 +293,59 @@ describe("automatisk riktning", () => {
     );
     // En kub ser likadan ut från alla håll: då ska verktyget avstå.
     expect(fit.confident).toBe(false);
+  });
+});
+
+describe("rotationen som three.js faktiskt utför", () => {
+  /*
+   * Testet räknar på matrisen, inte på måtten. Måttpermutationen kan vara
+   * riktig medan uppritningen är fel — det var precis vad som hände: med
+   * three.js standardordning XYZ blir matrisen Rx·Ry, alltså vridning före
+   * upprätning, och maskinen ställde sig på högkant. Med noll vridning märks
+   * det inte, så bara ett test som vrider kan fånga det.
+   *
+   * Efter konverteringen ligger en Y-upp-källa så här i glTF:
+   *   maskinens upp    → +Z
+   *   maskinens längd  → +Y
+   *   maskinens bredd  → +X
+   * och målet är three.js egna: upp +Y, längd +X, bredd +Z.
+   */
+  const apply = (orientation: Parameters<typeof orientationEuler>[0], axis: Vector3) => {
+    const e = orientationEuler(orientation);
+    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    return axis.clone().applyMatrix4(m);
+  };
+  const near = (v: Vector3, x: number, y: number, z: number) => {
+    expect(v.x).toBeCloseTo(x, 5);
+    expect(v.y).toBeCloseTo(y, 5);
+    expect(v.z).toBeCloseTo(z, 5);
+  };
+
+  it("reser en Y-upp-modell utan att vrida den", () => {
+    const o = { upAxis: "y", yawDeg: 0 } as const;
+    near(apply(o, new Vector3(0, 0, 1)), 0, 1, 0); // upp hamnar rätt
+    near(apply(o, new Vector3(0, 1, 0)), 0, 0, -1); // längden ligger tvärs
+  });
+
+  it("lägger längden längs flödet vid det valda kvartsvarvet", () => {
+    const o = { upAxis: "y", yawDeg: 270 } as const;
+    near(apply(o, new Vector3(0, 0, 1)), 0, 1, 0); // upp är fortfarande upp
+    near(apply(o, new Vector3(0, 1, 0)), 1, 0, 0); // längden längs +X
+    near(apply(o, new Vector3(1, 0, 0)), 0, 0, 1); // bredden tvärs
+  });
+
+  it("håller uppriktningen lodrät vid varje vridning", () => {
+    // Det här är felet, formulerat: vrider man kring fel axel lägger sig
+    // maskinen ner. Upp ska vara upp oavsett hur mycket den vrids.
+    for (const yawDeg of YAW_STEPS) {
+      near(apply({ upAxis: "y", yawDeg }, new Vector3(0, 0, 1)), 0, 1, 0);
+      near(apply({ upAxis: "z", yawDeg }, new Vector3(0, 1, 0)), 0, 1, 0);
+    }
+  });
+
+  it("låter en Z-upp-modell vara orörd", () => {
+    const o = { upAxis: "z", yawDeg: 0 } as const;
+    near(apply(o, new Vector3(1, 0, 0)), 1, 0, 0);
+    near(apply(o, new Vector3(0, 1, 0)), 0, 1, 0);
   });
 });

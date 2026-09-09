@@ -246,7 +246,18 @@ långt fel i meter medan formen ändå pekar entydigt. Skiljer formen inte läge
 för att singla slant.
 
 Kvar åt ögat är bara vilket håll maskinen pekar åt: ett halvt varv ändrar inga
-mått, och spegling inte heller. Upp-axel, vridning och spegling sitter på
+mått, och spegling inte heller. Av 90° och 270° väljs den som lägger längden
+längs +X — måtten kan inte skilja dem åt, men riktningen kan.
+
+En fälla värd att känna till: vridningen måste ske kring den lodräta axeln,
+alltså **efter** att modellen rests upp. three.js standardordning för Euler-
+vinklar är XYZ, vilket ger matrisen Rx·Ry — vridning först, upprätning sedan —
+och då hamnar uppriktningen vågrätt och maskinen ställer sig på högkant. Med
+noll vridning märks det inte, så felet kan ligga kvar tills någon vrider en
+modell ett kvarts varv. `orientationEuler` returnerar därför ordningen `YXZ`
+tillsammans med vinklarna, och `tests/models.test.ts` räknar på den faktiska
+rotationsmatrisen och kräver att uppriktningen står lodrätt vid varje
+vridning. Upp-axel, vridning och spegling sitter på
 maskinen och tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen
 som visar ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
 runda till med filen. Måtten ur modellen permuteras med vridningen — reser man

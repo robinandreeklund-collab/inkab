@@ -179,7 +179,7 @@ export function ModelView() {
               // att man behöver räkna ut hur de kombineras.
               const oriented = model.clone(true);
               const euler = orientationEuler(placement.machine.model);
-              oriented.rotation.set(euler.x, euler.y, 0);
+              oriented.rotation.set(euler.x, euler.y, 0, euler.order);
 
               const clone = new THREE.Group();
               clone.add(oriented);

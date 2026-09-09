@@ -30,6 +30,13 @@ export type ZoneType = "service" | "safety" | "pit" | "clearance";
 
 export type Port = {
   id: string;
+  /**
+   * Vad utgången heter för den som väljer den: "Rakt fram", "Ut på
+   * kortsidan". En maskin kan ha flera utgångar — en rullbana kan lämna
+   * paketet framåt eller ut åt sidan — och då måste de gå att skilja åt med
+   * något annat än ett id.
+   */
+  name?: string;
   role: "in" | "out";
   /** Lokal position, mm. */
   pos: Vec2;
@@ -199,6 +206,11 @@ export type LineItem = {
   machineId: string;
   /** Valt utförande. Utelämnas används maskinens första variant, om någon. */
   variantId?: string;
+  /**
+   * Vilken utgång linjen fortsätter ur, för maskiner med flera. Utelämnas
+   * används den första.
+   */
+  outPortId?: string;
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;

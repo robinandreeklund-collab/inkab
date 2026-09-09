@@ -247,15 +247,33 @@ function dirScore(d: Dir): number {
 
 type FitCandidate = { rotation: Rotation; mirrored: boolean; outDir: Dir; score: number };
 
+/**
+ * Utgången linjen fortsätter ur.
+ *
+ * En maskin kan ha flera: en rullbana lämnar paketet rakt fram eller ut på
+ * kortsidan. Vilken som används är ett val per maskin i linjen, inte en
+ * egenskap hos maskinen — samma rullbana kan sitta rakt i ett flöde och
+ * vinkla i ett annat. Utan val gäller den första, så maskiner med en enda
+ * utgång fungerar precis som förut.
+ */
+export function pickOutPort<T extends { id: string; role: "in" | "out" }>(
+  ports: T[],
+  outPortId?: string,
+): T | undefined {
+  const outs = ports.filter((p) => p.role === "out");
+  return outs.find((p) => p.id === outPortId) ?? outs[0];
+}
+
 /** Väljer rotation och speglingsläge så att inporten möter flödet. */
 function fitMachine(
   m: EffectiveMachine,
   cursor: Cursor,
   preferMirrored: boolean,
+  outPortId?: string,
 ): { rotation: Rotation; mirrored: boolean } | null {
   const ports = scaledPorts(m);
   const inPort = ports.find((p) => p.role === "in");
-  const outPort = ports.find((p) => p.role === "out");
+  const outPort = pickOutPort(ports, outPortId);
   if (!inPort || !outPort) return null;
 
   const mirrorStates = m.mirrorable ? [preferMirrored, !preferMirrored] : [false];
@@ -307,12 +325,12 @@ function placeOne(
   cursor: Cursor,
   preferMirrored: boolean,
 ): { placement: Placement; idealBbox: Box; idealClearBox: Box; next: Cursor } | null {
-  const fit = fitMachine(m, cursor, preferMirrored);
+  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId);
   if (!fit) return null;
 
   const ports = scaledPorts(m);
   const inPort = ports.find((p) => p.role === "in")!;
-  const outPort = ports.find((p) => p.role === "out")!;
+  const outPort = pickOutPort(ports, item.outPortId)!;
   const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
 
   // origo väljs så att inporten hamnar exakt på markörens punkt
@@ -750,7 +768,10 @@ export function solveLayout(
     }
     anchor = anchor ?? linePlacements[linePlacements.length - 1] ?? null;
 
-    const anchorDir = anchor?.ports.find((p) => p.role === "out")?.dir ?? chain.cursor.dir;
+    const anchorItem = lineItems.find((l) => l.item.instanceId === anchor?.instanceId);
+    const anchorDir =
+      (anchor ? pickOutPort(anchor.ports, anchorItem?.item.outPortId)?.dir : undefined) ??
+      chain.cursor.dir;
     const side: Side =
       machine.category === "control" ? config.flow.controlDeskSide : config.flow.stickerMagazineSide;
 

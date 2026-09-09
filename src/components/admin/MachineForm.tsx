@@ -531,11 +531,21 @@ function PortPanel({
   const update = (index: number, patch: Partial<Port>) =>
     onChange(machine.ports.map((p, i) => (i === index ? { ...p, ...patch } : p)));
 
-  const add = (role: "in" | "out") =>
+  const add = (role: "in" | "out") => {
+    // Unikt id: en maskin kan ha flera utgångar, och två som heter "out"
+    // stoppar sparandet med ett fel som inte pekar på vad man just gjorde.
+    const taken = new Set(machine.ports.map((p) => p.id));
+    const base = role === "in" ? "in" : "ut";
+    let id = base;
+    for (let n = 2; taken.has(id); n++) id = `${base}${n}`;
+
     onChange([
       ...machine.ports,
       {
-        id: role === "in" ? "in" : "out",
+        id,
+        name: role === "in" ? undefined : machine.ports.some((p) => p.role === "out")
+          ? "Ut på kortsidan"
+          : "Rakt fram",
         role,
         pos: {
           x: role === "in" ? 0 : machine.footprint.lengthMm,
@@ -544,14 +554,15 @@ function PortPanel({
         dir: "x+",
         levelMm: 900,
         widthMm: [600, 2400],
-        allowsDirectionChange: false,
+        allowsDirectionChange: role === "out" && machine.ports.some((p) => p.role === "out"),
       },
     ]);
+  };
 
   return (
     <Panel
       title="Portar"
-      description="Där paketet kommer in och lämnar. Solvern kopplar utport mot nästa maskins inport."
+      description="Där paketet kommer in och lämnar. En maskin kan ha flera utgångar — kunden väljer vilken linjen fortsätter ur."
       action={
         <div className="flex gap-1">
           <Button size="sm" onClick={() => add("in")}>
@@ -575,6 +586,10 @@ function PortPanel({
                 <Tag tone={port.role === "in" ? "accent" : "muted"}>
                   {port.role === "in" ? "Inport" : "Utport"}
                 </Tag>
+                {port.role === "out" &&
+                machine.ports.filter((p) => p.role === "out")[0]?.id === port.id ? (
+                  <Tag tone="accent">förval</Tag>
+                ) : null}
                 <Button
                   size="sm"
                   variant="ghost"
@@ -586,6 +601,13 @@ function PortPanel({
               </div>
               <Grid cols={4}>
                 <TextField label="Id" value={port.id} mono onChange={(v) => update(index, { id: v })} />
+                <TextField
+                  label="Benämning"
+                  hint="visas för kund"
+                  value={port.name ?? ""}
+                  placeholder={port.role === "in" ? "Inmatning" : "Rakt fram"}
+                  onChange={(v) => update(index, { name: v || undefined })}
+                />
                 <NumField
                   label="X"
                   asMeters

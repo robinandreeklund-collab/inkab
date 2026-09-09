@@ -187,6 +187,12 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
               "Utförande, för maskiner som finns i flera längder. Id:na står i " +
               "maskinbiblioteket. Utelämna för maskinens förval.",
           },
+          outPortId: {
+            type: "string",
+            description:
+              "Utgång linjen fortsätter ur, för maskiner med flera. Id:na står i " +
+              "maskinbiblioteket. Utelämna för maskinens förval.",
+          },
         },
         required: ["machineId"],
         additionalProperties: false,
@@ -340,6 +346,19 @@ export function executeTool(
         item.variantId = wanted ?? variants[0].id;
       }
 
+      const outs = machine.ports.filter((p) => p.role === "out");
+      if (input.outPortId) {
+        const wanted = String(input.outPortId);
+        if (!outs.some((p) => p.id === wanted)) {
+          return {
+            error:
+              `Okänd utgång: ${wanted}. ${machine.name} har ` +
+              `${outs.map((p) => `${p.id} (${p.name ?? p.id})`).join(", ")}.`,
+          };
+        }
+        item.outPortId = wanted;
+      }
+
       const at =
         typeof input.atIndex === "number"
           ? input.atIndex
@@ -350,7 +369,12 @@ export function executeTool(
         item,
       );
       return {
-        added: { instanceId: item.instanceId, machineId, variantId: item.variantId },
+        added: {
+          instanceId: item.instanceId,
+          machineId,
+          variantId: item.variantId,
+          outPortId: item.outPortId,
+        },
         layout: layoutSummary(ctx.draft, ctx.library),
       };
     }

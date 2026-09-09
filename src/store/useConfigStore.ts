@@ -84,6 +84,7 @@ type Actions = {
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
   setVariant: (instanceId: string, variantId: string) => void;
+  setOutPort: (instanceId: string, outPortId: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
@@ -255,6 +256,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         // Manuell förskjutning hör ihop med det gamla måttet. Ett nytt
         // utförande är en annan maskin i geometrin, så justeringen släpps.
         delete item.manualOffset;
+      }),
+
+    setOutPort: (instanceId, outPortId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.outPortId = outPortId;
       }),
 
     setParameter: (instanceId, parameterId, value) =>

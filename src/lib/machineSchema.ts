@@ -35,6 +35,7 @@ export const machineIdSchema = z
 
 export const portSchema = z.object({
   id: z.string().min(1).max(40),
+  name: z.string().max(60).optional(),
   role: z.enum(["in", "out"]),
   pos: z.object({ x: MM, y: MM }),
   dir: z.enum(DIRECTIONS),

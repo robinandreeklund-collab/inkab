@@ -90,7 +90,16 @@ ${library.machines.map((m) => {
       `  Valfri längd ${m.parametricLength.minMm / 1000}–${m.parametricLength.maxMm / 1000} m.`,
     );
   }
-  if (m.ports.some((p) => p.role === "out" && p.allowsDirectionChange)) {
+  const outs = m.ports.filter((p) => p.role === "out");
+  if (outs.length > 1) {
+    // Flera utgångar är ett val i linjen, inte en egenskap hos maskinen.
+    parts.push(
+      `  Utgångar: ${outs
+        .map((p) => `${p.id} = ${p.name ?? p.id} (${p.dir})`)
+        .join(", ")}. Förval ${outs[0].id}.`,
+    );
+  }
+  if (outs.some((p) => p.allowsDirectionChange)) {
     parts.push("  Kan vinkla flödet 90°.");
   }
   if (m.clearance) {

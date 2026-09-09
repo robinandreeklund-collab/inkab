@@ -16,6 +16,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleInspector,
     toggleOption,
     setVariant,
+    setOutPort,
     removeItem,
     removeDrawn,
     updateDrawn,
@@ -192,6 +193,40 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             </div>
           ) : null}
 
+          {item && placement.machine.ports.filter((p) => p.role === "out").length > 1 ? (
+            <div className="mt-4">
+              <div className="kicker mb-2">Utgång</div>
+              <p className="mb-2 text-[11px] leading-relaxed text-muted">
+                Maskinen har flera utgångar. Välj den linjen fortsätter ur — de andra finns
+                kvar på maskinen och ritas ut.
+              </p>
+              <div className="space-y-1">
+                {placement.machine.ports
+                  .filter((p) => p.role === "out")
+                  .map((port, index) => (
+                    <label
+                      key={port.id}
+                      className="flex cursor-pointer items-center gap-2 text-[13px]"
+                    >
+                      <input
+                        type="radio"
+                        name={`out-${item.instanceId}`}
+                        checked={
+                          item.outPortId
+                            ? item.outPortId === port.id
+                            : index === 0
+                        }
+                        onChange={() => setOutPort(item.instanceId, port.id)}
+                        className="accent-accent"
+                      />
+                      <span className="flex-1">{port.name || port.id}</span>
+                      <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
+                    </label>
+                  ))}
+              </div>
+            </div>
+          ) : null}
+
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">
               <div className="kicker mb-2">Optioner</div>
@@ -309,4 +344,11 @@ function StepButton({
 
 function formatSek(amount: number): string {
   return `${new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount)} kr`;
+}
+
+/** Portriktning i löptext, sett med flödet. */
+function dirLabel(dir: string): string {
+  return (
+    { "x+": "rakt fram", "x-": "bakåt", "y+": "åt höger", "y-": "åt vänster" }[dir] ?? dir
+  );
 }

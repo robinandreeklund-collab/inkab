@@ -5,6 +5,8 @@ import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, SelectField, TextField } from "./fields";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
+import { orientedFootprint, YAW_STEPS, type ModelOrientation } from "@/lib/cad/orientation";
+import { ModelPreview } from "./ModelPreview";
 import type { WorkerRequest, WorkerResponse } from "@/workers/step.worker";
 import type { Machine, Port } from "@/lib/types";
 
@@ -75,7 +77,6 @@ export function ModelPanel({
   const fileInput = useRef<HTMLInputElement | null>(null);
   const [tolerance, setTolerance] = useState(2);
   const [minPart, setMinPart] = useState(50);
-  const [up, setUp] = useState<"z" | "y">("z");
   const [proxy, setProxy] = useState(true);
 
   const [stage, setStage] = useState<string | null>(null);
@@ -211,7 +212,7 @@ export function ModelPanel({
           angularDeflection: 0.5,
           minPartMm: minPart,
           ratio: 1,
-          up,
+          up: "z",
           proxy,
         },
       } satisfies WorkerRequest,
@@ -242,7 +243,10 @@ export function ModelPanel({
 
   const applyFootprint = () => {
     if (!result) return;
-    const { machine: candidate, movedPorts } = applyModelFootprint(machine, result.footprint);
+    const { machine: candidate, movedPorts } = applyModelFootprint(
+      machine,
+      orientedFootprint(result.footprint, orientation),
+    );
     apply(
       candidate,
       movedPorts.length > 0
@@ -269,11 +273,27 @@ export function ModelPanel({
     loadStored();
   };
 
-  const diff = result
+  const orientation: ModelOrientation = {
+    upAxis: machine.model?.upAxis,
+    yawDeg: machine.model?.yawDeg,
+    flipped: machine.model?.flipped,
+  };
+
+  const setOrientation = (patch: ModelOrientation) => {
+    if (!machine.model) return;
+    onChange({ ...machine, model: { ...machine.model, ...patch } });
+  };
+
+  // Måtten som jämförs är de modellen får efter vridningen — reser man en
+  // liggande modell byter bredd och höjd plats, och då är det de nya måtten
+  // som ska ställas mot bibliotekets.
+  const measured = result ? orientedFootprint(result.footprint, orientation) : null;
+
+  const diff = measured
     ? ([
-        ["Längd", machine.footprint.lengthMm, result.footprint.lengthMm],
-        ["Bredd", machine.footprint.widthMm, result.footprint.widthMm],
-        ["Höjd", machine.footprint.heightMm, result.footprint.heightMm],
+        ["Längd", machine.footprint.lengthMm, measured.lengthMm],
+        ["Bredd", machine.footprint.widthMm, measured.widthMm],
+        ["Höjd", machine.footprint.heightMm, measured.heightMm],
       ] as const)
     : [];
   const differs = diff.some(([, before, after]) => Math.abs(before - after) > 10);
@@ -313,7 +333,7 @@ export function ModelPanel({
         <p className="mb-3 border border-danger px-3 py-2 text-xs text-danger">{error}</p>
       ) : null}
 
-      <Grid cols={4}>
+      <Grid cols={3}>
         <NumField
           label="Tolerans"
           unit="mm"
@@ -328,15 +348,6 @@ export function ModelPanel({
           hint="mm — utelämnar skruv"
           value={minPart}
           onChange={setMinPart}
-        />
-        <SelectField
-          label="Upp-axel i filen"
-          value={up}
-          options={[
-            { value: "z", label: "Z upp (SolidWorks, Inventor)" },
-            { value: "y", label: "Y upp" },
-          ]}
-          onChange={setUp}
         />
         <SelectField
           label="Proxy"
@@ -452,6 +463,62 @@ export function ModelPanel({
               visas för kund.
             </p>
           </div>
+        </div>
+      ) : null}
+
+      {machine.model?.glb ? (
+        <div className="mt-3 border-t border-divider pt-3">
+          <div className="kicker mb-1">Modellens riktning</div>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">
+            En STEP kommer sällan in rättvänd — CAD-system är oense om vilken axel som är
+            upp, och den som ritade maskinen valde inte nödvändigtvis flödesriktningen som X.
+            Vrid tills modellen står rätt i lådan och pekar med pilen. Ändringen syns direkt
+            och kräver ingen ny konvertering.
+          </p>
+
+          <ModelPreview
+            url={machine.model.glb}
+            orientation={orientation}
+            footprint={machine.footprint}
+          />
+
+          <div className="mt-2">
+            <Grid cols={3}>
+              <SelectField
+                label="Upp-axel i filen"
+                hint="Z är det vanliga"
+                value={orientation.upAxis ?? "z"}
+                options={[
+                  { value: "z", label: "Z upp (SolidWorks, Inventor)" },
+                  { value: "y", label: "Y upp (modellen ligger ner)" },
+                ]}
+                onChange={(v) => setOrientation({ upAxis: v === "y" ? "y" : "z" })}
+              />
+              <SelectField
+                label="Vridning"
+                hint="kring upp-axeln"
+                value={String(orientation.yawDeg ?? 0)}
+                options={YAW_STEPS.map((deg) => ({ value: String(deg), label: `${deg}°` }))}
+                onChange={(v) =>
+                  setOrientation({ yawDeg: Number(v) as (typeof YAW_STEPS)[number] })
+                }
+              />
+              <SelectField
+                label="Spegling"
+                hint="tvärs flödet"
+                value={orientation.flipped ? "ja" : "nej"}
+                options={[
+                  { value: "nej", label: "Som ritad" },
+                  { value: "ja", label: "Speglad" },
+                ]}
+                onChange={(v) => setOrientation({ flipped: v === "ja" })}
+              />
+            </Grid>
+          </div>
+          <p className="mt-2 text-[11px] text-muted">
+            Riktningen sparas på maskinen och gäller överallt modellen visas. Glöm inte{" "}
+            <strong>Spara</strong>.
+          </p>
         </div>
       ) : null}
 

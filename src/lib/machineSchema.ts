@@ -181,7 +181,13 @@ export const machineSchema = z
     parameters: z.array(parameterSchema).max(20).optional(),
     images: z.array(z.string().max(80)).max(8).optional(),
     model: z
-      .object({ glb: z.string().max(400), proxy: z.string().max(400).optional() })
+      .object({
+        glb: z.string().max(400),
+        proxy: z.string().max(400).optional(),
+        upAxis: z.enum(["z", "y"]).optional(),
+        yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        flipped: z.boolean().optional(),
+      })
       .optional(),
     productUrl: z.string().max(400).optional(),
     datasheetUrl: z.string().max(400).optional(),

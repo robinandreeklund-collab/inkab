@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
+import { orientationEuler } from "@/lib/cad/orientation";
 import type { LayoutResult, Configuration, Placement } from "@/lib/types";
 
 /**
@@ -170,10 +171,22 @@ export function ModelView() {
             try {
               const model = await loadModel(url);
               if (mine !== generation) return;
-              const clone = model.clone(true);
-              // Rotationen kommer ur solvern; modellen är byggd med X i flödet.
+
+              // Två lager rotation, med flit. Det inre bär modellens egen
+              // orientering — vilken axel som var upp i CAD:en och hur den
+              // ska vridas för att peka med flödet. Det yttre bär solverns
+              // placering. Hålls de isär kan de ställas in var för sig utan
+              // att man behöver räkna ut hur de kombineras.
+              const oriented = model.clone(true);
+              const euler = orientationEuler(placement.machine.model);
+              oriented.rotation.set(euler.x, euler.y, 0);
+
+              const clone = new THREE.Group();
+              clone.add(oriented);
               clone.rotation.y = -(placement.rotation * Math.PI) / 180;
-              if (placement.mirrored) clone.scale.z *= -1;
+              if (placement.mirrored !== !!placement.machine.model?.flipped) {
+                clone.scale.z *= -1;
+              }
 
               const fit = alignToFootprint(THREE, clone, placement);
               if (fit && Math.abs(fit.scale - 1) > 0.05) {

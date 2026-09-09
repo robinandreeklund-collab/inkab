@@ -170,6 +170,13 @@ export type Machine = {
     glb: string;
     /** Kraftigt förenklad variant för översikt. Valfri. */
     proxy?: string;
+    /**
+     * Hur modellen ska vridas för att stämma med maskinens riktning.
+     * Justeras vid uppritningen, se lib/cad/orientation.ts.
+     */
+    upAxis?: "z" | "y";
+    yawDeg?: 0 | 90 | 180 | 270;
+    flipped?: boolean;
   };
   /** Länkar till produktkatalog och datablad. */
   productUrl?: string;

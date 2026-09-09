@@ -4,6 +4,7 @@ import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
+import { orientationEuler, orientationLabel, orientedFootprint } from "@/lib/cad/orientation";
 import { BUILTIN_MACHINES } from "@/lib/library";
 
 /**
@@ -162,5 +163,64 @@ describe("ta över mått ur modellen", () => {
     const messages = collectIssues(parsed.error!).map((i) => i.message);
     expect(messages.join(" ")).toContain("Måste vara minst 100");
     expect(messages.join(" ")).not.toMatch(/must be|greater than/i);
+  });
+});
+
+describe("modellens riktning", () => {
+  const size = { lengthMm: 6000, widthMm: 1800, heightMm: 700 };
+
+  it("låter måtten vara när inget är vridet", () => {
+    expect(orientedFootprint(size, {})).toEqual(size);
+    expect(orientationEuler({})).toEqual({ x: 0, y: 0 });
+  });
+
+  it("reser en liggande modell och byter bredd mot höjd", () => {
+    // Var källan Y-upp hamnade uppriktningen på djupledsaxeln; det som mättes
+    // som bredd är i själva verket höjden.
+    expect(orientedFootprint(size, { upAxis: "y" })).toEqual({
+      lengthMm: 6000,
+      widthMm: 700,
+      heightMm: 1800,
+    });
+    expect(orientationEuler({ upAxis: "y" }).x).toBeCloseTo(-Math.PI / 2);
+  });
+
+  it("byter längd mot bredd vid ett kvarts varv", () => {
+    for (const yawDeg of [90, 270] as const) {
+      expect(orientedFootprint(size, { yawDeg })).toEqual({
+        lengthMm: 1800,
+        widthMm: 6000,
+        heightMm: 700,
+      });
+    }
+  });
+
+  it("ändrar inga mått vid ett halvt varv", () => {
+    expect(orientedFootprint(size, { yawDeg: 180 })).toEqual(size);
+    expect(orientationEuler({ yawDeg: 180 }).y).toBeCloseTo(Math.PI);
+  });
+
+  it("kombinerar resning och vridning", () => {
+    expect(orientedFootprint(size, { upAxis: "y", yawDeg: 90 })).toEqual({
+      lengthMm: 700,
+      widthMm: 6000,
+      heightMm: 1800,
+    });
+  });
+
+  it("beskriver riktningen i klartext", () => {
+    expect(orientationLabel({})).toBe("Z upp");
+    expect(orientationLabel({ upAxis: "y", yawDeg: 180, flipped: true })).toBe(
+      "Y upp · 180° · speglad",
+    );
+  });
+
+  it("går igenom maskinschemat", () => {
+    const machine = BUILTIN_MACHINES.find((m) => m.id === "rullbana")!;
+    const parsed = machineSchema.safeParse({
+      ...machine,
+      model: { glb: "/api/models/x", upAxis: "y", yawDeg: 270, flipped: true },
+    });
+    expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
   });
 });

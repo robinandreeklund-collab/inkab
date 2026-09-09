@@ -227,7 +227,21 @@ Panelen visar sedan:
 - **Portförslaget**, som ligger mitt på kortsidorna. Det är räknat ur
   fotavtryckets kanter, inte ur geometrin — kontrollera det mot ritning.
 
-Reglagen är desamma som skriptets: tolerans, minsta del, upp-axel, proxy.
+Reglagen är desamma som skriptets: tolerans, minsta del, proxy.
+
+#### Riktningen ställs efteråt, inte vid konverteringen
+
+En STEP kommer sällan in rättvänd. CAD-system är oense om vilken axel som är
+upp — SolidWorks och Inventor ritar Z upp, en del exportkedjor Y — och
+konstruktören som ritade maskinen valde inte nödvändigtvis flödesriktningen
+som X. Det är inte fel i filen, bara en annan konvention.
+
+Därför sitter upp-axel, vridning i fjärdedels varv och spegling på maskinen
+och tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen som
+visar ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
+runda till med filen. Måtten ur modellen permuteras med vridningen — reser man
+en liggande modell byter bredd och höjd plats — så jämförelsen mot biblioteket
+gäller den modell som faktiskt visas.
 
 #### Varför inte på servern
 

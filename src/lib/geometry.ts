@@ -139,3 +139,50 @@ export function segmentIntersectsBox(a: Vec2, b: Vec2, box: Box): boolean {
   ];
   return !(s.every((v) => v > 0) || s.every((v) => v < 0));
 }
+
+/**
+ * Zoner omräknade till ett nytt maskinmått.
+ *
+ * En zon är antingen något som följer maskinen — service längs hela sidan,
+ * skyddszon runt om — eller något som sitter på ett bestämt ställe på den.
+ * De två ska räknas om olika:
+ *
+ *  - En zon som spänner över maskinen behåller sina marginaler. Skyddszonen
+ *    kring en 4,2 m maskin sträcker sig 700 mm utanför i båda ändar; blir
+ *    maskinen 3 m ska marginalen fortfarande vara 700 mm, inte 500. Att skala
+ *    proportionellt krymper ett fysiskt skyddsavstånd, vilket är fel.
+ *  - En zon som ligger inuti maskinen — en grop under mittpartiet — flyttas
+ *    och skalas proportionellt, för den hör till en andel av maskinen.
+ *
+ * Samma regel används när måtten mäts upp ur en modell, när ett utförande
+ * väljs och när en option ändrar längden. Annars skulle en servicezon kunna
+ * sticka ut en meter förbi maskinen den tillhör.
+ */
+export function scaleZones<T extends { type: string; label: string; box: Box }>(
+  zones: T[],
+  from: { lengthMm: number; widthMm: number },
+  to: { lengthMm: number; widthMm: number },
+): T[] {
+  const dl = to.lengthMm - from.lengthMm;
+  const dw = to.widthMm - from.widthMm;
+  const lr = from.lengthMm > 0 ? to.lengthMm / from.lengthMm : 1;
+  const wr = from.widthMm > 0 ? to.widthMm / from.widthMm : 1;
+
+  return zones.map((zone) => {
+    // Maskinzonen är redan uttryckt i verkliga mått och räknas inte om här.
+    if (zone.type === "clearance") return zone;
+
+    const spansLength = zone.box.x <= 0 && zone.box.x + zone.box.l >= from.lengthMm;
+    const spansWidth = zone.box.y <= 0 && zone.box.y + zone.box.w >= from.widthMm;
+
+    return {
+      ...zone,
+      box: {
+        x: spansLength ? zone.box.x : Math.round(zone.box.x * lr),
+        y: spansWidth ? zone.box.y : Math.round(zone.box.y * wr),
+        l: Math.max(0, spansLength ? zone.box.l + dl : Math.round(zone.box.l * lr)),
+        w: Math.max(0, spansWidth ? zone.box.w + dw : Math.round(zone.box.w * wr)),
+      },
+    };
+  });
+}

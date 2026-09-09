@@ -6,6 +6,7 @@ import {
   boxesOverlap,
   rightOf,
   rotatePoint,
+  scaleZones,
   toWorld,
   transformDir,
   unionBox,
@@ -95,6 +96,9 @@ export function resolveVariant(machine: Machine, variantId?: string): Machine {
     ...machine,
     footprint: variant.footprint,
     ports,
+    // Zonerna hör till maskinen, inte till måttet: en servicezon längs en
+    // sexmetersbana ska vara tolv meter lång på tolvmetersvarianten.
+    zones: scaleZones(machine.zones, machine.footprint, variant.footprint),
     model: variant.model ?? machine.model,
     capacity: {
       ...machine.capacity,
@@ -196,29 +200,15 @@ function clearanceZone(m: EffectiveMachine): Zone | null {
   };
 }
 
-/** Zoner skalade i längdled; tvärgående fri­mått hålls konstanta. */
+/** Zoner omräknade till maskinens verkliga mått. Se scaleZones. */
 function scaledZones(m: EffectiveMachine) {
-  const lr = m.effLengthMm / m.footprint.lengthMm;
-  const widthDelta = m.effWidthMm - m.footprint.widthMm;
   const clearance = clearanceZone(m);
-  const zones = clearance ? [...m.zones, clearance] : m.zones;
-  return zones.map((z) => {
-    // Maskinzonen är redan uttryckt i effektiva mått och ska inte skalas om.
-    if (z.type === "clearance") {
-      return { type: z.type, label: z.label, box: { ...z.box } as Box };
-    }
-    const spansWidth = z.box.y <= 0 && z.box.y + z.box.w >= m.footprint.widthMm;
-    return {
-      type: z.type,
-      label: z.label,
-      box: {
-        x: z.box.x * lr,
-        y: z.box.y,
-        l: z.box.l * lr,
-        w: spansWidth ? z.box.w + widthDelta : z.box.w,
-      } as Box,
-    };
-  });
+  const zones = scaleZones(
+    m.zones,
+    m.footprint,
+    { lengthMm: m.effLengthMm, widthMm: m.effWidthMm },
+  );
+  return clearance ? [...zones, clearance] : zones;
 }
 
 type Cursor = { point: Vec2; dir: Dir };

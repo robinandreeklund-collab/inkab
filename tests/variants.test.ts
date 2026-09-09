@@ -5,6 +5,7 @@ import { machineSchema } from "@/lib/machineSchema";
 import { priceConfiguration } from "@/lib/server/pricing";
 import { BUILTIN_PRICE_BOOK } from "@/lib/server/pricebook";
 import { resolveVariant } from "@/lib/solver";
+import { applyModelFootprint } from "@/lib/cad/applyModel";
 import { templateConfig } from "@/lib/templates";
 import type { Configuration, Machine } from "@/lib/types";
 
@@ -212,5 +213,58 @@ describe("utföranden och steglös längd", () => {
     };
     const plain = makeLibrary(BUILTIN_MACHINES);
     expect(computeLayout(config, plain).placements[0].size.lengthMm).toBe(9000);
+  });
+});
+
+describe("zoner följer måtten", () => {
+  const machine = BUILTIN_MACHINES.find((m) => m.id === "tsl-enkel")!;
+
+  it("behåller skyddszonens marginaler när maskinen krymper", () => {
+    /*
+     * Skyddszonen ligger 700 mm utanför maskinen i båda ändar. Krymper
+     * maskinen ska marginalen vara kvar — ett skyddsavstånd är ett fysiskt
+     * mått, inte en andel. Proportionell skalning hade gjort den 500 mm.
+     */
+    const safety = machine.zones.find((z) => z.type === "safety")!;
+    const marginBefore = -safety.box.x;
+    const half = { ...machine.footprint, lengthMm: Math.round(machine.footprint.lengthMm / 2) };
+
+    const { machine: applied } = applyModelFootprint(machine, half);
+    const after = applied.zones.find((z) => z.type === "safety")!;
+
+    expect(-after.box.x).toBe(marginBefore);
+    expect(after.box.x + after.box.l - half.lengthMm).toBe(marginBefore);
+  });
+
+  it("låter servicezonen följa maskinens längd", () => {
+    // Servicezonen går längs hela maskinen. Den ska sluta där maskinen slutar.
+    const longer = { ...machine.footprint, lengthMm: machine.footprint.lengthMm * 2 };
+    const { machine: applied, scaledZones } = applyModelFootprint(machine, longer);
+    const service = applied.zones.find((z) => z.type === "service")!;
+
+    expect(service.box.l).toBe(longer.lengthMm);
+    expect(scaledZones).toBeGreaterThan(0);
+  });
+
+  it("räknar om zonerna för ett utförande", () => {
+    const twelve: Machine = {
+      ...machine,
+      variants: [
+        {
+          id: "12m",
+          name: "12 m",
+          footprint: { ...machine.footprint, lengthMm: 12_000 },
+        },
+      ],
+    };
+    const resolved = resolveVariant(twelve, "12m");
+    const service = resolved.zones.find((z) => z.type === "service")!;
+    expect(service.box.l).toBe(12_000);
+  });
+
+  it("rör inga zoner när måttet är oförändrat", () => {
+    const { machine: applied, scaledZones } = applyModelFootprint(machine, machine.footprint);
+    expect(scaledZones).toBe(0);
+    expect(applied.zones).toEqual(machine.zones);
   });
 });

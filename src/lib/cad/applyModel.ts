@@ -1,3 +1,4 @@
+import { scaleZones } from "@/lib/geometry";
 import { suggestPorts } from "./stepConvert";
 import type { Machine, Port } from "@/lib/types";
 
@@ -13,7 +14,7 @@ import type { Machine, Port } from "@/lib/types";
  * gränssnittet i stället för att ändras i tysthet.
  */
 
-export type ApplyResult = { machine: Machine; movedPorts: string[] };
+export type ApplyResult = { machine: Machine; movedPorts: string[]; scaledZones: number };
 
 export function applyModelFootprint(
   machine: Machine,
@@ -35,16 +36,28 @@ export function applyModelFootprint(
     return { ...port, pos: { x, y } };
   });
 
+  /*
+   * Zonerna räknas om med. En servicezon är definierad längs maskinen den
+   * tillhör; byts måttet utan att zonen följer med sticker den ut förbi
+   * maskinen eller slutar mitt på den. Regeln är densamma som solvern och
+   * utförandena använder: zoner som spänner över maskinen behåller sina
+   * marginaler, zoner inuti den skalas.
+   */
+  const zones = scaleZones(machine.zones, from, footprint);
+  const movedZones = zones.filter((z, i) => JSON.stringify(z) !== JSON.stringify(machine.zones[i]));
+
   return {
     machine: {
       ...machine,
       footprint,
       ports,
+      zones,
       // Måtten kommer nu ur geometrin, men portlägen och nollpunkt är
       // fortfarande gissningar tills en konstruktör har sett dem.
       dimensionsVerified: false,
     },
     movedPorts,
+    scaledZones: movedZones.length,
   };
 }
 

@@ -71,11 +71,21 @@ export function VariantPanel({
         </Button>
       }
     >
+      {machine.parametricLength && variants.length > 0 ? (
+        <p className="mb-3 border border-warn px-2 py-1 text-xs text-warn">
+          Maskinen har också steglös längd ({machine.parametricLength.minMm / 1000}–
+          {machine.parametricLength.maxMm / 1000} m). Utförandena tar över — det är de
+          längderna som levereras. Vill du ha steglös längd i stället, ta bort utförandena.
+        </p>
+      ) : null}
+
       {variants.length === 0 ? (
         <p className="border border-dashed border-divider px-3 py-4 text-xs leading-relaxed text-muted">
-          Inga utföranden. Maskinen används då med sina egna mått. Lägg till ett utförande när
-          samma konstruktion finns i flera längder — ladda upp en STEP-fil per längd, så blir
-          måtten hämtade ur den.
+          Inga utföranden. Maskinen används då med sina egna mått.
+          <br />
+          Lägg till ett utförande per längd som finns att köpa — 3 m, 6 m, 12 m. Ladda upp en
+          STEP-fil på raden så hämtas måtten ur den, eller skriv längden för hand om modellen
+          inte finns än. Kunden väljer sedan utförande i konfiguratorn.
         </p>
       ) : (
         <>

@@ -302,7 +302,7 @@ beskrivning, samma optioner, samma regler.
 Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Utan egna
 portlägen ärver utförandet maskinens, skalade till sitt mått — annars skulle en
 tolvmetersbana ha sin utport där sexmetersbanan slutar, och kedjan byggas ihop
-mitt på maskinen.
+mitt på maskinen. Zonerna räknas om på samma sätt.
 
 Upplösningen sker i `effectiveMachine`, före optioner och parametrar. Det är
 avsiktligt: solvern, reglerna, prissättningen och 3D-vyn ser bara en maskin med

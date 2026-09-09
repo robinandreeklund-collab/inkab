@@ -135,7 +135,7 @@ export function ModelPanel({
     // trycka på något. Går det inte utan att bryta mot schemat lämnas
     // maskinen orörd och felen står kvar i panelen.
     const measured = orientedFootprint(converted.footprint, orientation);
-    const { machine: withSize, movedPorts } = applyModelFootprint(
+    const { machine: withSize, movedPorts, scaledZones } = applyModelFootprint(
       { ...machine, model: { glb: converted.model.glb, proxy: converted.model.proxy, ...orientation } },
       measured,
     );
@@ -152,6 +152,9 @@ export function ModelPanel({
             `${(measured.widthMm / 1000).toFixed(2).replace(".", ",")} × ${meters(measured.heightMm)}.` +
             (movedPorts.length > 0
               ? ` Portarna skalades med — kontrollera ${movedPorts.join(", ")}.`
+              : "") +
+            (scaledZones > 0
+              ? ` ${scaledZones === 1 ? "Zonen räknades" : `${scaledZones} zoner räknades`} om.`
               : "")
         : "Modellen stämmer med måtten i biblioteket.",
     );
@@ -169,12 +172,16 @@ export function ModelPanel({
   const reapply = () => {
     if (!result) return;
     const measured = orientedFootprint(result.footprint, orientation);
-    const { machine: candidate, movedPorts } = applyModelFootprint(machine, measured);
+    const { machine: candidate, movedPorts, scaledZones } = applyModelFootprint(machine, measured);
     apply(
       candidate,
-      `Måtten är hämtade ur modellen.${
-        movedPorts.length > 0 ? ` Portarna skalades med — kontrollera ${movedPorts.join(", ")}.` : ""
-      }`,
+      `Måtten är hämtade ur modellen.` +
+        (movedPorts.length > 0
+          ? ` Portarna skalades med — kontrollera ${movedPorts.join(", ")}.`
+          : "") +
+        (scaledZones > 0
+          ? ` ${scaledZones === 1 ? "Zonen räknades" : `${scaledZones} zoner räknades`} om.`
+          : ""),
     );
   };
 

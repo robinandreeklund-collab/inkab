@@ -23,7 +23,8 @@ export function DraftJobDialog({
   onSkip,
 }: {
   config: Configuration;
-  onQueued: () => void;
+  /** Namnen på det som skickades, för projektloggen. */
+  onQueued: (fileNames: string[]) => void;
   onSkip: () => void;
 }) {
   const { files, add, removeAt, reading, problem, setProblem } = useAttachments();
@@ -54,7 +55,7 @@ export function DraftJobDialog({
         return;
       }
       rememberJob(body.job.id);
-      onQueued();
+      onQueued(files.map((f) => f.name));
     } catch {
       setError("Nätverket svarade inte. Prova igen, eller rita för hand så länge.");
     } finally {

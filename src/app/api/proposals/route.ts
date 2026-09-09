@@ -17,10 +17,24 @@ export const dynamic = "force-dynamic";
  * kundens eget arbete och ska inte gå att nå med en gissad adress.
  */
 
+/** Loggen sparas som den är, men inte i vilken storlek som helst. */
+const logSchema = z
+  .array(
+    z.object({
+      id: z.string().max(64),
+      at: z.string().max(40),
+      kind: z.string().max(32),
+      text: z.string().max(400),
+      detail: z.string().max(4000).optional(),
+    }),
+  )
+  .max(400);
+
 const saveSchema = z.object({
   id: z.string().min(1).max(64).optional(),
   name: z.string().min(1).max(120),
   config: configurationSchema,
+  log: logSchema.default([]),
 });
 
 export async function GET(request: Request) {
@@ -35,7 +49,10 @@ export async function GET(request: Request) {
   }
 
   // Listan bär inte konfigurationerna: den ska vara billig att hämta ofta.
-  const proposals = (await listProposals(user.id)).map(({ config: _config, ...rest }) => rest);
+  // Listan bär varken konfiguration eller logg: den ska vara billig att hämta.
+  const proposals = (await listProposals(user.id)).map(
+    ({ config: _config, log: _log, ...rest }) => rest,
+  );
   return NextResponse.json({ proposals });
 }
 
@@ -56,6 +73,7 @@ export async function POST(request: Request) {
     name: parsed.data.name,
     reference: quoteReference(config),
     config,
+    log: parsed.data.log,
   });
 
   return NextResponse.json({ ok: true, id, ...result });

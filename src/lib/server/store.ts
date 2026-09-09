@@ -565,6 +565,8 @@ export type StoredProposal = {
   /** Underlagsnumret vid sparandet, för att känna igen det i listan. */
   reference: string;
   config: unknown;
+  /** Projektloggen. Ett underlag utan sin historia är bara ett läge. */
+  log: unknown[];
   updatedAt: string;
 };
 
@@ -578,9 +580,12 @@ async function ensureProposalTable(pool: PgPool) {
       name       text NOT NULL,
       reference  text NOT NULL DEFAULT '',
       config     jsonb NOT NULL,
+      log        jsonb NOT NULL DEFAULT '[]'::jsonb,
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // Tabellen kan vara skapad före loggkolumnen fanns.
+  await pool.query("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS log jsonb NOT NULL DEFAULT '[]'::jsonb");
   await pool.query("CREATE INDEX IF NOT EXISTS proposal_user ON proposal (user_id)");
 }
 
@@ -590,6 +595,7 @@ type ProposalRow = {
   name: string;
   reference: string;
   config: unknown;
+  log: unknown[] | null;
   updated_at: Date;
 };
 
@@ -599,6 +605,7 @@ const fromProposalRow = (row: ProposalRow): StoredProposal => ({
   name: row.name,
   reference: row.reference,
   config: row.config,
+  log: row.log ?? [],
   updatedAt: row.updated_at.toISOString(),
 });
 
@@ -608,20 +615,32 @@ export async function saveProposal(proposal: {
   name: string;
   reference: string;
   config: unknown;
+  log?: unknown[];
 }): Promise<{ persisted: boolean; reason: string | null }> {
-  const stored: StoredProposal = { ...proposal, updatedAt: new Date().toISOString() };
+  const stored: StoredProposal = {
+    ...proposal,
+    log: proposal.log ?? [],
+    updatedAt: new Date().toISOString(),
+  };
 
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
       await ensureProposalTable(pool);
       await pool.query(
-        `INSERT INTO proposal (id, user_id, name, reference, config, updated_at)
-         VALUES ($1, $2, $3, $4, $5, now())
+        `INSERT INTO proposal (id, user_id, name, reference, config, log, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, now())
          ON CONFLICT (id) DO UPDATE
-           SET name = $3, reference = $4, config = $5, updated_at = now()
+           SET name = $3, reference = $4, config = $5, log = $6, updated_at = now()
          WHERE proposal.user_id = $2`,
-        [stored.id, stored.userId, stored.name, stored.reference, JSON.stringify(stored.config)],
+        [
+          stored.id,
+          stored.userId,
+          stored.name,
+          stored.reference,
+          JSON.stringify(stored.config),
+          JSON.stringify(stored.log),
+        ],
       );
       degradedReason = null;
       return { persisted: true, reason: null };
@@ -727,7 +746,15 @@ export type DraftJobDetail = {
   provider?: string;
   rounds?: number;
   stopReason?: string;
-  steps?: { name: string; ok: boolean; error?: string }[];
+  steps?: { name: string; ok: boolean; error?: string; ms?: number }[];
+  /** Tiden per runda: modellens egen och verktygens. */
+  timeline?: { round: number; modelMs: number; toolMs: number; tools: number }[];
+  totalMs?: number;
+  /** När det nuvarande steget började. Utan det syns bara jobbets totaltid. */
+  stepSince?: string;
+  /** Vad kunden bad om, för admins felsökning. */
+  note?: string;
+  fileCount?: number;
 };
 
 export type StoredDraftJob = {
@@ -910,6 +937,40 @@ export async function listDraftJobs(userId: string): Promise<StoredDraftJob[]> {
   return [...memoryJobs.values()]
     .filter((j) => j.userId === userId)
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/**
+ * De senaste jobben, oavsett ägare. Bara för admin.
+ *
+ * Frågan "varför tog det sex minuter" går inte att svara på utan att se
+ * körningarna, och de ligger utspridda på olika konton — och på inget konto
+ * alls när kunden inte var inloggad.
+ */
+export async function listRecentDraftJobs(limit = 20): Promise<StoredDraftJob[]> {
+  const rows: StoredDraftJob[] = [];
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDraftJobTable(pool);
+      const result = await pool.query<DraftJobRow>(
+        "SELECT * FROM draft_job ORDER BY created_at DESC LIMIT $1",
+        [limit],
+      );
+      degradedReason = null;
+      rows.push(...result.rows.map(fromDraftJobRow));
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  // Minnet kan ha jobb som databasen ännu inte sett, eller vara allt som finns.
+  for (const job of memoryJobs.values()) {
+    if (!rows.some((row) => row.id === job.id)) rows.push(job);
+  }
+
+  return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
 }
 
 export async function deleteDraftJob(id: string, userId: string | null): Promise<void> {

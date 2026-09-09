@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Tag } from "../ui";
 import { Grid, Panel, SelectField, TextField } from "./fields";
+import { RunsPanel } from "./RunsPanel";
 
 /**
  * Vilken modell assistenten går mot.
@@ -227,6 +228,8 @@ export function AssistantPanel() {
           </p>
         )}
       </Panel>
+
+      <RunsPanel />
     </>
   );
 }

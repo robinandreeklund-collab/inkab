@@ -95,16 +95,35 @@ async function run(
   let current: StoredDraftJob = { ...job, status: "running", step: "Läser underlaget" };
   await writeDraftJob(current);
 
-  // Skriv inte för varje verktygsanrop: läget är till för att titta på, inte
-  // för att räkna på. En rad var tredje sekund räcker gott.
-  let lastWrite = Date.now();
-  const step = (text: string) => {
-    if (text === current.step || Date.now() - lastWrite < 3000) {
-      current = { ...current, step: text };
-      return;
-    }
+  /*
+   * Läget skrivs vartefter, så att den som tittar ser att något händer och
+   * vad. Inte för varje händelse — en rad var och en halv sekund räcker för
+   * att kännas levande utan att bli en skrivstorm mot databasen.
+   */
+  let lastWrite = 0;
+  const done: { name: string; ok: boolean; error?: string }[] = [];
+
+  const publish = (text: string, force = false) => {
+    // Steget byter tid när det byter namn: det är hur länge det pågått som
+    // säger var tiden går, inte hur länge jobbet i sin helhet hållit på.
+    const stepSince =
+      text === current.step ? (current.detail.stepSince ?? current.createdAt) : new Date().toISOString();
+    current = {
+      ...current,
+      step: text,
+      detail: {
+        ...current.detail,
+        model: input.provider?.model,
+        provider: input.provider?.provider,
+        note: input.note.trim() || undefined,
+        fileCount: input.attachments.length,
+        steps: [...done],
+        stepSince,
+      },
+      updatedAt: new Date().toISOString(),
+    };
+    if (!force && Date.now() - lastWrite < 1500) return;
     lastWrite = Date.now();
-    current = { ...current, step: text, updatedAt: new Date().toISOString() };
     void writeDraftJob(current);
   };
 
@@ -121,8 +140,16 @@ async function run(
       // Ingen väntar på jobbet, så det får tänka så noga det behöver.
       effort: "high",
       onEvent: (event) => {
-        if (event.type === "tool" && event.phase === "run") {
-          step(STEPS[event.name] ?? "Arbetar");
+        if (event.type === "tool" && event.phase === "start") {
+          publish(STEPS[event.name] ?? "Arbetar");
+        } else if (event.type === "tool" && event.phase === "run") {
+          // Anropet är gjort; raden i listan skrivs när resultatet finns.
+          done.push({ name: event.name, ok: true });
+          publish(STEPS[event.name] ?? "Arbetar", true);
+        } else if (event.type === "thinking") {
+          publish("Tänker");
+        } else if (event.type === "text") {
+          publish("Skriver svaret");
         }
       },
     });
@@ -165,7 +192,11 @@ async function run(
         provider: input.provider?.provider,
         rounds: result.rounds,
         stopReason: result.stopReason,
+        // Körningens egen bokföring, med verktygens felsvar. Den live-uppdaterade
+        // listan visste bara att anropet gjordes, inte hur det gick.
         steps: result.steps,
+        timeline: result.timeline,
+        totalMs: result.totalMs,
       },
       error: result.error,
       updatedAt: new Date().toISOString(),

@@ -5,6 +5,7 @@ import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
+import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
   Configuration,
@@ -24,6 +25,8 @@ const STORAGE_KEY = "inkab.config.v1";
  * någon frågat. Bannern erbjuder att gå tillbaka.
  */
 const RESCUE_KEY = "inkab.config.before-share";
+/** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
+const LOG_KEY = "inkab.log.v1";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 export type ViewMode = "2d" | "3d" | "model";
@@ -61,6 +64,8 @@ type State = {
   showPorts: boolean;
   hydrated: boolean;
   shareNotice: ShareNotice | null;
+  /** Vad som hänt i projektet, äldst först. */
+  log: LogEntry[];
   /**
    * Utgången nästa maskin ska hängas på. Satt när någon tryckt "bygg vidare
    * härifrån" på en ledig utgång; nästa maskin ur katalogen startar då en
@@ -82,7 +87,11 @@ type Actions = {
   togglePorts: () => void;
 
   setLibrary: (machines: Machine[]) => void;
-  load: (config: Configuration, options?: { resetHistory?: boolean }) => void;
+  /** Skriver en rad i projektloggen. */
+  note: (kind: LogKind, text: string, detail?: string) => void;
+  setLog: (entries: LogEntry[]) => void;
+  clearLog: () => void;
+  load: (config: Configuration, options?: { resetHistory?: boolean; note?: string }) => void;
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
   setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
@@ -136,8 +145,38 @@ function persist(config: Configuration) {
   }
 }
 
+function persistLog(log: LogEntry[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  } catch {
+    /* samma sak: loggen är ett underlag, inte ett krav för att arbeta */
+  }
+}
+
+function readLog(): LogEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = window.localStorage.getItem(LOG_KEY);
+    const parsed = raw ? (JSON.parse(raw) as LogEntry[]) : [];
+    return Array.isArray(parsed) ? parsed.slice(-LOG_LIMIT) : [];
+  } catch {
+    return [];
+  }
+}
+
 export const useConfigStore = create<State & Actions>((set, get) => {
   const initial = defaultConfig();
+
+  /**
+   * Skriver en rad utan att röra ångra-historiken. Loggen är inte en del av
+   * konfigurationen: att ta tillbaka en ändring är också något som hände.
+   */
+  const note = (entry: LogEntry) => {
+    const log = [...get().log, entry].slice(-LOG_LIMIT);
+    set({ log });
+    persistLog(log);
+  };
 
   const commit = (next: Configuration) => {
     const { config, past, library } = get();
@@ -148,6 +187,13 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       future: [],
     });
     persist(next);
+
+    // Loggen skrivs där konfigurationen byts ut, inte i varje knapp: då kan
+    // ingen ny knapp glömma bort att skriva sin rad.
+    const changed = describeChange(config, next, (machineId) =>
+      getMachine(machineId, library)?.name ?? machineId,
+    );
+    if (changed) note(changed);
   };
 
   return {
@@ -163,25 +209,48 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     unit: "m",
     tool: "select",
     selectedId: null,
-    inspectorOpen: true,
+    /*
+     * Infälld tills något är markerat. Inspektorn visar en markering, och en
+     * tom panel som tar en fjärdedel av skärmen säger ingenting — ritytan är
+     * mer värd innan man valt något.
+     */
+    inspectorOpen: false,
     aiOpen: false,
     diagnosticsOpen: false,
     showZones: true,
     showPorts: false,
     hydrated: false,
     shareNotice: null,
+    log: [],
     branchTarget: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
     setUnit: (unit) => set({ unit }),
     setTool: (tool) => set({ tool }),
-    select: (selectedId) => set({ selectedId }),
+    select: (selectedId) =>
+      // Att markera något är att vilja se det. Panelen fälls ut av sig själv
+      // och kan fällas ihop igen; nästa markering öppnar den på nytt.
+      set((state) => ({
+        selectedId,
+        inspectorOpen: selectedId ? true : state.inspectorOpen,
+      })),
     toggleInspector: () => set((s) => ({ inspectorOpen: !s.inspectorOpen })),
     toggleAi: (open) => set((s) => ({ aiOpen: open ?? !s.aiOpen })),
     toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
+
+    note: (kind, text, detail) => note(logEntry(kind, text, detail)),
+    setLog: (entries) => {
+      const log = entries.slice(-LOG_LIMIT);
+      set({ log });
+      persistLog(log);
+    },
+    clearLog: () => {
+      set({ log: [] });
+      persistLog([]);
+    },
 
     setLibrary: (machines) => {
       const library = makeLibrary(machines);
@@ -199,8 +268,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           selectedId: null,
         });
         persist(next);
+        if (options.note) note(logEntry("start", options.note));
       } else {
         commit(next);
+        if (options?.note) note(logEntry("proposal", options.note));
       }
     },
 
@@ -227,7 +298,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       // Hjälpobjekt är unika: en linje har en pulpet och ett ströfacksmagasin.
       if (machine.aux && get().config.line.some((i) => i.machineId === machineId)) {
         const existing = get().config.line.find((i) => i.machineId === machineId)!;
-        set({ selectedId: existing.instanceId });
+        get().select(existing.instanceId);
         return;
       }
       // Utförandet skrivs in vid tillägget i stället för att lämnas tomt:
@@ -251,7 +322,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         const index = atIndex ?? fallback;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
-      set({ selectedId: item.instanceId, branchTarget: null });
+      set({ branchTarget: null });
+      get().select(item.instanceId);
     },
 
     removeItem: (instanceId) => {
@@ -324,7 +396,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         d.drawn.push(obj);
       });
-      set({ selectedId: obj.id });
+      get().select(obj.id);
     },
 
     updateDrawn: (id, patch) =>
@@ -390,6 +462,9 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       set({ hydrated: true });
       if (typeof window === "undefined") return;
 
+      // Loggen läses först: det som hände före omladdningen hände ändå.
+      set({ log: readLog() });
+
       const params = new URLSearchParams(window.location.search);
       const shared = params.get("c");
       if (shared) {
@@ -413,7 +488,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
                 }
               }
 
-              get().load(result.config, { resetHistory: true });
+              get().load(result.config, {
+                resetHistory: true,
+                note: `Öppnade en delad konfiguration (${quoteReference(result.config)})`,
+              });
               set({
                 screen: "configurator",
                 shareNotice: {

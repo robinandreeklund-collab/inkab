@@ -7,6 +7,7 @@ import { meters } from "@/lib/format";
 import { Button, Tag } from "./ui";
 import { ACCEPTED, MAX_ATTACHMENTS } from "@/lib/attachments";
 import { rememberJob } from "@/lib/draftJobClient";
+import { runReport, usageTotals } from "@/lib/runReport";
 import { AttachmentChips } from "./AttachmentChips";
 import { useAttachments } from "./useAttachments";
 import type { Configuration } from "@/lib/types";
@@ -15,7 +16,15 @@ type Variant = { id: string; name: string; description: string; config: Configur
 type Trace = {
   rounds: number;
   stopReason: string;
-  steps: { name: string; ok: boolean; error?: string }[];
+  steps: { name: string; ok: boolean; error?: string; ms?: number }[];
+  timeline?: {
+    round: number;
+    modelMs: number;
+    toolMs: number;
+    tools: number;
+    usage?: { input: number; output: number; cacheRead: number; cacheWrite: number };
+  }[];
+  totalMs?: number;
 };
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
@@ -33,7 +42,7 @@ const FILE_PROMPTS = [
 ];
 
 export function AiPanel() {
-  const { config, layout, aiOpen, toggleAi, load } = useConfigStore();
+  const { config, layout, aiOpen, toggleAi, load, note } = useConfigStore();
 
   const [input, setInput] = useState("");
   const [text, setText] = useState("");
@@ -45,6 +54,8 @@ export function AiPanel() {
   const [error, setError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [trace, setTrace] = useState<Trace | null>(null);
+  /** Vad som redan är gjort i den pågående turen, i ordning. */
+  const [activity, setActivity] = useState<string[]>([]);
   const { files, add, removeAt, clear, reading, problem, setProblem } = useAttachments();
   const [queued, setQueued] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -64,6 +75,7 @@ export function AiPanel() {
   /* Samma underlag, men utan att någon behöver sitta och vänta på svaret. */
   const queue = async () => {
     if (files.length === 0 || busy) return;
+    const sent = files;
     setBusy(true);
     setError(null);
     try {
@@ -82,6 +94,11 @@ export function AiPanel() {
         return;
       }
       rememberJob(body.job.id);
+      note(
+        "upload",
+        `Skickade underlag till bakgrundsjobb: ${sent.map((f) => f.name).join(", ")}`,
+        input,
+      );
       clear();
       setInput("");
       setQueued(true);
@@ -102,13 +119,22 @@ export function AiPanel() {
     setText("");
     setThinking("");
     setTrace(null);
+    setActivity([]);
     setVariants([]);
     setPreview(null);
     setInput("");
     toggleAi(true);
     // Bilagorna hör till frågan de skickas med och töms när den är skickad.
     const sent = files;
+    const started = Date.now();
     clear();
+    note(
+      "ask",
+      sent.length
+        ? `Frågade assistenten med ${sent.length} bilaga(or): ${sent.map((f) => f.name).join(", ")}`
+        : "Frågade assistenten",
+      question,
+    );
 
     try {
       const response = await fetch("/api/ai/chat", {
@@ -136,6 +162,7 @@ export function AiPanel() {
       const decoder = new TextDecoder();
       let buffer = "";
       let answer = "";
+      let runTrace: Trace | null = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -161,10 +188,13 @@ export function AiPanel() {
               break;
             case "tool":
               setActiveTool(payload.name);
+              // "run" betyder att anropet är gjort. Då blir det en rad i listan.
+              if (payload.phase === "run") setActivity((done) => [...done, payload.name]);
               break;
             case "done":
               setVariants(payload.variants ?? []);
-              setTrace(payload.trace ?? null);
+              runTrace = payload.trace ?? null;
+              setTrace(runTrace);
               setAiConfigured(payload.aiConfigured);
               setActiveTool(null);
               setThinking("");
@@ -174,6 +204,38 @@ export function AiPanel() {
               break;
           }
         }
+      }
+
+      /*
+       * Svaret loggas med sin egen kvittolapp: tid, rundor och token. Det är
+       * den som går att skicka vidare när något tagit orimligt lång tid.
+       */
+      if (answer.trim() || runTrace) {
+        const totals = runTrace?.timeline ? usageTotals(runTrace.timeline) : null;
+        const head = totals
+          ? `Assistenten svarade (${Math.round((runTrace?.totalMs ?? 0) / 1000)} s, ` +
+            `${runTrace?.rounds} rundor, in ${totals.input + totals.cacheRead} tk, ` +
+            `ut ${totals.output} tk)`
+          : "Assistenten svarade";
+        const report = runTrace
+          ? runReport({
+              id: "chatt",
+              status: "done",
+              createdAt: new Date(started).toISOString(),
+              updatedAt: new Date().toISOString(),
+              note: question,
+              fileNames: sent.map((f) => f.name),
+              summary: answer.trim(),
+              detail: {
+                rounds: runTrace.rounds,
+                stopReason: runTrace.stopReason,
+                steps: runTrace.steps,
+                timeline: runTrace.timeline,
+                totalMs: runTrace.totalMs,
+              },
+            })
+          : answer.trim();
+        note("answer", head, report);
       }
 
       const turns: ChatTurn[] = [
@@ -212,11 +274,7 @@ export function AiPanel() {
       <div className="mb-2 flex items-center gap-3">
         <Sparkle />
         <h2 className="kicker">Assistent</h2>
-        {activeTool ? (
-          <span className="truncate text-[11px] text-muted">Kör {toolLabel(activeTool)}…</span>
-        ) : thinking ? (
-          <span className="truncate text-[11px] text-muted">{thinking}</span>
-        ) : null}
+
         {aiConfigured === false ? <Tag tone="warn">Ingen API-nyckel</Tag> : null}
         <Button variant="ghost" size="sm" className="ml-auto" onClick={() => toggleAi(false)}>
           Fäll ihop ▾
@@ -258,16 +316,34 @@ export function AiPanel() {
           )}
         </div>
       ) : null}
-      {busy && !text ? (
-        <p className="mb-3 text-sm text-muted">
-          Tänker… <span className="num">{elapsed} s</span>
+      {busy ? (
+        /*
+         * Vad som pågår, medan det pågår. En snurra som står still i tre
+         * minuter ser ut som ett fel; en lista som växer ser ut som arbete.
+         */
+        <div className="mb-3 max-w-3xl border border-divider bg-paper px-3 py-2 text-xs leading-relaxed">
+          <div className="mb-1 flex items-center gap-2">
+            <Spinner />
+            <span>
+              {activeTool ? `${capitalise(toolLabel(activeTool))}…` : "Tänker…"}{" "}
+              <span className="num text-muted">{elapsed} s</span>
+            </span>
+          </div>
+          {activity.length > 0 ? (
+            <ul className="text-muted">
+              {activity.slice(-6).map((name, index) => (
+                <li key={index}>✓ {toolLabel(name)}</li>
+              ))}
+            </ul>
+          ) : null}
+          {thinking ? <p className="mt-1 text-muted">{thinking}</p> : null}
           {elapsed > 45 ? (
-            <span className="block text-xs">
+            <p className="mt-1 text-muted">
               Underlag tar tid att läsa. Nästa gång kan du välja Bygg i bakgrunden och rita vidare
               under tiden.
-            </span>
+            </p>
           ) : null}
-        </p>
+        </div>
       ) : null}
 
       {variants.length > 0 ? (
@@ -287,7 +363,7 @@ export function AiPanel() {
                 }
               }}
               onApply={() => {
-                load(variant.config);
+                load(variant.config, { note: `Använde assistentens förslag: ${variant.name}` });
                 setPreview(null);
                 toggleAi(false);
               }}
@@ -445,6 +521,19 @@ function toolLabel(name: string): string {
     propose_variant: "sparar förslag",
   };
   return labels[name] ?? name;
+}
+
+function capitalise(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+function Spinner() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 24 24" className="flex-none animate-spin" fill="none">
+      <circle cx="12" cy="12" r="9" stroke="#d6dde5" strokeWidth="3" />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="#5980a6" strokeWidth="3" />
+    </svg>
+  );
 }
 
 function Sparkle() {

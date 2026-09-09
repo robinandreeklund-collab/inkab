@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { currentJobId, forgetJob } from "@/lib/draftJobClient";
 import { computeLayout } from "@/lib/layout";
@@ -28,7 +28,10 @@ type Job = {
     provider?: string;
     rounds?: number;
     stopReason?: string;
-    steps?: { name: string; ok: boolean; error?: string }[];
+    steps?: { name: string; ok: boolean; error?: string; ms?: number }[];
+    timeline?: { round: number; modelMs: number; toolMs: number; tools: number }[];
+    totalMs?: number;
+    stepSince?: string;
   };
   error: string | null;
   createdAt: string;
@@ -48,10 +51,12 @@ const TOOL_LABEL: Record<string, string> = {
   propose_variant: "sparade förslag",
 };
 
-const POLL_MS = 5000;
+/** Medan jobbet går: tillräckligt tätt för att kännas levande. */
+const POLL_RUNNING_MS = 2000;
+const POLL_IDLE_MS = 5000;
 
 export function DraftJobWatcher() {
-  const { load } = useConfigStore();
+  const { load, note } = useConfigStore();
   const [job, setJob] = useState<Job | null>(null);
   const [open, setOpen] = useState(true);
   const [gone, setGone] = useState(false);
@@ -74,6 +79,24 @@ export function DraftJobWatcher() {
     }
   }, []);
 
+  /*
+   * Jobbets utgång hör hemma i projektloggen: underlaget skickades in där, och
+   * det som kom tillbaka är en del av samma historia. Raden skrivs en gång.
+   */
+  const logged = useRef<string | null>(null);
+  useEffect(() => {
+    if (!job || job.status === "queued" || job.status === "running") return;
+    if (logged.current === job.id) return;
+    logged.current = job.id;
+    if (job.status === "failed") {
+      note("job", "Bakgrundsjobbet avbröts", job.error ?? undefined);
+    } else if (job.variants.length > 0) {
+      note("job", `Förslag från underlaget klart: ${job.variants[0].name}`, job.summary);
+    } else {
+      note("job", "Bakgrundsjobbet blev klart utan förslag", job.summary);
+    }
+  }, [job, note]);
+
   useEffect(() => {
     if (gone) return;
     let alive = true;
@@ -85,7 +108,7 @@ export function DraftJobWatcher() {
       if (next) setJob(next);
       // Klart eller avbrutet: sluta fråga.
       if (!next || next.status === "queued" || next.status === "running") {
-        timer = setTimeout(tick, POLL_MS);
+        timer = setTimeout(tick, next ? POLL_RUNNING_MS : POLL_IDLE_MS);
       }
     };
     tick();
@@ -105,21 +128,43 @@ export function DraftJobWatcher() {
     await fetch(`/api/ai/draft/${encodeURIComponent(id)}`, { method: "DELETE" }).catch(() => {});
   };
 
-  const minutes = Math.max(1, Math.round((Date.now() - new Date(job.createdAt).getTime()) / 60000));
+  const since = (iso?: string) =>
+    iso ? Math.round((Date.now() - new Date(iso).getTime()) / 1000) : 0;
+  const totalSeconds = since(job.createdAt);
+  const stepSeconds = since(job.detail?.stepSince ?? job.createdAt);
+  const clock = (seconds: number) =>
+    seconds < 90 ? `${seconds} s` : `${Math.round(seconds / 60)} min`;
 
   if (job.status === "queued" || job.status === "running") {
+    const steps = job.detail?.steps ?? [];
     return (
-      <div className="blueprint absolute left-3 top-3 flex max-w-[380px] items-center gap-3 bg-white px-3 py-2 shadow-sm">
-        <Spinner />
-        <span className="min-w-0 text-xs leading-tight">
-          <span className="block">Assistenten bygger ditt förslag</span>
-          <span className="block text-muted">
-            {job.step} · {minutes} min
+      <div className="blueprint absolute left-3 top-3 max-w-[380px] bg-white px-3 py-2 shadow-sm">
+        <div className="flex items-center gap-3">
+          <Spinner />
+          <span className="min-w-0 text-xs leading-tight">
+            <span className="block">Assistenten bygger ditt förslag</span>
+            <span className="block text-muted">
+              {job.step} sedan {clock(stepSeconds)} · totalt {clock(totalSeconds)}
+            </span>
           </span>
-        </span>
-        <button onClick={dismiss} className="ml-1 text-muted hover:text-ink" aria-label="Avbryt">
-          ×
-        </button>
+          <button onClick={dismiss} className="ml-auto text-muted hover:text-ink" aria-label="Avbryt">
+            ×
+          </button>
+        </div>
+
+        {/* Det som redan är gjort. Utan den här listan ser en lång stund ut
+            som att något hängt sig. */}
+        {steps.length > 0 ? (
+          <ul className="mt-2 space-y-0.5 border-t border-divider pt-2 text-[11px] text-muted">
+            {steps.slice(-5).map((step, index) => (
+              <li key={index}>✓ {TOOL_LABEL[step.name] ?? step.name}</li>
+            ))}
+            <li className="pt-1">
+              Modellen tänker mellan stegen — det är oftast där tiden går. Admin ser hela
+              tidsuppdelningen under Assistent.
+            </li>
+          </ul>
+        ) : null}
       </div>
     );
   }
@@ -200,7 +245,10 @@ export function DraftJobWatcher() {
                 size="sm"
                 variant="primary"
                 onClick={() => {
-                  load(variant.config, { resetHistory: false });
+                  load(variant.config, {
+                    resetHistory: false,
+                    note: `Använde förslaget från underlaget: ${variant.name}`,
+                  });
                   setOpen(false);
                 }}
               >
@@ -249,6 +297,9 @@ function JobTrace({ detail }: { detail: Job["detail"] }) {
           <>
             <span className="num">{detail.model}</span>
             {detail.rounds ? `, ${detail.rounds} arbetsrundor` : ""}
+            {typeof detail.totalMs === "number"
+              ? `, ${Math.round(detail.totalMs / 1000)} s`
+              : ""}
             {detail.stopReason === "max_rounds" ? " — nådde taket och hann inte bli klar" : ""}
           </>
         ) : null}

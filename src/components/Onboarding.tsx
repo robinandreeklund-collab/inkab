@@ -7,7 +7,7 @@ import { TEMPLATES, emptyConfig, templateConfig } from "@/lib/templates";
 import { Button } from "./ui";
 
 export function Onboarding() {
-  const { load, setScreen, toggleAi } = useConfigStore();
+  const { load, setScreen, note } = useConfigStore();
   /*
    * Tom canvas är det läge där kunden har mest att vinna på att slippa rita
    * allt själv. Därför frågar vi efter underlaget just där — en gång, med
@@ -15,8 +15,8 @@ export function Onboarding() {
    */
   const [asking, setAsking] = useState<Parameters<typeof load>[0] | null>(null);
 
-  const start = (config: Parameters<typeof load>[0]) => {
-    load(config, { resetHistory: true });
+  const start = (config: Parameters<typeof load>[0], what: string) => {
+    load(config, { resetHistory: true, note: what });
     setScreen("configurator");
   };
 
@@ -25,12 +25,12 @@ export function Onboarding() {
       {asking ? (
         <DraftJobDialog
           config={asking}
-          onQueued={() => {
-            start(asking);
+          onQueued={(files) => {
+            start(asking, `Skickade in underlag: ${files.join(", ")}`);
             setAsking(null);
           }}
           onSkip={() => {
-            start(asking);
+            start(asking, "Startade från en tom ritning");
             setAsking(null);
           }}
         />
@@ -46,25 +46,22 @@ export function Onboarding() {
 
         <div className="mb-6 grid gap-3 md:grid-cols-3">
           <Card
+            title="Ladda upp ritning"
+            body="Ritning över lokalen eller skiss på tänkt flöde. Assistenten bygger ett förslag medan du ritar vidare."
+            meta="Om du har underlag"
+            onClick={() => setAsking(emptyConfig())}
+          />
+          <Card
             title="Börja från en mall"
             body="Fyra vanliga pakethanteringslinjer att utgå ifrån och ändra."
             meta="Snabbast"
-            onClick={() => start(templateConfig("strolinje"))}
-          />
-          <Card
-            title="Beskriv med egna ord"
-            body="Skriv vad ni har och vad ni vill. Assistenten föreslår maskiner och flöde."
-            meta="Om terminologin är ny"
-            onClick={() => {
-              start(templateConfig("strolinje"));
-              toggleAi(true);
-            }}
+            onClick={() => start(templateConfig("strolinje"), "Startade från mallen Truckströläggning – enkel")}
           />
           <Card
             title="Bygg från grunden"
             body="Tom canvas, full kontroll över maskinval och ordning."
             meta="Om du vet vad du vill"
-            onClick={() => setAsking(emptyConfig())}
+            onClick={() => start(emptyConfig(), "Startade från en tom ritning")}
           />
         </div>
 
@@ -73,7 +70,7 @@ export function Onboarding() {
           {TEMPLATES.map((template) => (
             <button
               key={template.id}
-              onClick={() => start(templateConfig(template.id))}
+              onClick={() => start(templateConfig(template.id), `Startade från mallen ${template.name}`)}
               className="blueprint bg-white p-3 text-left hover:border-accent"
             >
               <div className="text-[15px]">{template.name}</div>

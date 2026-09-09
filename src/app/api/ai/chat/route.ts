@@ -122,7 +122,13 @@ export async function POST(request: Request) {
           aiConfigured: true,
           // Vad som faktiskt gjordes. Behövs när svaret blev tomt: då är det
           // enda beskedet kunden kan få.
-          trace: { rounds: run.rounds, stopReason: run.stopReason, steps: run.steps },
+          trace: {
+            rounds: run.rounds,
+            stopReason: run.stopReason,
+            steps: run.steps,
+            timeline: run.timeline,
+            totalMs: run.totalMs,
+          },
         });
       }
       controller.close();

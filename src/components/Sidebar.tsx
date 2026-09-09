@@ -512,11 +512,13 @@ export function Sidebar() {
 
 function ShareButton() {
   const config = useConfigStore((s) => s.config);
+  const note = useConfigStore((s) => s.note);
   const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
 
   const share = async () => {
     const { shareUrl } = await import("@/lib/share");
     const { url, long } = await shareUrl(config, window.location.origin, window.location.pathname);
+    note("share", "Skapade en delningslänk");
     try {
       await navigator.clipboard.writeText(url);
       setState(long ? "long" : "copied");

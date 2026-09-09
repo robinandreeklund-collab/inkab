@@ -23,7 +23,7 @@ type Item = {
 };
 
 export function ProposalDialog({ onClose }: { onClose: () => void }) {
-  const { config, load } = useConfigStore();
+  const { config, load, log, setLog, note: writeLog } = useConfigStore();
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState(config.projectName);
   const [busy, setBusy] = useState(false);
@@ -57,13 +57,14 @@ export function ProposalDialog({ onClose }: { onClose: () => void }) {
       const response = await fetch("/api/proposals", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, config }),
+        body: JSON.stringify({ name, config, log }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) {
         setError(body?.error ?? `Servern svarade ${response.status}.`);
         return;
       }
+      writeLog("proposal", `Sparade förslaget "${name}"`);
       setNote(
         body.persisted
           ? "Sparat."
@@ -84,7 +85,13 @@ export function ProposalDialog({ onClose }: { onClose: () => void }) {
       setError("Förslaget gick inte att öppna.");
       return;
     }
-    load(body.proposal.config as Configuration, { resetHistory: true });
+    load(body.proposal.config as Configuration, {
+      resetHistory: true,
+      note: `Öppnade det sparade förslaget "${body.proposal.name}"`,
+    });
+    // Historiken hör till förslaget: den som öppnar det ska se hur det blev
+    // till, inte den förra kundens spår.
+    if (Array.isArray(body.proposal.log)) setLog(body.proposal.log);
     onClose();
   };
 

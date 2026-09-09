@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { ProposalDialog } from "./ProposalDialog";
+import { HistoryDialog } from "./HistoryDialog";
 import { AuthDialog, type SessionUser } from "./AuthDialog";
 import { Button, Segmented } from "./ui";
 
@@ -28,6 +29,8 @@ export function Topbar({
     useConfigStore();
   const [authOpen, setAuthOpen] = useState(false);
   const [proposalsOpen, setProposalsOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const log = useConfigStore((s) => s.log);
 
   useEffect(() => {
     if (autoOpenLogin && !user) setAuthOpen(true);
@@ -102,6 +105,14 @@ export function Topbar({
           onChange={setUnit}
         />
 
+        <button
+          onClick={() => setHistoryOpen(true)}
+          title="Vad som hänt i projektet: underlag, frågor, ändringar"
+          className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+        >
+          Historik{log.length > 0 ? ` (${log.length})` : ""}
+        </button>
+
         {user?.role === "admin" ? (
           <a
             href="/admin"
@@ -142,6 +153,8 @@ export function Topbar({
           </button>
         )}
       </div>
+
+      {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
 
       {proposalsOpen ? <ProposalDialog onClose={() => setProposalsOpen(false)} /> : null}
 

@@ -5,6 +5,7 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
+import { nextName } from "@/lib/drawing";
 import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 
@@ -74,20 +75,6 @@ function finishDraft(kind: DrawnKind, box: Box, walls: DrawnObject[]): Box {
   if (kind === "wall") return closeCorners(box, walls);
   if (kind === "door") return fitDoorToWall(box, walls) ?? box;
   return box;
-}
-
-const KIND_LABEL: Record<DrawnKind, string> = {
-  wall: "Vägg",
-  door: "Port",
-  truck: "Truckzon",
-  nogo: "No-go-zon",
-};
-
-/** Namnger nästa objekt av samma slag: Port A, Port B, Vägg 1, Vägg 2 … */
-function nextName(kind: DrawnKind, existing: DrawnObject[]): string {
-  const count = existing.filter((d) => d.kind === kind).length;
-  if (kind === "door") return `Port ${String.fromCharCode(65 + count)}`;
-  return `${KIND_LABEL[kind]} ${count + 1}`;
 }
 
 export function CadView() {

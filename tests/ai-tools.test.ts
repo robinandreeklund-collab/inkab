@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { toolDefinitions, executeTool, type ToolContext } from "@/lib/ai/tools";
-import { BUILTIN_LIBRARY } from "@/lib/library";
+import { BUILTIN_LIBRARY, BUILTIN_MACHINES, makeLibrary } from "@/lib/library";
 import { defaultConfig } from "@/lib/templates";
 import { BUILTIN_PRICE_BOOK } from "@/lib/server/pricebook";
-import type { Configuration } from "@/lib/types";
+import type { Configuration, Machine } from "@/lib/types";
 
 /**
  * Med strict: true accepterar Messages API bara en delmängd av JSON Schema.
@@ -40,13 +40,13 @@ function walk(node: unknown, path: string[] = []): { path: string; key: string }
   return [];
 }
 
-function context(config: Configuration): ToolContext {
+function context(config: Configuration, library = BUILTIN_LIBRARY): ToolContext {
   return {
     original: JSON.parse(JSON.stringify(config)),
     draft: JSON.parse(JSON.stringify(config)),
     variants: [],
     role: "guest",
-    library: BUILTIN_LIBRARY,
+    library,
     priceBook: BUILTIN_PRICE_BOOK,
   };
 }
@@ -119,5 +119,274 @@ describe("serverklippning ersätter schemats intervall", () => {
       error?: string;
     };
     expect(result.error).toContain("Okänd maskin");
+  });
+});
+
+/**
+ * Att läsa en uppladdad ritning och rita upp lokalen.
+ *
+ * Verktyget måste vara lika strängt som en människa borde vara: en ritning
+ * utan känd skala går inte att mäta, och allt som justerades ska tillbaka
+ * till assistenten i klartext så att kunden får veta det.
+ */
+describe("draw_hall", () => {
+  it("sätter hallens mått och ritar väggar, portar och zoner", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      {
+        lengthM: 50,
+        widthM: 24,
+        scaleSource: "dimension_on_drawing",
+        scaleNote: "Måttkedjan 50 000 mm längs södra ytterväggen.",
+        replaceExisting: true,
+        walls: [
+          { name: "Södra", fromXM: 0, fromYM: 0, toXM: 50, toYM: 0 },
+          { name: "Östra", fromXM: 50, fromYM: 0, toXM: 50, toYM: 24 },
+        ],
+        doors: [{ name: "Port A", xM: 12, yM: 0, widthM: 4 }],
+        areas: [{ kind: "nogo", name: "Pelare", xM: 20, yM: 12, lengthM: 0.8, widthM: 0.8 }],
+      },
+      ctx,
+    ) as { added: number; notes: string[] };
+
+    expect(ctx.draft.hall.lengthMm).toBe(50_000);
+    expect(ctx.draft.hall.widthMm).toBe(24_000);
+    expect(result.added).toBe(4);
+    expect(ctx.draft.drawn.map((d) => d.kind)).toEqual(["wall", "wall", "nogo", "door"]);
+
+    // Porten sitter i väggen, inte bredvid den.
+    const door = ctx.draft.drawn.find((d) => d.kind === "door")!;
+    const wall = ctx.draft.drawn.find((d) => d.kind === "wall")!;
+    expect(door.y).toBe(wall.y);
+    expect(door.w).toBe(wall.w);
+  });
+
+  it("vägrar rita utan att skalans ursprung är angivet", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      { scaleSource: "dimension_on_drawing", scaleNote: "   ", walls: [] },
+      ctx,
+    ) as { error?: string };
+    expect(result.error).toContain("skala");
+    // Ingenting ritades: det som ligger kvar är utgångslägets egna objekt.
+    expect(ctx.draft.drawn).toEqual(context(defaultConfig()).draft.drawn);
+  });
+
+  it("påminner om att en uppmätt bild ska kontrollmätas", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      {
+        scaleSource: "stated_by_customer",
+        scaleNote: "Kunden uppgav 46 m mellan gavlarna.",
+        walls: [{ fromXM: 0, fromYM: 0, toXM: 40, toYM: 0 }],
+      },
+      ctx,
+    ) as { reminder: string };
+    expect(result.reminder).toContain("kontrollmäta");
+  });
+
+  it("kompletterar i stället för att sudda när replaceExisting inte är satt", () => {
+    const ctx = context(defaultConfig());
+    const draw = (name: string) =>
+      executeTool(
+        "draw_hall",
+        {
+          scaleSource: "scale_bar",
+          scaleNote: "Skalstock 1:100.",
+          walls: [{ name, fromXM: 0, fromYM: 0, toXM: 30, toYM: 0 }],
+        },
+        ctx,
+      );
+    draw("Första");
+    draw("Andra");
+    const walls = () => ctx.draft.drawn.filter((d) => d.kind === "wall").map((d) => d.name);
+    expect(walls()).toEqual(["Första", "Andra"]);
+    // Det som redan låg i konfigurationen står kvar.
+    expect(ctx.draft.drawn.length).toBeGreaterThan(2);
+
+    executeTool(
+      "draw_hall",
+      {
+        scaleSource: "scale_bar",
+        scaleNote: "Skalstock 1:100.",
+        replaceExisting: true,
+        walls: [{ name: "Enda", fromXM: 0, fromYM: 0, toXM: 30, toYM: 0 }],
+      },
+      ctx,
+    );
+    expect(ctx.draft.drawn.map((d) => d.name)).toEqual(["Enda"]);
+    expect(walls()).toEqual(["Enda"]);
+  });
+
+  it("lämnar tillbaka det som justerades i stället för att rätta tyst", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      {
+        lengthM: 40,
+        widthM: 20,
+        scaleSource: "dimension_on_drawing",
+        scaleNote: "Måttsatt 40 000 mm.",
+        walls: [
+          { fromXM: 0, fromYM: 0, toXM: 39, toYM: 1.2 },
+          { fromXM: 0, fromYM: 60, toXM: 30, toYM: 60 },
+        ],
+      },
+      ctx,
+    ) as { notes: string[] };
+    expect(result.notes.join(" ")).toContain("snett");
+    expect(result.notes.join(" ")).toContain("utanför hallens mått");
+  });
+});
+
+/** Linjen byggd efter en flödesbild: tömma, fylla på, och grena. */
+describe("clear_line och grenar", () => {
+  const base = BUILTIN_MACHINES.find((m) => m.id === "rullbana-underslag")!;
+  const twoWay: Machine = {
+    ...base,
+    id: "delare",
+    ports: [
+      { ...base.ports[0], id: "in", role: "in", pos: { x: 0, y: 1000 }, dir: "x+" },
+      { ...base.ports[1], id: "ut", name: "Rakt fram", role: "out", pos: { x: 6000, y: 1000 }, dir: "x+" },
+      {
+        ...base.ports[1],
+        id: "ut-sida",
+        name: "Ut på kortsidan",
+        role: "out",
+        pos: { x: 3000, y: 2000 },
+        dir: "y+",
+        allowsDirectionChange: true,
+      },
+    ],
+  };
+  const library = makeLibrary([...BUILTIN_MACHINES, twoWay]);
+
+  it("tömmer linjen utan att röra hallen eller det ritade", () => {
+    const ctx = context(defaultConfig());
+    ctx.draft.drawn = [
+      { id: "w", kind: "wall", name: "Vägg 1", x: 0, y: 0, l: 1000, w: 300, h: 3000 },
+    ];
+    const hall = { ...ctx.draft.hall };
+    const result = executeTool("clear_line", {}, ctx) as { removed: number };
+    expect(result.removed).toBeGreaterThan(0);
+    expect(ctx.draft.line).toHaveLength(0);
+    expect(ctx.draft.drawn).toHaveLength(1);
+    expect(ctx.draft.hall).toEqual(hall);
+  });
+
+  it("lägger en maskin på en ledig utgång som en gren", () => {
+    const config = defaultConfig();
+    const ctx = context(config, library);
+    executeTool("clear_line", {}, ctx);
+    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
+      added: { instanceId: string };
+    };
+    executeTool("add_machine", { machineId: "rullbana" }, ctx);
+
+    const branch = executeTool(
+      "add_machine",
+      {
+        machineId: "rullbana",
+        branchFromInstanceId: first.added.instanceId,
+        branchOutPortId: "ut-sida",
+      },
+      ctx,
+    ) as { added: { branch?: { fromInstanceId: string; outPortId: string } } };
+
+    expect(branch.added.branch).toEqual({
+      fromInstanceId: first.added.instanceId,
+      outPortId: "ut-sida",
+    });
+  });
+
+  it("vägrar hänga två maskiner på samma utgång", () => {
+    const ctx = context(defaultConfig(), library);
+    executeTool("clear_line", {}, ctx);
+    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
+      added: { instanceId: string };
+    };
+    executeTool(
+      "add_machine",
+      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "ut-sida" },
+      ctx,
+    );
+    const again = executeTool(
+      "add_machine",
+      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "ut-sida" },
+      ctx,
+    ) as { error?: string };
+    expect(again.error).toContain("matar redan");
+  });
+
+  it("avvisar en gren på en maskin som inte står i linjen", () => {
+    const ctx = context(defaultConfig(), library);
+    const result = executeTool(
+      "add_machine",
+      { machineId: "rullbana", branchFromInstanceId: "finns-inte", branchOutPortId: "ut" },
+      ctx,
+    ) as { error?: string };
+    expect(result.error).toContain("finns-inte");
+  });
+
+  it("avvisar en utgång maskinen inte har", () => {
+    const ctx = context(defaultConfig(), library);
+    executeTool("clear_line", {}, ctx);
+    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
+      added: { instanceId: string };
+    };
+    const result = executeTool(
+      "add_machine",
+      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "bakut" },
+      ctx,
+    ) as { error?: string };
+    expect(result.error).toContain("Okänd utgång");
+  });
+});
+
+describe("remove_machine", () => {
+  it("tar med grenen när maskinen den hänger på försvinner", () => {
+    const base = BUILTIN_MACHINES.find((m) => m.id === "rullbana-underslag")!;
+    const twoWay: Machine = {
+      ...base,
+      id: "delare",
+      ports: [
+        { ...base.ports[0], id: "in", role: "in", pos: { x: 0, y: 1000 }, dir: "x+" },
+        { ...base.ports[1], id: "ut", role: "out", pos: { x: 6000, y: 1000 }, dir: "x+" },
+        {
+          ...base.ports[1],
+          id: "ut-sida",
+          role: "out",
+          pos: { x: 3000, y: 2000 },
+          dir: "y+",
+          allowsDirectionChange: true,
+        },
+      ],
+    };
+    const ctx = context(defaultConfig(), makeLibrary([...BUILTIN_MACHINES, twoWay]));
+    executeTool("clear_line", {}, ctx);
+    const parent = executeTool("add_machine", { machineId: "delare" }, ctx) as {
+      added: { instanceId: string };
+    };
+    const branch = executeTool(
+      "add_machine",
+      {
+        machineId: "rullbana",
+        branchFromInstanceId: parent.added.instanceId,
+        branchOutPortId: "ut-sida",
+      },
+      ctx,
+    ) as { added: { instanceId: string } };
+
+    const result = executeTool(
+      "remove_machine",
+      { instanceId: parent.added.instanceId },
+      ctx,
+    ) as { alsoRemoved: string[] };
+
+    expect(result.alsoRemoved).toContain(branch.added.instanceId);
+    expect(ctx.draft.line).toHaveLength(0);
   });
 });

@@ -5,6 +5,12 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { computeLayout } from "@/lib/layout";
 import { meters } from "@/lib/format";
 import { Button, Tag } from "./ui";
+import {
+  ACCEPTED,
+  MAX_ATTACHMENTS,
+  toAttachment,
+  type Attachment,
+} from "@/lib/attachments";
 import type { Configuration } from "@/lib/types";
 
 type Variant = { id: string; name: string; description: string; config: Configuration };
@@ -14,6 +20,13 @@ const PROMPTS = [
   "Optimera layouten så att den blir kortare",
   "Varför får jag varningarna?",
   "Vad händer om trucken kommer från andra hållet?",
+];
+
+/** Vad man rimligen vill göra med en uppladdad ritning eller skiss. */
+const FILE_PROMPTS = [
+  "Rita upp lokalen efter den här ritningen",
+  "Bygg linjen efter det här flödet",
+  "Vad ser du på bilden?",
 ];
 
 export function AiPanel() {
@@ -28,7 +41,29 @@ export function AiPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+  const [files, setFiles] = useState<Attachment[]>([]);
+  const [reading, setReading] = useState(false);
   const historyRef = useRef<ChatTurn[]>([]);
+  const fileInput = useRef<HTMLInputElement | null>(null);
+
+  const attach = async (chosen: FileList | null) => {
+    if (!chosen?.length) return;
+    setReading(true);
+    setError(null);
+    const added: Attachment[] = [];
+    const problems: string[] = [];
+    for (const file of Array.from(chosen).slice(0, MAX_ATTACHMENTS)) {
+      try {
+        added.push(await toAttachment(file));
+      } catch (problem) {
+        problems.push(problem instanceof Error ? problem.message : `${file.name} gick inte att läsa.`);
+      }
+    }
+    setFiles((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
+    if (problems.length) setError(problems.join(" · "));
+    setReading(false);
+    if (fileInput.current) fileInput.current.value = "";
+  };
 
   const send = async (question: string) => {
     if (!question.trim() || busy) return;
@@ -40,12 +75,20 @@ export function AiPanel() {
     setPreview(null);
     setInput("");
     toggleAi(true);
+    // Bilagorna hör till frågan de skickas med och töms när den är skickad.
+    const sent = files;
+    setFiles([]);
 
     try {
       const response = await fetch("/api/ai/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config, message: question, history: historyRef.current.slice(-8) }),
+        body: JSON.stringify({
+          config,
+          message: question,
+          history: historyRef.current.slice(-8),
+          attachments: sent.map((f) => ({ name: f.name, mediaType: f.mediaType, data: f.data })),
+        }),
       });
       if (!response.ok) {
         // Visa serverns egna ord i stället för ett generiskt fel.
@@ -102,7 +145,12 @@ export function AiPanel() {
       }
 
       const turns: ChatTurn[] = [
-        { role: "user", content: question },
+        {
+          role: "user",
+          content: sent.length
+            ? `${question}\n(bifogade filer: ${sent.map((f) => f.name).join(", ")})`
+            : question,
+        },
         { role: "assistant", content: answer || "(inget svar)" },
       ];
       historyRef.current = [...historyRef.current, ...turns].slice(-8);
@@ -173,12 +221,40 @@ export function AiPanel() {
         </div>
       ) : null}
 
-      {!busy && variants.length === 0 && !text ? (
+      {!busy && (files.length > 0 || (variants.length === 0 && !text)) ? (
         <div className="mb-3 flex flex-wrap gap-2">
-          {PROMPTS.map((prompt) => (
+          {(files.length > 0 ? FILE_PROMPTS : PROMPTS).map((prompt) => (
             <Button key={prompt} size="sm" onClick={() => send(prompt)}>
               {prompt}
             </Button>
+          ))}
+        </div>
+      ) : null}
+
+      {files.length > 0 ? (
+        <div className="mb-2 flex flex-wrap gap-2">
+          {files.map((file, index) => (
+            <span
+              key={`${file.name}-${index}`}
+              className="flex items-center gap-2 border border-divider px-2 py-1 text-[11px]"
+            >
+              {file.previewUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={file.previewUrl} alt="" className="h-8 w-8 object-cover" />
+              ) : (
+                <span className="kicker text-muted">PDF</span>
+              )}
+              <span className="max-w-[180px] truncate">{file.name}</span>
+              <span className="num text-muted">{Math.max(1, Math.round(file.bytes / 1000))} kB</span>
+              <button
+                type="button"
+                onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
+                aria-label={`Ta bort ${file.name}`}
+                className="px-1 text-muted hover:text-danger"
+              >
+                ×
+              </button>
+            </span>
           ))}
         </div>
       ) : null}
@@ -191,9 +267,32 @@ export function AiPanel() {
         className="flex gap-2"
       >
         <input
+          ref={fileInput}
+          type="file"
+          accept={ACCEPTED}
+          multiple
+          onChange={(e) => attach(e.target.files)}
+          className="hidden"
+          aria-label="Bifoga ritning eller bild"
+        />
+        <Button
+          type="button"
+          size="sm"
+          title="Bifoga ritning över lokalen eller bild på flödet (png, jpg, pdf)"
+          disabled={busy || reading || files.length >= MAX_ATTACHMENTS}
+          onClick={() => fileInput.current?.click()}
+          className="px-3"
+        >
+          {reading ? "Läser…" : "Bifoga"}
+        </Button>
+        <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Fråga om placering, kapacitet eller pris…"
+          placeholder={
+            files.length
+              ? "Vad ska jag göra med filen?"
+              : "Fråga om placering, kapacitet eller pris…"
+          }
           className="flex-1 border border-divider px-3 py-2 text-sm outline-none focus:border-accent"
         />
         <Button type="submit" variant="primary" disabled={busy || !input.trim()}>
@@ -278,6 +377,8 @@ function toolLabel(name: string): string {
     remove_machine: "tar bort maskin",
     set_hall: "hallmått",
     estimate_price: "prisberäkning",
+    clear_line: "tömmer linjen",
+    draw_hall: "ritar upp lokalen",
     propose_variant: "sparar förslag",
   };
   return labels[name] ?? name;

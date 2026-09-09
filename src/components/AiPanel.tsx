@@ -12,6 +12,11 @@ import { useAttachments } from "./useAttachments";
 import type { Configuration } from "@/lib/types";
 
 type Variant = { id: string; name: string; description: string; config: Configuration };
+type Trace = {
+  rounds: number;
+  stopReason: string;
+  steps: { name: string; ok: boolean; error?: string }[];
+};
 type ChatTurn = { role: "user" | "assistant"; content: string };
 
 const PROMPTS = [
@@ -39,6 +44,7 @@ export function AiPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
+  const [trace, setTrace] = useState<Trace | null>(null);
   const { files, add, removeAt, clear, reading, problem, setProblem } = useAttachments();
   const [queued, setQueued] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -95,6 +101,7 @@ export function AiPanel() {
     setQueued(false);
     setText("");
     setThinking("");
+    setTrace(null);
     setVariants([]);
     setPreview(null);
     setInput("");
@@ -157,6 +164,7 @@ export function AiPanel() {
               break;
             case "done":
               setVariants(payload.variants ?? []);
+              setTrace(payload.trace ?? null);
               setAiConfigured(payload.aiConfigured);
               setActiveTool(null);
               setThinking("");
@@ -227,6 +235,29 @@ export function AiPanel() {
         </p>
       ) : null}
       {text ? <p className="mb-3 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed">{text}</p> : null}
+      {!busy && !text && trace ? (
+        <div className="mb-3 max-w-3xl border border-divider bg-paper px-3 py-2 text-xs leading-relaxed text-muted">
+          <p className="mb-1">
+            Assistenten avslutade utan att skriva något svar
+            {trace.stopReason === "max_rounds"
+              ? ` — den nådde taket på ${trace.rounds} arbetsrundor`
+              : ""}
+            .
+          </p>
+          {trace.steps.length === 0 ? (
+            <p>Inga verktyg anropades.</p>
+          ) : (
+            <ul>
+              {trace.steps.slice(-6).map((step, index) => (
+                <li key={index} className={step.ok ? "" : "text-danger"}>
+                  {step.ok ? "✓" : "✕"} {toolLabel(step.name)}
+                  {step.error ? ` — ${step.error}` : ""}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
       {busy && !text ? (
         <p className="mb-3 text-sm text-muted">
           Tänker… <span className="num">{elapsed} s</span>

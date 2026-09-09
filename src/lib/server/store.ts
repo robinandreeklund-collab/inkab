@@ -715,6 +715,21 @@ export async function deleteProposal(id: string, userId: string): Promise<void> 
 
 export type DraftJobStatus = "queued" | "running" | "done" | "failed";
 
+/**
+ * Vad som faktiskt hände i jobbet.
+ *
+ * Blev det inget förslag är det här enda förklaringen kunden kan få: vilken
+ * modell som körde, vilka verktyg som anropades, vad de svarade och varför
+ * turen tog slut. Ett jobb som misslyckas tyst är värre än ett som misslyckas.
+ */
+export type DraftJobDetail = {
+  model?: string;
+  provider?: string;
+  rounds?: number;
+  stopReason?: string;
+  steps?: { name: string; ok: boolean; error?: string }[];
+};
+
 export type StoredDraftJob = {
   id: string;
   userId: string | null;
@@ -727,6 +742,7 @@ export type StoredDraftJob = {
   /** Assistentens sammanfattning när jobbet är klart. */
   summary: string;
   variants: { id: string; name: string; description: string; config: unknown }[];
+  detail: DraftJobDetail;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -751,11 +767,14 @@ async function ensureDraftJobTable(pool: PgPool) {
       step       text NOT NULL DEFAULT '',
       summary    text NOT NULL DEFAULT '',
       variants   jsonb NOT NULL DEFAULT '[]'::jsonb,
+      detail     jsonb NOT NULL DEFAULT '{}'::jsonb,
       error      text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
+  // Tabellen kan vara skapad före detail-kolumnen fanns.
+  await pool.query("ALTER TABLE draft_job ADD COLUMN IF NOT EXISTS detail jsonb NOT NULL DEFAULT '{}'::jsonb");
   await pool.query("CREATE INDEX IF NOT EXISTS draft_job_user ON draft_job (user_id)");
 }
 
@@ -768,6 +787,7 @@ type DraftJobRow = {
   step: string;
   summary: string;
   variants: StoredDraftJob["variants"];
+  detail: DraftJobDetail | null;
   error: string | null;
   created_at: Date;
   updated_at: Date;
@@ -782,6 +802,7 @@ const fromDraftJobRow = (row: DraftJobRow): StoredDraftJob => ({
   step: row.step,
   summary: row.summary,
   variants: row.variants ?? [],
+  detail: row.detail ?? {},
   error: row.error,
   createdAt: row.created_at.toISOString(),
   updatedAt: row.updated_at.toISOString(),
@@ -796,10 +817,11 @@ export async function writeDraftJob(job: StoredDraftJob): Promise<void> {
     const pool = await getPool();
     await ensureDraftJobTable(pool);
     await pool.query(
-      `INSERT INTO draft_job (id, user_id, status, note, file_names, step, summary, variants, error, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+      `INSERT INTO draft_job (id, user_id, status, note, file_names, step, summary, variants, detail, error, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
        ON CONFLICT (id) DO UPDATE
-         SET status = $3, step = $6, summary = $7, variants = $8, error = $9, updated_at = now()`,
+         SET status = $3, step = $6, summary = $7, variants = $8, detail = $9, error = $10,
+             updated_at = now()`,
       [
         job.id,
         job.userId,
@@ -809,6 +831,7 @@ export async function writeDraftJob(job: StoredDraftJob): Promise<void> {
         job.step,
         job.summary,
         JSON.stringify(job.variants),
+        JSON.stringify(job.detail ?? {}),
         job.error,
       ],
     );

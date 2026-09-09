@@ -51,12 +51,26 @@ export type AssistantEvent =
   | { type: "tool"; name: string; phase: "start" | "run" }
   | { type: "error"; message: string };
 
+/** Ett verktygsanrop, som det gick. */
+export type AssistantStep = { name: string; ok: boolean; error?: string };
+
+/**
+ * Varför turen tog slut.
+ *
+ * "answered" är det normala: modellen skrev klart. "max_rounds" betyder att den
+ * höll på tills taket tog emot — då finns sällan något sparat, och det är den
+ * enda förklaring kunden kan få.
+ */
+export type StopReason = "answered" | "max_rounds" | "refusal" | "error";
+
 export type AssistantRun = {
   text: string;
   variants: Variant[];
   /** Arbetskopian som den såg ut när turen tog slut. */
   draft: Configuration;
   rounds: number;
+  steps: AssistantStep[];
+  stopReason: StopReason;
   error: string | null;
 };
 
@@ -102,6 +116,8 @@ export async function runAssistant(input: {
       variants: [],
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
+      steps: [],
+      stopReason: "error",
       error:
         "Ingen modellnyckel är satt på servern (ANTHROPIC_API_KEY eller XAI_API_KEY), " +
         "så assistenten kan inte svara.",
@@ -123,6 +139,8 @@ export async function runAssistant(input: {
       variants: [],
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
+      steps: [],
+      stopReason: "error",
       error:
         `Den valda modellen kan inte läsa ${
           unsupported.mediaType === "application/pdf" ? "pdf" : "bilder"
@@ -179,6 +197,8 @@ export async function runAssistant(input: {
 
   let answer = "";
   let rounds = 0;
+  const steps: AssistantStep[] = [];
+  let stopReason: StopReason = "max_rounds";
   const limit = input.maxRounds ?? MAX_TOOL_ROUNDS;
 
   try {
@@ -216,6 +236,7 @@ export async function runAssistant(input: {
       });
 
       let currentBlock: "thinking" | "text" | null = null;
+      let streamed = "";
       for await (const event of response) {
         if (event.type === "content_block_start") {
           currentBlock =
@@ -231,6 +252,7 @@ export async function runAssistant(input: {
           if (event.delta.type === "thinking_delta" && currentBlock === "thinking") {
             emit({ type: "thinking", text: event.delta.thinking });
           } else if (event.delta.type === "text_delta" && currentBlock === "text") {
+            streamed += event.delta.text;
             answer += event.delta.text;
             emit({ type: "text", text: event.delta.text });
           }
@@ -242,14 +264,32 @@ export async function runAssistant(input: {
       const final = await response.finalMessage();
       messages.push({ role: "assistant", content: final.content });
 
+      /*
+       * Texten hämtas ur det färdiga meddelandet när strömmen inte gav någon.
+       * Alla leverantörer strömmar inte likadant, och svaret får inte gå
+       * förlorat bara för att det kom i ett annat slags händelse — det är just
+       * det svaret som ska förklara för kunden vad som hände.
+       */
+      const finalText = final.content
+        .map((block) => (block.type === "text" ? block.text : ""))
+        .join("");
+      if (!streamed.trim() && finalText.trim()) {
+        answer += finalText;
+        emit({ type: "text", text: finalText });
+      }
+
       if (final.stop_reason === "refusal") {
         const text = "\n\nJag kan inte hjälpa till med den frågan. Prova att formulera om den.";
         answer += text;
         emit({ type: "text", text });
+        stopReason = "refusal";
         break;
       }
 
-      if (final.stop_reason !== "tool_use") break;
+      if (final.stop_reason !== "tool_use") {
+        stopReason = "answered";
+        break;
+      }
 
       const results: Anthropic.ToolResultBlockParam[] = [];
       for (const block of final.content) {
@@ -261,6 +301,12 @@ export async function runAssistant(input: {
         } catch (error) {
           output = { error: error instanceof Error ? error.message : "Verktyget misslyckades." };
         }
+        const failure =
+          output && typeof output === "object" && "error" in output
+            ? String((output as { error: unknown }).error)
+            : null;
+        steps.push({ name: block.name, ok: !failure, ...(failure ? { error: failure } : {}) });
+
         results.push({
           type: "tool_result",
           tool_use_id: block.id,
@@ -272,10 +318,26 @@ export async function runAssistant(input: {
   } catch (error) {
     const message = describeError(error);
     emit({ type: "error", message });
-    return { text: answer, variants: ctx.variants, draft: ctx.draft, rounds, error: message };
+    return {
+      text: answer,
+      variants: ctx.variants,
+      draft: ctx.draft,
+      rounds,
+      steps,
+      stopReason: "error",
+      error: message,
+    };
   }
 
-  return { text: answer, variants: ctx.variants, draft: ctx.draft, rounds, error: null };
+  return {
+    text: answer,
+    variants: ctx.variants,
+    draft: ctx.draft,
+    rounds,
+    steps,
+    stopReason,
+    error: null,
+  };
 }
 
 /**

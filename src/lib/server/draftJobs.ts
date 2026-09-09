@@ -75,6 +75,7 @@ export async function startDraftJob(input: {
     step: "I kö",
     summary: "",
     variants: [],
+    detail: {},
     error: null,
     createdAt: now,
     updatedAt: now,
@@ -157,8 +158,15 @@ async function run(
       ...current,
       status: result.error ? "failed" : "done",
       step: result.error ? "Avbröts" : "Klart",
-      summary: result.text.trim(),
+      summary: result.text.trim() || withoutAnswer(result),
       variants,
+      detail: {
+        model: input.provider?.model,
+        provider: input.provider?.provider,
+        rounds: result.rounds,
+        stopReason: result.stopReason,
+        steps: result.steps,
+      },
       error: result.error,
       updatedAt: new Date().toISOString(),
     };
@@ -185,4 +193,51 @@ async function run(
     };
     await writeDraftJob(current);
   }
+}
+
+/**
+ * Vad man säger när modellen inte sa någonting.
+ *
+ * Ett tomt svar är i sig en upplysning: antingen tog rundorna slut mitt i
+ * arbetet, eller så slutade modellen utan att skriva. Kunden ska slippa gissa
+ * vilket.
+ */
+function withoutAnswer(result: {
+  stopReason: string;
+  rounds: number;
+  steps: { name: string; ok: boolean; error?: string }[];
+}): string {
+  const failed = result.steps.filter((s) => !s.ok);
+  const parts: string[] = [];
+
+  if (result.stopReason === "max_rounds") {
+    parts.push(
+      `Assistenten hann inte bli klar: den gjorde ${result.rounds} arbetsrundor och nådde ` +
+        "taket utan att spara ett förslag.",
+    );
+  } else {
+    parts.push(
+      `Assistenten avslutade utan att skriva något svar (${result.rounds} arbetsrundor).`,
+    );
+  }
+
+  if (result.steps.length === 0) {
+    parts.push("Den anropade inga verktyg alls, så den läste förmodligen inte underlaget.");
+  } else {
+    const used = [...new Set(result.steps.map((s) => s.name))].join(", ");
+    parts.push(`Verktyg den hann använda: ${used}.`);
+  }
+
+  if (failed.length > 0) {
+    parts.push(
+      "Verktygen svarade med fel: " +
+        failed
+          .slice(0, 3)
+          .map((s) => `${s.name} — ${s.error}`)
+          .join(" · "),
+    );
+  }
+
+  parts.push("Prova igen, eller byt modell i adminvyn om det upprepas.");
+  return parts.join(" ");
 }

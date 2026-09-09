@@ -23,8 +23,29 @@ type Job = {
   step: string;
   summary: string;
   variants: { id: string; name: string; description: string; config: Configuration }[];
+  detail?: {
+    model?: string;
+    provider?: string;
+    rounds?: number;
+    stopReason?: string;
+    steps?: { name: string; ok: boolean; error?: string }[];
+  };
   error: string | null;
   createdAt: string;
+};
+
+/** Verktygsnamnen på svenska, samma ord som i assistentpanelen. */
+const TOOL_LABEL: Record<string, string> = {
+  get_machine_library: "läste maskinbiblioteket",
+  get_current_layout: "kontrollerade layouten",
+  set_flow: "satte flödet",
+  add_machine: "lade till maskin",
+  remove_machine: "tog bort maskin",
+  set_hall: "satte hallens mått",
+  clear_line: "tömde linjen",
+  draw_hall: "ritade upp lokalen",
+  estimate_price: "räknade pris",
+  propose_variant: "sparade förslag",
 };
 
 const POLL_MS = 5000;
@@ -117,23 +138,32 @@ export function DraftJobWatcher() {
     );
   }
 
+  // Rubriken ska stämma med vad som faktiskt kom ut. "Klart" över en ruta som
+  // säger att inget blev gjort är det som gör ett misslyckande obegripligt.
+  const delivered = job.variants.length > 0;
+  const heading = delivered ? "Ditt förslag är klart" : "Assistenten kom inte i mål";
+
   if (!open) {
     return (
       <button
         onClick={() => setOpen(true)}
         className="blueprint absolute left-3 top-3 flex items-center gap-2 border-accent bg-white px-3 py-2 text-xs shadow-sm"
       >
-        <span className="h-2 w-2 flex-none bg-accent" />
-        Ditt förslag är klart
+        <span className={`h-2 w-2 flex-none ${delivered ? "bg-accent" : "bg-warn"}`} />
+        {heading}
       </button>
     );
   }
 
   return (
-    <div className="absolute left-3 top-3 z-10 max-w-[440px] border border-accent bg-white p-3 text-sm shadow-lg">
+    <div
+      className={`absolute left-3 top-3 z-10 max-w-[440px] border bg-white p-3 text-sm shadow-lg ${
+        delivered ? "border-accent" : "border-divider"
+      }`}
+    >
       <div className="mb-2 flex items-center gap-2">
-        <span className="h-2 w-2 flex-none bg-accent" />
-        <h2 className="kicker">Ditt förslag är klart</h2>
+        <span className={`h-2 w-2 flex-none ${delivered ? "bg-accent" : "bg-warn"}`} />
+        <h2 className="kicker">{heading}</h2>
         <button
           onClick={() => setOpen(false)}
           className="ml-auto text-muted hover:text-ink"
@@ -149,11 +179,14 @@ export function DraftJobWatcher() {
         </p>
       ) : null}
 
-      {job.variants.length === 0 ? (
-        <p className="mb-3 text-xs leading-relaxed text-muted">
-          Assistenten kom inte fram till ett förslag ur underlaget. Läs texten ovan — den säger
-          oftast vad som saknas, till exempel ett känt mått att skala ritningen efter.
-        </p>
+      {!delivered ? (
+        <div className="mb-3 text-xs leading-relaxed text-muted">
+          <p className="mb-2">
+            Inget förslag sparades. Texten ovan är vad assistenten svarade; nedan står vad den
+            gjorde.
+          </p>
+          <JobTrace detail={job.detail} />
+        </div>
       ) : (
         <ul className="mb-3 space-y-2">
           {job.variants.map((variant) => (
@@ -178,14 +211,66 @@ export function DraftJobWatcher() {
         </ul>
       )}
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button size="sm" onClick={dismiss}>
           Klart — ta bort
         </Button>
         <span className="text-[11px] text-muted">
+          {job.detail?.model ? (
+            <>
+              Byggt av <span className="num">{job.detail.model}</span>
+              {job.detail.rounds ? ` på ${job.detail.rounds} rundor. ` : ". "}
+            </>
+          ) : null}
           Du kan ångra med Ctrl+Z om du använder ett förslag.
         </span>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Vad assistenten gjorde.
+ *
+ * Utan den här listan är ett misslyckat jobb en tom ruta: kunden ser att det
+ * inte blev något men inte varför. Verktygens egna fel är det som brukar
+ * förklara det — en ritning utan skala, en maskin som inte finns, en utgång
+ * som redan är upptagen.
+ */
+function JobTrace({ detail }: { detail: Job["detail"] }) {
+  if (!detail) return null;
+  const steps = detail.steps ?? [];
+  const failed = steps.filter((step) => !step.ok);
+
+  return (
+    <div className="border border-divider bg-paper px-2 py-2">
+      <div className="mb-1">
+        {detail.model ? (
+          <>
+            <span className="num">{detail.model}</span>
+            {detail.rounds ? `, ${detail.rounds} arbetsrundor` : ""}
+            {detail.stopReason === "max_rounds" ? " — nådde taket och hann inte bli klar" : ""}
+          </>
+        ) : null}
+      </div>
+      {steps.length === 0 ? (
+        <p>Inga verktyg anropades. Modellen läste förmodligen aldrig underlaget.</p>
+      ) : (
+        <ul className="space-y-0.5">
+          {steps.slice(-8).map((step, index) => (
+            <li key={index} className={step.ok ? "" : "text-danger"}>
+              {step.ok ? "✓" : "✕"} {TOOL_LABEL[step.name] ?? step.name}
+              {step.error ? ` — ${step.error}` : ""}
+            </li>
+          ))}
+        </ul>
+      )}
+      {failed.length > 0 ? (
+        <p className="mt-1">
+          Felen ovan kommer från verktygen, inte från modellen: de säger vad den försökte göra som
+          inte gick.
+        </p>
+      ) : null}
     </div>
   );
 }

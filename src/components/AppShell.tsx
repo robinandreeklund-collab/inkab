@@ -7,6 +7,7 @@ import { CadView } from "./CadView";
 import { ShareNotice } from "./ShareNotice";
 import { ModelView } from "./ModelView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
+import { DraftJobWatcher } from "./DraftJobWatcher";
 import { Inspector } from "./Inspector";
 import { LineStrip } from "./LineStrip";
 import { Onboarding } from "./Onboarding";
@@ -228,6 +229,7 @@ export function AppShell() {
           <div className="relative min-h-0 flex-1">
             <ShareNotice />
             {view === "model" ? <ModelView /> : <CadView />}
+            <DraftJobWatcher />
             <DiagnosticsPanel />
             <AiPanel />
             <ToolRail />

@@ -696,3 +696,282 @@ export async function deleteProposal(id: string, userId: string): Promise<void> 
   const found = memoryProposals.get(id);
   if (found && found.userId === userId) memoryProposals.delete(id);
 }
+
+
+/* ── Förslag som byggs i bakgrunden ────────────────────────────────────── */
+
+/**
+ * Ett jobb: kundens underlag in, ett förslag ut, någon gång senare.
+ *
+ * Att läsa en ritning och bygga en linje tar minuter, inte sekunder. Att låta
+ * kunden sitta och titta på en snurra under tiden är att göra väntan till
+ * hennes problem. I stället köas arbetet, kunden ritar vidare för hand, och
+ * jobbet säger till när det finns något att titta på.
+ *
+ * Jobbets id är också dess nyckel: en gäst utan konto kan hämta sitt eget
+ * jobb men inte någon annans, och är kunden inloggad knyts jobbet till kontot
+ * och kan bara läsas därifrån.
+ */
+
+export type DraftJobStatus = "queued" | "running" | "done" | "failed";
+
+export type StoredDraftJob = {
+  id: string;
+  userId: string | null;
+  status: DraftJobStatus;
+  /** Kundens egna ord om vad anläggningen ska göra. */
+  note: string;
+  fileNames: string[];
+  /** Vad som pågår just nu, för den som tittar. */
+  step: string;
+  /** Assistentens sammanfattning när jobbet är klart. */
+  summary: string;
+  variants: { id: string; name: string; description: string; config: unknown }[];
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+/**
+ * Ett jobb som varit igång längre än så har inte överlevt en omstart —
+ * arbetet lever i processen, inte i databasen.
+ */
+export const DRAFT_JOB_STALE_MS = 20 * 60 * 1000;
+
+const memoryJobs = new Map<string, StoredDraftJob>();
+
+async function ensureDraftJobTable(pool: PgPool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS draft_job (
+      id         text PRIMARY KEY,
+      user_id    text,
+      status     text NOT NULL,
+      note       text NOT NULL DEFAULT '',
+      file_names jsonb NOT NULL DEFAULT '[]'::jsonb,
+      step       text NOT NULL DEFAULT '',
+      summary    text NOT NULL DEFAULT '',
+      variants   jsonb NOT NULL DEFAULT '[]'::jsonb,
+      error      text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS draft_job_user ON draft_job (user_id)");
+}
+
+type DraftJobRow = {
+  id: string;
+  user_id: string | null;
+  status: DraftJobStatus;
+  note: string;
+  file_names: string[];
+  step: string;
+  summary: string;
+  variants: StoredDraftJob["variants"];
+  error: string | null;
+  created_at: Date;
+  updated_at: Date;
+};
+
+const fromDraftJobRow = (row: DraftJobRow): StoredDraftJob => ({
+  id: row.id,
+  userId: row.user_id,
+  status: row.status,
+  note: row.note,
+  fileNames: row.file_names ?? [],
+  step: row.step,
+  summary: row.summary,
+  variants: row.variants ?? [],
+  error: row.error,
+  createdAt: row.created_at.toISOString(),
+  updatedAt: row.updated_at.toISOString(),
+});
+
+/** Skriver hela jobbet. Minnet är alltid sanning; Postgres är för omstarter. */
+export async function writeDraftJob(job: StoredDraftJob): Promise<void> {
+  memoryJobs.set(job.id, job);
+
+  if (!postgresConfigured()) return;
+  try {
+    const pool = await getPool();
+    await ensureDraftJobTable(pool);
+    await pool.query(
+      `INSERT INTO draft_job (id, user_id, status, note, file_names, step, summary, variants, error, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
+       ON CONFLICT (id) DO UPDATE
+         SET status = $3, step = $6, summary = $7, variants = $8, error = $9, updated_at = now()`,
+      [
+        job.id,
+        job.userId,
+        job.status,
+        job.note,
+        JSON.stringify(job.fileNames),
+        job.step,
+        job.summary,
+        JSON.stringify(job.variants),
+        job.error,
+      ],
+    );
+    degradedReason = null;
+  } catch (error) {
+    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    poolPromise = null;
+  }
+}
+
+/**
+ * Hämtar ett jobb. Är det knutet till ett konto måste det vara samma konto;
+ * annars räcker id:t, som är hemligt.
+ */
+export async function readDraftJob(
+  id: string,
+  userId: string | null,
+): Promise<StoredDraftJob | null> {
+  let found = memoryJobs.get(id) ?? null;
+
+  if (!found && postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDraftJobTable(pool);
+      const result = await pool.query<DraftJobRow>("SELECT * FROM draft_job WHERE id = $1", [id]);
+      degradedReason = null;
+      found = result.rows[0] ? fromDraftJobRow(result.rows[0]) : null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  if (!found) return null;
+  if (found.userId && found.userId !== userId) return null;
+
+  // Ett jobb som ligger kvar som igång efter en omstart blir aldrig klart.
+  // Att säga det är bättre än att låta kunden vänta på något som är borta.
+  if (
+    (found.status === "queued" || found.status === "running") &&
+    Date.now() - new Date(found.updatedAt).getTime() > DRAFT_JOB_STALE_MS
+  ) {
+    const stale: StoredDraftJob = {
+      ...found,
+      status: "failed",
+      error:
+        "Jobbet avbröts när servern startade om. Ladda upp underlaget igen, " +
+        "eller fråga assistenten direkt.",
+      updatedAt: new Date().toISOString(),
+    };
+    await writeDraftJob(stale);
+    return stale;
+  }
+
+  return found;
+}
+
+/** Kontots jobb, nyast först. */
+export async function listDraftJobs(userId: string): Promise<StoredDraftJob[]> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDraftJobTable(pool);
+      const result = await pool.query<DraftJobRow>(
+        "SELECT * FROM draft_job WHERE user_id = $1 ORDER BY updated_at DESC LIMIT 20",
+        [userId],
+      );
+      degradedReason = null;
+      return result.rows.map(fromDraftJobRow);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return [...memoryJobs.values()]
+    .filter((j) => j.userId === userId)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function deleteDraftJob(id: string, userId: string | null): Promise<void> {
+  const found = await readDraftJob(id, userId);
+  if (!found) return;
+  memoryJobs.delete(id);
+  if (!postgresConfigured()) return;
+  try {
+    const pool = await getPool();
+    await ensureDraftJobTable(pool);
+    await pool.query("DELETE FROM draft_job WHERE id = $1", [id]);
+    degradedReason = null;
+  } catch (error) {
+    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    poolPromise = null;
+  }
+}
+
+
+/* ── Driftinställningar ────────────────────────────────────────────────── */
+
+/**
+ * Små inställningar som admin äger: i dag vilken modell assistenten går mot.
+ *
+ * De hör inte hemma i biblioteksdokumentet — det är produktdata som exporteras
+ * och committas — och inte i miljövariabler heller, eftersom de ska gå att
+ * ändra utan en ny deploy. Nycklar är undantaget: de kommer alltid ur miljön.
+ */
+
+const memorySettings = new Map<string, unknown>();
+
+async function ensureSettingTable(pool: PgPool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_setting (
+      id         text PRIMARY KEY,
+      value      jsonb NOT NULL,
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+}
+
+export async function readSetting<T>(id: string, fallback: T): Promise<T> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureSettingTable(pool);
+      const result = await pool.query<{ value: T }>(
+        "SELECT value FROM app_setting WHERE id = $1",
+        [id],
+      );
+      degradedReason = null;
+      if (result.rows[0]) return { ...fallback, ...(result.rows[0].value as object) } as T;
+      return fallback;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  const found = memorySettings.get(id);
+  return found ? ({ ...fallback, ...(found as object) } as T) : fallback;
+}
+
+export async function writeSetting<T>(
+  id: string,
+  value: T,
+): Promise<{ persisted: boolean; reason: string | null }> {
+  memorySettings.set(id, value);
+
+  if (!postgresConfigured()) {
+    return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
+  }
+  try {
+    const pool = await getPool();
+    await ensureSettingTable(pool);
+    await pool.query(
+      `INSERT INTO app_setting (id, value, updated_at) VALUES ($1, $2, now())
+       ON CONFLICT (id) DO UPDATE SET value = $2, updated_at = now()`,
+      [id, JSON.stringify(value)],
+    );
+    degradedReason = null;
+    return { persisted: true, reason: null };
+  } catch (error) {
+    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    poolPromise = null;
+    return { persisted: false, reason: degradedReason };
+  }
+}

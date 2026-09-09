@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { computeLayout } from "@/lib/layout";
 import { meters } from "@/lib/format";
@@ -11,6 +11,7 @@ import {
   toAttachment,
   type Attachment,
 } from "@/lib/attachments";
+import { rememberJob } from "@/lib/draftJobClient";
 import type { Configuration } from "@/lib/types";
 
 type Variant = { id: string; name: string; description: string; config: Configuration };
@@ -43,8 +44,51 @@ export function AiPanel() {
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [files, setFiles] = useState<Attachment[]>([]);
   const [reading, setReading] = useState(false);
+  const [queued, setQueued] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
   const historyRef = useRef<ChatTurn[]>([]);
   const fileInput = useRef<HTMLInputElement | null>(null);
+
+  // Att läsa en ritning tar minuter. En sekundräknare säger mer om att det
+  // faktiskt pågår än en snurra gör.
+  useEffect(() => {
+    if (!busy) return;
+    setElapsed(0);
+    const started = Date.now();
+    const timer = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(timer);
+  }, [busy]);
+
+  /* Samma underlag, men utan att någon behöver sitta och vänta på svaret. */
+  const queue = async () => {
+    if (files.length === 0 || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/ai/draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          config,
+          note: input,
+          attachments: files.map((f) => ({ name: f.name, mediaType: f.mediaType, data: f.data })),
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok || !body?.job?.id) {
+        setError(body?.error ?? `Servern svarade ${response.status}.`);
+        return;
+      }
+      rememberJob(body.job.id);
+      setFiles([]);
+      setInput("");
+      setQueued(true);
+    } catch {
+      setError("Nätverket svarade inte.");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const attach = async (chosen: FileList | null) => {
     if (!chosen?.length) return;
@@ -69,6 +113,7 @@ export function AiPanel() {
     if (!question.trim() || busy) return;
     setBusy(true);
     setError(null);
+    setQueued(false);
     setText("");
     setThinking("");
     setVariants([]);
@@ -192,8 +237,24 @@ export function AiPanel() {
       </div>
 
       {error ? <p className="mb-2 border border-danger px-3 py-2 text-xs text-danger">{error}</p> : null}
+      {queued ? (
+        <p className="mb-2 border border-accent px-3 py-2 text-xs text-accent">
+          Underlaget är inskickat. Du får besked uppe till vänster när förslaget står — rita
+          vidare under tiden.
+        </p>
+      ) : null}
       {text ? <p className="mb-3 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed">{text}</p> : null}
-      {busy && !text ? <p className="mb-3 text-sm text-muted">Tänker…</p> : null}
+      {busy && !text ? (
+        <p className="mb-3 text-sm text-muted">
+          Tänker… <span className="num">{elapsed} s</span>
+          {elapsed > 45 ? (
+            <span className="block text-xs">
+              Underlag tar tid att läsa. Nästa gång kan du välja Bygg i bakgrunden och rita vidare
+              under tiden.
+            </span>
+          ) : null}
+        </p>
+      ) : null}
 
       {variants.length > 0 ? (
         <div className="mb-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
@@ -295,6 +356,16 @@ export function AiPanel() {
           }
           className="flex-1 border border-divider px-3 py-2 text-sm outline-none focus:border-accent"
         />
+        {files.length > 0 ? (
+          <Button
+            type="button"
+            title="Assistenten arbetar i bakgrunden och säger till när förslaget står"
+            disabled={busy}
+            onClick={queue}
+          >
+            Bygg i bakgrunden
+          </Button>
+        ) : null}
         <Button type="submit" variant="primary" disabled={busy || !input.trim()}>
           {busy ? "Arbetar…" : "Skicka"}
         </Button>

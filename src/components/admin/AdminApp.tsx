@@ -10,6 +10,7 @@ import { IssueList } from "./fields";
 import { MachineForm } from "./MachineForm";
 import { PriceBookForm } from "./PriceBookForm";
 import { UserAdmin } from "./UserAdmin";
+import { AssistantPanel } from "./AssistantPanel";
 import { MachineThumb } from "../MachineThumb";
 import type { StoreStatus } from "@/lib/server/store";
 import type { PriceEntry } from "@/lib/server/pricebook";
@@ -69,7 +70,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   const [doc, setDoc] = useState<LibraryDocument | null>(null);
   const [status, setStatus] = useState<StoreStatus | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [tab, setTab] = useState<"machines" | "prices" | "users">("machines");
+  const [tab, setTab] = useState<"machines" | "prices" | "users" | "assistant">("machines");
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
@@ -292,6 +293,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
                 ["machines", `Maskiner (${doc.machines.length})`],
                 ["prices", "Prisbok"],
                 ["users", "Konton"],
+                ["assistant", "Assistent"],
               ] as const
             ).map(([value, label]) => (
               <button
@@ -372,7 +374,9 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
             </p>
           ) : null}
 
-          {tab === "users" ? (
+          {tab === "assistant" ? (
+            <AssistantPanel />
+          ) : tab === "users" ? (
             <UserAdmin currentUserId={currentUserId} />
           ) : tab === "prices" ? (
             <PriceBookForm

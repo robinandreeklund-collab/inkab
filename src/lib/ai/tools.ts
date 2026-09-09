@@ -77,11 +77,41 @@ function drawnSummary(config: Configuration) {
     }));
 }
 
+/**
+ * Layouten som assistenten ser den.
+ *
+ * Varje skrivverktyg svarar med en sammanfattning, och varje svar skickas med
+ * i nästa runda — och i den efter den. Ett svar som är dubbelt så stort kostar
+ * alltså inte dubbelt utan kvadratiskt över en tur. Därför är det korta svaret
+ * förval: nyckeltal och diagnostik, det som säger om ändringen blev bra.
+ * Hela listan med maskiner, portar och zoner kostar sitt och hämtas när den
+ * behövs, med get_current_layout.
+ */
 export function layoutSummary(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  options: { full?: boolean } = {},
 ) {
   const layout = computeLayout(config, library);
+  const brief = {
+    totalLengthM: m(layout.metrics.totalLengthMm),
+    totalWidthM: m(layout.metrics.totalWidthMm),
+    footprintM2: layout.metrics.footprintM2,
+    throughputPerHour: layout.metrics.throughputPerHour,
+    bottleneck: layout.metrics.bottleneck?.name ?? null,
+    totalPowerKw: layout.metrics.totalPowerKw,
+    machineCount: layout.placements.length,
+    drawnCount: config.drawn.length,
+    diagnostics: layout.diagnostics.map((d) => ({
+      code: d.code,
+      severity: d.severity,
+      title: d.title,
+    })),
+    errorCount: layout.diagnostics.filter((d) => d.severity === "error").length,
+    warningCount: layout.diagnostics.filter((d) => d.severity === "warning").length,
+  };
+  if (!options.full) return brief;
+
   return {
     totalLengthM: Number(
       meters(layout.metrics.totalLengthMm).replace(",", "."),
@@ -118,9 +148,8 @@ export function layoutSummary(
       detail: d.detail,
       hasSuggestedFix: !!d.fix,
     })),
-    errorCount: layout.diagnostics.filter((d) => d.severity === "error").length,
-    warningCount: layout.diagnostics.filter((d) => d.severity === "warning")
-      .length,
+    errorCount: brief.errorCount,
+    warningCount: brief.warningCount,
   };
 }
 
@@ -138,8 +167,9 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
     {
       name: "get_machine_library",
       description:
-        "Hämtar maskinbiblioteket med mått, kapacitet, portar, beroenden och optioner. " +
-        "Anropa alltid detta innan du föreslår en maskin — hitta aldrig på maskin-id. " +
+        "Maskinernas grunddata står redan i systemprompten (MASKINBIBLIOTEK) — läs den " +
+        "först. Det här verktyget ger samma lista i maskinläsbar form, filtrerad på " +
+        "kategori, och är till för när du vill vara säker på ett id eller en siffra. " +
         "Innehåller inga priser; använd estimate_price för det.",
       input_schema: {
         type: "object" as const,
@@ -438,33 +468,29 @@ export function executeTool(
   switch (name) {
     case "get_machine_library": {
       const category = input.category as string | undefined;
+      /*
+       * Kort form. Allt det här står redan i systemprompten, som är cachad och
+       * betalas en gång — det här svaret följer med i varje efterföljande
+       * runda och kostar därför om och om igen.
+       */
       return ctx.library.machines
-        .filter((m) => !category || m.category === category)
-        .map((m) => ({
-          id: m.id,
-          sku: m.sku,
-          name: m.name,
-          category: m.category,
-          categoryLabel: CATEGORY_LABEL[m.category],
-          summary: m.summary,
-          aux: !!m.aux,
-          lengthM: m.footprint.lengthMm / 1000,
-          widthM: m.footprint.widthMm / 1000,
-          heightM: m.footprint.heightMm / 1000,
-          capacityPerHour: m.capacity.packagesPerHour,
-          powerKw: m.utilities.powerKw,
-          mirrorable: m.mirrorable,
-          parametricLength: !!m.parametricLength,
-          changesDirection: m.ports.some(
-            (p) => p.allowsDirectionChange && p.role === "out",
-          ),
-          requires: m.requires ?? [],
-          options: m.options.map((o) => ({ id: o.id, name: o.name })),
+        .filter((machine) => !category || machine.category === category)
+        .map((machine) => ({
+          id: machine.id,
+          name: machine.name,
+          category: machine.category,
+          aux: !!machine.aux,
+          lengthM: machine.footprint.lengthMm / 1000,
+          widthM: machine.footprint.widthMm / 1000,
+          capacityPerHour: machine.capacity.packagesPerHour,
+          variants: machine.variants?.map((v) => v.id),
+          outPorts: machine.ports.filter((p) => p.role === "out").map((p) => p.id),
+          requires: machine.requires?.length ? machine.requires : undefined,
         }));
     }
 
     case "get_current_layout":
-      return layoutSummary(ctx.draft, ctx.library);
+      return layoutSummary(ctx.draft, ctx.library, { full: true });
 
     case "set_flow": {
       const patch = { ...(input as Partial<Configuration["flow"]>) };
@@ -711,7 +737,7 @@ export function executeTool(
         config: clone(ctx.draft),
       };
       ctx.variants.push(variant);
-      const summary = layoutSummary(variant.config, ctx.library);
+      const summary = layoutSummary(variant.config, ctx.library, { full: true });
       // Arbetskopian nollställs så att nästa förslag utgår från kundens layout.
       ctx.draft = clone(ctx.original);
       return {

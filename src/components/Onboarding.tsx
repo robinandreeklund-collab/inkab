@@ -1,11 +1,19 @@
 "use client";
 
+import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { DraftJobDialog } from "./DraftJobDialog";
 import { TEMPLATES, emptyConfig, templateConfig } from "@/lib/templates";
 import { Button } from "./ui";
 
 export function Onboarding() {
   const { load, setScreen, toggleAi } = useConfigStore();
+  /*
+   * Tom canvas är det läge där kunden har mest att vinna på att slippa rita
+   * allt själv. Därför frågar vi efter underlaget just där — en gång, med
+   * möjlighet att tacka nej och rita för hand som förut.
+   */
+  const [asking, setAsking] = useState<Parameters<typeof load>[0] | null>(null);
 
   const start = (config: Parameters<typeof load>[0]) => {
     load(config, { resetHistory: true });
@@ -14,6 +22,19 @@ export function Onboarding() {
 
   return (
     <div className="flex h-full flex-col items-center justify-center overflow-y-auto bg-paper p-6">
+      {asking ? (
+        <DraftJobDialog
+          config={asking}
+          onQueued={() => {
+            start(asking);
+            setAsking(null);
+          }}
+          onSkip={() => {
+            start(asking);
+            setAsking(null);
+          }}
+        />
+      ) : null}
       <div className="w-full max-w-5xl">
         <div className="kicker mb-2">Digital förstudie på 15 minuter</div>
         <h1 className="mb-2 text-3xl leading-tight">Konfigurera din anläggning</h1>
@@ -43,7 +64,7 @@ export function Onboarding() {
             title="Bygg från grunden"
             body="Tom canvas, full kontroll över maskinval och ordning."
             meta="Om du vet vad du vill"
-            onClick={() => start(emptyConfig())}
+            onClick={() => setAsking(emptyConfig())}
           />
         </div>
 

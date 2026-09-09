@@ -5,7 +5,7 @@
  *   node scripts/step-to-glb.mjs <fil.step> [flaggor]
  *
  * Samma konvertering som admin-vyns uppladdning: båda anropar
- * src/lib/server/stepConvert.ts. Det här skriptet är CLI:t runt den, för
+ * src/lib/cad/stepConvert.ts. Det här skriptet är CLI:t runt den, för
  * filer som är för stora för att skicka genom webbläsaren eller för körningar
  * som ska in i repot under public/models.
  *
@@ -35,13 +35,12 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 /*
- * Konverteringen ligger i en TypeScript-modul som Next också använder. Node
- * kan köra den direkt, men behöver två flaggor: --experimental-strip-types
- * för typerna, och --conditions=react-server för att paketet server-only ska
- * lösas till sin tomma variant i stället för att kasta. Saknas de startar
- * skriptet om sig självt med dem, så `node scripts/step-to-glb.mjs` räcker.
+ * Konverteringen ligger i en TypeScript-modul som admin-vyns web worker också
+ * använder. Node kan köra den direkt med --experimental-strip-types; saknas
+ * flaggan startar skriptet om sig självt med den, så att
+ * `node scripts/step-to-glb.mjs` räcker.
  */
-const REQUIRED_FLAGS = ["--experimental-strip-types", "--conditions=react-server"];
+const REQUIRED_FLAGS = ["--experimental-strip-types"];
 const missing = REQUIRED_FLAGS.filter((flag) => !process.execArgv.includes(flag));
 if (missing.length > 0) {
   const self = fileURLToPath(import.meta.url);
@@ -54,7 +53,7 @@ if (missing.length > 0) {
 }
 
 const { convertStep, suggestPorts } = await import(
-  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src/lib/server/stepConvert.ts")
+  path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "src/lib/cad/stepConvert.ts")
 );
 
 /* ── Argument ──────────────────────────────────────────────────────────── */

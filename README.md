@@ -102,7 +102,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
-| **CAD-kedja** | Ladda upp maskinens STEP-fil i admin — servern tessellerar, komprimerar, lagrar GLB:n och svarar med fotavtryck, portförslag, varningar och mätvärden. Måtten skrivs inte in automatiskt; panelen visar skillnaden mot biblioteket och du bestämmer. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora att skicka genom webbläsaren. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
+| **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. Panelen svarar med fotavtryck, portförslag, varningar och mätvärden; måtten skrivs inte in automatiskt utan visas som en skillnad mot biblioteket. Samma konvertering finns som `scripts/step-to-glb.mjs`. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Skalar likformigt och **varnar när modellens mått inte stämmer med bibliotekets** — 3D blir en kontroll av datan, inte bara en bild. |
 | **Offertunderlag** | Ett dokument satt för A4, inte en skärmvy: titelblock med underlagsnummer, datum och giltighet, ifyllbara kundfält, **planritning med måttsättning, skalstock, flödespil och positionsnummer som pekar in i maskinlistan**, maskinlista med mått, tekniska förutsättningar, flödesval och avgränsningar. Sidfoten upprepas på varje sida och tabellhuvudet följer med över sidbrytningen. |
 | **Underlagsnummer** | Räknas ur konfigurationen, inte ur en räknare: samma anläggning ger alltid samma nummer, och ändras linjen ändras numret. Ett papper och en konfiguration kan alltså inte glida isär i tysthet. Kundfält och projektnamn påverkar det inte. |
@@ -168,7 +168,8 @@ vänster `−Y`** — den konventionen avgör vad de fyra sidofrågorna betyder.
 
 ```
 scripts/
-└── step-to-glb.mjs       STEP → GLB + katalogkort (CLI runt src/lib/server/stepConvert.ts)
+├── copy-occt-wasm.mjs    Kopierar OpenCascades wasm till public/ före bygget
+└── step-to-glb.mjs       STEP → GLB + katalogkort (CLI runt src/lib/cad/stepConvert.ts)
 src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
@@ -198,7 +199,7 @@ src/
 └── app/
     ├── page.tsx
     ├── admin/            Admin-vyn
-    └── api/              ai/chat · price · library · models · auth · admin (library, step, users) · health
+    └── api/              ai/chat · price · library · models · auth · admin (library, model, users) · health
 ```
 
 ---

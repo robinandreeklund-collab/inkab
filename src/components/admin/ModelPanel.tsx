@@ -3,15 +3,21 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, SelectField, TextField } from "./fields";
+import type { WorkerRequest, WorkerResponse } from "@/workers/step.worker";
 import type { Machine, Port } from "@/lib/types";
 
 /**
- * STEP-uppladdning per maskin.
+ * STEP-konvertering per maskin.
  *
- * Admin väljer maskinens STEP-fil; servern tessellerar, komprimerar och
- * lagrar GLB:n och svarar med vad geometrin säger. Måtten skrivs aldrig in
- * automatiskt — panelen visar skillnaden mot biblioteket och admin bestämmer.
- * Ett uppmätt värde är sanning tills någon medvetet byter ut det.
+ * Konverteringen körs i webbläsaren, i en web worker, på den här datorn.
+ * STEP-filen laddas aldrig upp — bara den färdiga GLB:n, några hundra
+ * kilobyte. Skälet är hårt: tesselleringen tar hundratals megabyte, och en
+ * webbinstans som får slut på minne dör utan att kunna svara. Laptopen har
+ * minnet; webbservern har det inte.
+ *
+ * Måtten skrivs aldrig in automatiskt — panelen visar skillnaden mot
+ * biblioteket och admin bestämmer. Ett uppmätt värde är sanning tills någon
+ * medvetet byter ut det.
  */
 
 type Stats = {
@@ -34,6 +40,15 @@ type Result = {
   notes: string[];
   persisted: boolean;
   stats: Stats;
+};
+
+const STAGE_TEXT: Record<string, string> = {
+  laddar: "Startar OpenCascade",
+  tessellerar: "Tessellerar geometrin",
+  rensar: "Utelämnar smådelar",
+  bygger: "Bygger modellen",
+  förenklar: "Förenklar proxyn",
+  komprimerar: "Komprimerar",
 };
 
 type StoredModel = {
@@ -61,18 +76,17 @@ export function ModelPanel({
   const [up, setUp] = useState<"z" | "y">("z");
   const [proxy, setProxy] = useState(true);
 
-  const [phase, setPhase] = useState<"idle" | "sending" | "converting">("idle");
-  const [percent, setPercent] = useState(0);
+  const [stage, setStage] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [stored, setStored] = useState<StoredModel[]>([]);
 
-  const busy = phase !== "idle";
+  const busy = stage !== null;
 
   const loadStored = useCallback(async () => {
     try {
-      const response = await fetch(`/api/admin/step?machineId=${encodeURIComponent(machine.id)}`);
+      const response = await fetch(`/api/admin/model?machineId=${encodeURIComponent(machine.id)}`);
       if (!response.ok) return;
       const body = (await response.json()) as { models: StoredModel[] };
       setStored(body.models.filter((m) => m.kind === "glb"));
@@ -90,57 +104,113 @@ export function ModelPanel({
   // Tesselleringen kan ta minuter på en stor sammanställning. Utan en klocka
   // ser det ut som att det har hängt sig.
   useEffect(() => {
-    if (phase !== "converting") return;
+    if (!busy) return;
     const started = Date.now();
     setElapsed(0);
     const timer = setInterval(() => setElapsed(Math.round((Date.now() - started) / 1000)), 1000);
     return () => clearInterval(timer);
-  }, [phase]);
+  }, [busy]);
 
-  const upload = (file: File) => {
+  const convert = async (file: File) => {
     setError(null);
     setResult(null);
-    setPercent(0);
-    setPhase("sending");
+    setStage("laddar");
 
-    const form = new FormData();
-    form.set("file", file);
-    form.set("machineId", machine.id);
-    form.set("tolerance", String(tolerance));
-    form.set("minPart", String(minPart));
-    form.set("up", up);
-    form.set("proxy", String(proxy));
+    let worker: Worker;
+    try {
+      worker = new Worker(new URL("../../workers/step.worker.ts", import.meta.url));
+    } catch {
+      setStage(null);
+      setError("Webbläsaren kunde inte starta konverteringen. Prova en nyare webbläsare.");
+      return;
+    }
 
-    // XHR i stället för fetch: en 80 MB STEP behöver en förloppsindikator,
-    // och fetch rapporterar inte hur mycket av kroppen som har gått iväg.
-    const request = new XMLHttpRequest();
-    request.open("POST", "/api/admin/step");
-    request.upload.onprogress = (event) => {
-      if (event.lengthComputable) setPercent(Math.round((event.loaded / event.total) * 100));
+    const step = await file.arrayBuffer();
+    const started = Date.now();
+
+    worker.onerror = (event) => {
+      setStage(null);
+      worker.terminate();
+      // Slut på minne i webbläsaren visar sig här. Storleken är oftast svaret.
+      setError(
+        `Konverteringen avbröts (${event.message || "okänt fel"}). Är filen mycket stor: ` +
+          "höj toleransen och gränsen för smådelar, eller kör den med skriptet.",
+      );
     };
-    request.upload.onload = () => setPhase("converting");
-    request.onerror = () => {
-      setPhase("idle");
-      setError("Uppladdningen bröts. Nätverket eller servern svarade inte.");
-    };
-    request.onload = () => {
-      setPhase("idle");
-      let body: (Result & { error?: string }) | null = null;
+
+    worker.onmessage = async (event: MessageEvent<WorkerResponse>) => {
+      const message = event.data;
+
+      if (message.kind === "progress") {
+        setStage(message.stage);
+        return;
+      }
+
+      if (message.kind === "error") {
+        setStage(null);
+        worker.terminate();
+        setError(message.message);
+        return;
+      }
+
+      worker.terminate();
+      setStage("laddar upp");
+
+      const stats = message.stats as Stats;
+      const form = new FormData();
+      form.set("machineId", machine.id);
+      form.set("sourceName", file.name.slice(0, 160));
+      form.set("glb", new Blob([message.glb], { type: "model/gltf-binary" }), `${machine.id}.glb`);
+      // En proxy som inte är märkbart mindre är bara en fil till att ladda ner.
+      if (message.proxy && message.proxy.byteLength < message.glb.byteLength * 0.6) {
+        form.set(
+          "proxy",
+          new Blob([message.proxy], { type: "model/gltf-binary" }),
+          `${machine.id}.proxy.glb`,
+        );
+      }
+
       try {
-        body = JSON.parse(request.responseText);
+        const response = await fetch("/api/admin/model", { method: "POST", body: form });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body?.ok) {
+          setError(body?.error ?? `Servern svarade ${response.status}.`);
+          setStage(null);
+          return;
+        }
+
+        setResult({
+          model: body.model,
+          footprint: message.footprint,
+          ports: message.ports as Port[],
+          warnings: message.warnings,
+          notes: body.notes ?? [],
+          persisted: body.persisted,
+          stats: { ...stats, seconds: Math.round((Date.now() - started) / 100) / 10 },
+        });
+        onChange({ ...machine, model: { glb: body.model.glb, proxy: body.model.proxy } });
+        loadStored();
       } catch {
-        setError(`Servern svarade ${request.status} utan läsbart innehåll.`);
-        return;
+        setError("Modellen konverterades men kunde inte sparas. Nätverket svarade inte.");
+      } finally {
+        setStage(null);
       }
-      if (request.status >= 400 || !body) {
-        setError(body?.error ?? `Servern svarade ${request.status}.`);
-        return;
-      }
-      setResult(body);
-      onChange({ ...machine, model: { glb: body.model.glb, proxy: body.model.proxy } });
-      loadStored();
     };
-    request.send(form);
+
+    worker.postMessage(
+      {
+        step,
+        options: {
+          toleranceMm: tolerance,
+          angularDeflection: 0.5,
+          minPartMm: minPart,
+          ratio: 1,
+          up,
+          proxy,
+        },
+      } satisfies WorkerRequest,
+      [step],
+    );
   };
 
   const applyFootprint = () => {
@@ -160,7 +230,7 @@ export function ModelPanel({
   };
 
   const removeStored = async (id: string) => {
-    await fetch(`/api/admin/step?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    await fetch(`/api/admin/model?id=${encodeURIComponent(id)}`, { method: "DELETE" });
     if (machine.model?.glb === `/api/models/${id}`) {
       onChange({ ...machine, model: undefined });
     }
@@ -179,7 +249,7 @@ export function ModelPanel({
   return (
     <Panel
       title="3D-modell från STEP"
-      description="Ladda upp maskinens STEP-fil. Servern tessellerar och komprimerar."
+      description="Välj maskinens STEP-fil. Den konverteras här i webbläsaren."
       action={
         <div className="flex items-center gap-2">
           <input
@@ -189,29 +259,21 @@ export function ModelPanel({
             className="hidden"
             onChange={(e) => {
               const file = e.target.files?.[0];
-              if (file) upload(file);
+              if (file) convert(file);
               e.target.value = "";
             }}
           />
           <Button size="sm" disabled={busy} onClick={() => fileInput.current?.click()}>
-            {phase === "sending"
-              ? `Laddar upp ${percent} %`
-              : phase === "converting"
-                ? `Konverterar… ${elapsed} s`
-                : "+ STEP-fil"}
+            {busy ? `${STAGE_TEXT[stage] ?? "Sparar"}… ${elapsed} s` : "+ STEP-fil"}
           </Button>
         </div>
       }
     >
-      {phase === "sending" ? (
-        <div className="mb-3 h-1 w-full bg-paper">
-          <div className="h-1 bg-accent transition-all" style={{ width: `${percent}%` }} />
-        </div>
-      ) : null}
-      {phase === "converting" ? (
+      {busy ? (
         <p className="mb-3 border border-divider bg-paper px-3 py-2 text-xs text-muted">
-          Filen är uppe. Tesselleringen körs på servern och tar sekunder till minuter
-          beroende på hur mycket geometri sammanställningen innehåller. Lämna fliken öppen.
+          {STAGE_TEXT[stage] ?? "Sparar modellen"}. Konverteringen körs på den här datorn
+          och tar sekunder till minuter beroende på hur mycket geometri sammanställningen
+          innehåller. Lämna fliken öppen — gränssnittet fungerar under tiden.
         </p>
       ) : null}
 
@@ -257,11 +319,12 @@ export function ModelPanel({
       </Grid>
 
       <p className="mt-2 text-[11px] leading-relaxed text-muted">
-        Toleransen är den största spaken: 5 mm mot 0,1 mm är ofta 15–35 gånger färre
-        trianglar på krökt geometri och visuellt identiskt i layoutskala. Går det inte
-        att konvertera här — filen är för stor eller minnet tar slut — kör{" "}
+        Konverteringen körs i webbläsaren och STEP-filen lämnar aldrig datorn — bara den
+        färdiga modellen sparas. Toleransen är den största spaken: 5 mm mot 0,1 mm är ofta
+        15–35 gånger färre trianglar på krökt geometri och visuellt identiskt i layoutskala.
+        Går det ändå inte — minnet tar slut på en riktigt tung sammanställning — kör{" "}
         <code className="num">node scripts/step-to-glb.mjs fil.step --id {machine.id}</code>{" "}
-        lokalt och lägg GLB:n under <code className="num">public/models</code>.
+        och lägg GLB:n under <code className="num">public/models</code>.
       </p>
 
       {result ? (

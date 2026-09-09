@@ -5,10 +5,10 @@ Analys av den föreslagna CAD-pipelinen, och vad jag skulle ändra.
 > Kort version: grundplanen är rätt. Det mesta jag har att säga handlar om att
 > göra **mindre** än vad som föreslås, i en annan ordning.
 
-**Pipelinen är byggd och körs — och den körs från plattformen.** Ladda upp
-maskinens STEP-fil i admin-vyn så sköter servern resten: tessellering,
-komprimering, lagring och mätvärden tillbaka. Samma konvertering finns som
-kommandoradsskript för filer som är för stora att skicka genom webbläsaren.
+**Pipelinen är byggd och körs — och den körs från plattformen.** Välj
+maskinens STEP-fil i admin-vyn så sköter webbläsaren resten: tessellering,
+komprimering och mätvärden tillbaka. Filen laddas aldrig upp; bara den färdiga
+modellen sparas. Samma konvertering finns som kommandoradsskript.
 `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt vid varje
 testkörning, mot en riktig STEP, och underkänner om något går sönder. Vyn
 **Modell** i konfiguratorn laddar modellerna med three.js. Se
@@ -206,15 +206,18 @@ pakethantering, och att grader bara flyttar in en felkälla.
 
 ## Så kör du den
 
-Det finns två vägar in, och de kör **samma kod**:
-`src/lib/server/stepConvert.ts`. Skriptet och admin-uppladdningen kan därför
-inte glida isär.
+Det finns två vägar in, och de kör **samma kod**: `src/lib/cad/stepConvert.ts`.
+Modulen är plattformsneutral — den körs i en web worker i webbläsaren och i
+Node av skriptet — så de kan inte glida isär.
 
 ### Från admin-vyn — vanliga fallet
 
 Öppna maskinen i admin, gå till panelen **3D-modell från STEP** och välj
-maskinens STEP-fil. Servern tessellerar, komprimerar, lagrar GLB:n och fyller i
-maskinens modellfält åt dig. Panelen visar sedan:
+maskinens STEP-fil. Konverteringen körs **i webbläsaren**, i en web worker på
+den datorn. STEP-filen laddas aldrig upp; bara den färdiga GLB:n skickas till
+servern, några hundra kilobyte i stället för åttio megabyte.
+
+Panelen visar sedan:
 
 - **Mätvärdena** — filstorlek in och ut, antal delar, trianglar, tid.
 - **Varningarna** — fel längdenhet, orimlig höjd, för mycket geometri.
@@ -226,24 +229,45 @@ maskinens modellfält åt dig. Panelen visar sedan:
 
 Reglagen är desamma som skriptets: tolerans, minsta del, upp-axel, proxy.
 
+#### Varför inte på servern
+
+Första versionen tessellerade i webbservern. Den fungerade lokalt och gav
+**502 utan läsbart innehåll** i drift, vilket är det svar man får när det inte
+finns någon server kvar att svara.
+
+Räkningen är enkel. Webbinstansen på Render har 512 MB. Next själv tar runt
+110 MB. En uppladdad 80 MB-fil buffras av `formData()` och sedan en gång till
+av `arrayBuffer()` — 160 MB innan något har hänt. Tesselleringen av en tung
+sammanställning tar hundratals megabyte till. Då dödar cgroupen processen, och
+en dödad process kastar inget fel som går att fånga: den försvinner, och
+proxyn svarar 502. Felhanteringen i rutten var därför verkningslös — den
+kunde aldrig köras.
+
+En bärbar dator har 8–32 GB. Arbetet hör hemma där minnet finns. Att flytta
+det till webbläsaren löser tre saker på en gång: uppladdningen försvinner,
+serverns minnestak slutar spela roll, och en misslyckad konvertering kan inte
+längre fälla sajten för alla andra.
+
+Priset är att OpenCascades wasm — 7,6 MB — hämtas första gången någon
+konverterar. Den kopieras till `public/occt/` vid bygget av
+`scripts/copy-occt-wasm.mjs`, så den kan aldrig bli en annan version än den
+`occt-import-js` i `node_modules` förväntar sig.
+
 **Var modellen hamnar.** GLB:n lagras i en egen tabell (`machine_model`) och
 serveras av `/api/models/<id>`, aldrig i biblioteksdokumentet — se
 [GLB hör inte hemma i biblioteksdokumentet](#glb-hör-inte-hemma-i-biblioteksdokumentet).
 Utan `DATABASE_URL` ligger den bara i serverns minne och försvinner vid
 omstart; panelen säger det rakt ut i stället för att låtsas att den är sparad.
 
-**Gränserna.** Taket är 120 MB per fil, och tesselleringen körs i
-webbserverns process. En tung sammanställning tar minuter och mycket minne — på
-en liten instans kan den slå i taket. Händer det svarar servern med vad som
-gick fel och vad du kan göra: höj toleransen, höj gränsen för smådelar, eller
-kör filen lokalt med skriptet.
-
-### Från kommandoraden — stora filer och sådant som ska in i repot
+### Från kommandoraden — sådant som ska in i repot
 
 ```bash
 node scripts/step-to-glb.mjs maskiner/tsl-enkel.step \
   --id tsl-enkel --tolerance 2 --min-part 50
 ```
+
+För modeller som ska versionshanteras med koden, och som en utväg om
+webbläsaren skulle gå ur minnet på en riktigt tung sammanställning.
 
 Skriver `public/models/tsl-enkel.glb` och `tsl-enkel.card.json`. Kortet
 innehåller fotavtryck, höjd, ett portförslag och mätvärden — trianglar in,

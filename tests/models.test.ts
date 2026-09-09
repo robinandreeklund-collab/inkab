@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { convertStep, suggestPorts } from "@/lib/server/stepConvert";
+import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 
 /**
- * Uppladdningen från admin-vyn går genom convertStep och modellagret. Testet
- * kör båda på riktigt, utan Postgres — samma väg som en server utan
- * DATABASE_URL tar.
+ * convertStep är samma modul som admin-vyns web worker och CLI-skriptet kör.
+ * Testet kör den på riktigt i Node, och modellagret utan Postgres — samma väg
+ * som en server utan DATABASE_URL tar.
  */
 
 const SAMPLE = "node_modules/occt-import-js/test/testfiles/cax-if/as1-oc-214.stp";

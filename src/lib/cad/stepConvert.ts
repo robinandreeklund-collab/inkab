@@ -1,6 +1,5 @@
-import "server-only";
 import occtimportjs, { type OcctMesh } from "occt-import-js";
-import { Document, NodeIO } from "@gltf-transform/core";
+import { Document, WebIO } from "@gltf-transform/core";
 import { ALL_EXTENSIONS, EXTMeshoptCompression } from "@gltf-transform/extensions";
 import { dedup, prune, quantize, simplify, weld } from "@gltf-transform/functions";
 import { MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
@@ -9,12 +8,16 @@ import type { Port } from "@/lib/types";
 /**
  * STEP → GLB.
  *
- * Körs på servern, aldrig i webbläsaren: en STEP är B-rep som måste
- * tesselleras innan något kan ritas, och det tar sekunder till minuter och
- * hundratals megabyte trianglar.
+ * En STEP är B-rep som måste tesselleras innan något kan ritas, och det tar
+ * sekunder till minuter och hundratals megabyte trianglar. Just därför körs
+ * det INTE i webbservern: en 512 MB-instans dör av en stor sammanställning,
+ * och tar hela sajten med sig. Arbetet hör hemma där minnet finns —
+ * konstruktörens egen dator.
  *
- * Samma modul används av admin-vyns uppladdning och av CLI-skriptet, så det
- * finns bara en implementation att lita på.
+ * Modulen är därför plattformsneutral. Den körs i en web worker i admin-vyn
+ * och i Node av scripts/step-to-glb.mjs, med samma kod på båda ställena.
+ * WebIO används i stället för NodeIO eftersom writeBinary inte rör filsystemet
+ * och WebIO fungerar i båda miljöerna.
  */
 
 export type ConvertOptions = {
@@ -31,7 +34,22 @@ export type ConvertOptions = {
   up?: "z" | "y";
   /** Skriv även en kraftigt förenklad proxy. */
   proxy?: boolean;
+  /**
+   * Var .wasm-filen ligger. I webbläsaren måste den pekas ut, annars letar
+   * Emscripten bredvid det bundlade skriptet. I Node hittar den själv.
+   */
+  wasmUrl?: string;
+  /** Kallas när ett steg börjar. Konverteringen tar minuter på tung geometri. */
+  onProgress?: (stage: ConvertStage) => void;
 };
+
+export type ConvertStage =
+  | "laddar"
+  | "tessellerar"
+  | "rensar"
+  | "bygger"
+  | "förenklar"
+  | "komprimerar";
 
 export type ConvertResult = {
   glb: Uint8Array;
@@ -52,12 +70,12 @@ export type ConvertResult = {
   };
 };
 
-const DEFAULTS: Required<Omit<ConvertOptions, "proxy">> & { proxy: boolean } = {
+const DEFAULTS = {
   toleranceMm: 2,
   angularDeflection: 0.5,
   minPartMm: 50,
   ratio: 1,
-  up: "z",
+  up: "z" as const,
   proxy: false,
 };
 
@@ -82,9 +100,14 @@ export async function convertStep(
 ): Promise<ConvertResult> {
   const opt = { ...DEFAULTS, ...options };
   const started = Date.now();
+  const report = (stage: ConvertStage) => options.onProgress?.(stage);
 
   /* ── Tessellera ──────────────────────────────────────────────────────── */
-  const occt = await occtimportjs();
+  report("laddar");
+  const occt = await occtimportjs(
+    opt.wasmUrl ? { locateFile: () => opt.wasmUrl as string } : undefined,
+  );
+  report("tessellerar");
   const read = occt.ReadStepFile(step, {
     linearUnit: "millimeter",
     linearDeflectionType: "absolute_value",
@@ -96,6 +119,7 @@ export async function convertStep(
   }
 
   /* ── Släng det som inte syns ─────────────────────────────────────────── */
+  report("rensar");
   const parts: Part[] = read.meshes
     .map((mesh) => ({ mesh, ...bounds(mesh.attributes.position.array) }))
     .filter((p) => Number.isFinite(p.min[0]));
@@ -145,6 +169,7 @@ export async function convertStep(
 
   /* ── Bygg glTF ───────────────────────────────────────────────────────── */
   const build = async (ratio: number, name: string) => {
+    report(ratio < 1 ? "förenklar" : "bygger");
     const doc = new Document();
     const buffer = doc.createBuffer();
     const scene = doc.createScene(name);
@@ -206,13 +231,14 @@ export async function convertStep(
     if (ratio < 1) steps.push(simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.002 }));
     steps.push(quantize({ quantizePosition: 14, quantizeNormal: 10 }));
     await doc.transform(...steps);
+    report("komprimerar");
 
     doc
       .createExtension(EXTMeshoptCompression)
       .setRequired(true)
       .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
 
-    const io = new NodeIO()
+    const io = new WebIO()
       .registerExtensions(ALL_EXTENSIONS)
       .registerDependencies({ "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": null });
     return io.writeBinary(doc);

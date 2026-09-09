@@ -30,5 +30,18 @@ declare module "occt-import-js" {
     ReadIgesFile(buffer: Uint8Array, params: OcctReadParams | null): OcctReadResult;
   };
 
-  export default function occtimportjs(): Promise<OcctInstance>;
+  /**
+   * Emscriptens standardöverskrivningar. Bara locateFile behövs: i
+   * webbläsaren måste modulen få veta var .wasm-filen ligger, eftersom den
+   * annars letar bredvid det bundlade skriptet.
+   */
+  export type OcctModuleOverrides = {
+    locateFile?: (path: string, prefix: string) => string;
+    print?: (text: string) => void;
+    printErr?: (text: string) => void;
+  };
+
+  export default function occtimportjs(
+    overrides?: OcctModuleOverrides,
+  ): Promise<OcctInstance>;
 }

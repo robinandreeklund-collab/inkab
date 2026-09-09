@@ -8,10 +8,13 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "prebuild": "node scripts/copy-occt-wasm.mjs",
+    "predev": "node scripts/copy-occt-wasm.mjs",
     "start": "next start -p ${PORT:-3000}",
     "lint": "next lint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "pretest": "node scripts/copy-occt-wasm.mjs",
     "test:watch": "vitest",
     "step2glb": "node scripts/step-to-glb.mjs"
   },

@@ -73,6 +73,8 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [issues, setIssues] = useState<Issue[]>([]);
+  /** Felen ligger högst upp i huvudytan; är man nedskrollad syns de inte. */
+  const issuesRef = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
@@ -147,6 +149,12 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     if (!local.success) {
       setIssues(collectIssues(local.error));
       setSaving(false);
+      // Utan det här händer ingenting synligt när man trycker Spara långt ner
+      // i formuläret: felen ritas ovanför skärmkanten och knappen ser bara
+      // trasig ut. Ett tyst nej är värre än ett fel.
+      requestAnimationFrame(() =>
+        issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      );
       return;
     }
 
@@ -160,6 +168,9 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
 
     if (!response.ok) {
       setIssues(data.issues ?? [{ path: "", message: data.error ?? "Sparningen misslyckades." }]);
+      requestAnimationFrame(() =>
+        issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
+      );
       return;
     }
 
@@ -344,12 +355,17 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
         </nav>
 
         <main className="scroll-thin min-w-0 flex-1 overflow-y-auto p-4">
-          {issues.length > 0 ? (
-            <div className="mb-4">
-              <p className="kicker mb-1 text-danger">Sparningen stoppades</p>
-              <IssueList issues={issues} />
-            </div>
-          ) : null}
+          <div ref={issuesRef}>
+            {issues.length > 0 ? (
+              <div className="mb-4 border border-danger p-3">
+                <p className="kicker mb-1 text-danger">
+                  Sparningen stoppades — {issues.length}{" "}
+                  {issues.length === 1 ? "fel" : "fel"} måste rättas först
+                </p>
+                <IssueList issues={issues} />
+              </div>
+            ) : null}
+          </div>
           {message ? (
             <p className="mb-4 border border-accent bg-white px-3 py-2 text-xs text-accent">
               {message}

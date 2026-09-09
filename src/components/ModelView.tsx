@@ -28,6 +28,13 @@ export function ModelView() {
   const [loaded, setLoaded] = useState<{ withModel: number; total: number } | null>(null);
   /** Maskiner där modellens mått inte stämmer med bibliotekets. */
   const [mismatches, setMismatches] = useState<string[]>([]);
+  /**
+   * Modeller som är inlagda på maskinen men inte gick att hämta. Tidigare
+   * ritades maskinen bara som en låda, vilket ser likadant ut som "ingen
+   * modell" — och den vanligaste orsaken är att servern startat om utan
+   * DATABASE_URL, alltså precis det man behöver få veta.
+   */
+  const [missing, setMissing] = useState<string[]>([]);
 
   useEffect(() => {
     let disposed = false;
@@ -141,8 +148,10 @@ export function ModelView() {
 
         const withModel = result.placements.filter((p) => p.machine.model?.glb).length;
         const found: string[] = [];
+        const absent: string[] = [];
         setLoaded({ withModel, total: result.placements.length });
         setMismatches([]);
+        setMissing([]);
         setStatus(
           withModel === 0
             ? "Inga maskinmodeller inlagda ännu — visar fotavtryck. Kör scripts/step-to-glb.mjs och peka ut GLB:n i admin."
@@ -178,7 +187,9 @@ export function ModelView() {
               group.add(clone);
               continue;
             } catch {
-              // Faller igenom till lådan nedan.
+              // Faller igenom till lådan nedan, men tyst gör det inte.
+              absent.push(placement.machine.name);
+              if (mine === generation) setMissing([...absent]);
             }
           }
 
@@ -236,7 +247,23 @@ export function ModelView() {
   return (
     <div className="relative h-full w-full">
       <div ref={mount} className="h-full w-full" />
-      {mismatches.length > 0 ? (
+      {missing.length > 0 ? (
+        <div className="absolute left-2 top-2 max-w-md border border-danger bg-white/95 p-2">
+          <div className="kicker mb-1 text-danger">Modellfilen gick inte att hämta</div>
+          <ul className="space-y-0.5">
+            {missing.map((name, i) => (
+              <li key={i} className="text-[11px] leading-relaxed text-ink">
+                {name}
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            Maskinen ritas som sitt fotavtryck så länge. Vanligaste orsaken är att servern
+            saknar <code className="num">DATABASE_URL</code> — då ligger uppladdade modeller
+            bara i minnet och försvinner när instansen startar om.
+          </p>
+        </div>
+      ) : mismatches.length > 0 ? (
         <div className="absolute left-2 top-2 max-w-md border border-warn bg-white/95 p-2">
           <div className="kicker mb-1 text-warn">Modell och mått skiljer sig</div>
           <ul className="space-y-0.5">

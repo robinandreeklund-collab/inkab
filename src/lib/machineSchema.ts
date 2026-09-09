@@ -330,6 +330,37 @@ export type LibraryDocument = {
 export function collectIssues(error: z.ZodError): { path: string; message: string }[] {
   return error.issues.map((issue) => ({
     path: issue.path.join("."),
-    message: issue.message,
+    message: swedish(issue),
   }));
+}
+
+/**
+ * Zods egna meddelanden är på engelska. De egna reglerna i schemat är redan
+ * skrivna på svenska, så bara de inbyggda behöver översättas — annars möter
+ * admin en blandning av två språk mitt i ett formulär.
+ */
+function swedish(issue: z.ZodIssue): string {
+  switch (issue.code) {
+    case z.ZodIssueCode.too_small:
+      return issue.type === "string"
+        ? `Får inte vara kortare än ${issue.minimum} tecken.`
+        : issue.type === "array"
+          ? `Minst ${issue.minimum} poster krävs.`
+          : `Måste vara minst ${issue.minimum}.`;
+    case z.ZodIssueCode.too_big:
+      return issue.type === "string"
+        ? `Får inte vara längre än ${issue.maximum} tecken.`
+        : issue.type === "array"
+          ? `Högst ${issue.maximum} poster.`
+          : `Får vara högst ${issue.maximum}.`;
+    case z.ZodIssueCode.invalid_type:
+      return issue.received === "undefined"
+        ? "Fältet saknas."
+        : `Fel typ: ${issue.received} där ${issue.expected} förväntas.`;
+    case z.ZodIssueCode.invalid_enum_value:
+      return `Måste vara ett av: ${issue.options.join(", ")}.`;
+    default:
+      // De egna reglerna i schemat skriver redan svenska meddelanden.
+      return issue.message;
+  }
 }

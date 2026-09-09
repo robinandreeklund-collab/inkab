@@ -31,7 +31,7 @@ Vid deployen frågar Render om två miljövariabler:
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. Läggs in i Render under **din tjänst → Environment → Environment Variables**. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
-| `DATABASE_URL` | Nej | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge servern gör det — admin-vyn säger det rakt ut och erbjuder export till JSON. **Sätt den om du vill mata in maskindata som består.** |
+| `DATABASE_URL` | **I praktiken ja** | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge serverprocessen gör det — och en instans på Renders gratisplan sover in efter en kvarts stillhet, så arbetet är borta när du kommer tillbaka. Admin-vyns lagringsbanner säger vilket läge servern är i, och vyn **Modell** säger till när en modellfil har försvunnit i stället för att tyst rita en låda. **Sätt den innan ni matar in maskindata.** |
 | `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu`. |
 | `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
 

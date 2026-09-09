@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, SelectField, TextField } from "./fields";
+import { collectIssues, machineSchema } from "@/lib/machineSchema";
+import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import type { WorkerRequest, WorkerResponse } from "@/workers/step.worker";
 import type { Machine, Port } from "@/lib/types";
 
@@ -81,6 +83,8 @@ export function ModelPanel({
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [stored, setStored] = useState<StoredModel[]>([]);
+  const [applyIssues, setApplyIssues] = useState<string[]>([]);
+  const [applyNote, setApplyNote] = useState<string | null>(null);
 
   const busy = stage !== null;
 
@@ -98,6 +102,8 @@ export function ModelPanel({
   useEffect(() => {
     setResult(null);
     setError(null);
+    setApplyIssues([]);
+    setApplyNote(null);
     loadStored();
   }, [loadStored]);
 
@@ -213,20 +219,46 @@ export function ModelPanel({
     );
   };
 
+  /**
+   * Byter maskin bara om resultatet går att spara.
+   *
+   * Fotavtryck och portar hänger ihop: en port måste ligga innanför
+   * maskinen. Att bara skriva in nya mått lämnade portarna kvar där de var,
+   * och maskinen blev osparbar — knappen Spara gjorde ingenting och sa inte
+   * varför. Kandidaten valideras därför mot samma schema som servern innan
+   * den släpps in, och avvisas den står felen här i stället.
+   */
+  const apply = (candidate: Machine, applied: string) => {
+    const parsed = machineSchema.safeParse(candidate);
+    if (!parsed.success) {
+      setApplyIssues(collectIssues(parsed.error).map((i) => `${i.path}: ${i.message}`));
+      setApplyNote(null);
+      return;
+    }
+    setApplyIssues([]);
+    setApplyNote(applied);
+    onChange(candidate);
+  };
+
   const applyFootprint = () => {
     if (!result) return;
-    onChange({
-      ...machine,
-      footprint: result.footprint,
-      // Måtten kommer nu ur geometrin, men portlägen och nollpunkt är
-      // fortfarande gissningar tills en konstruktör har sett dem.
-      dimensionsVerified: false,
-    });
+    const { machine: candidate, movedPorts } = applyModelFootprint(machine, result.footprint);
+    apply(
+      candidate,
+      movedPorts.length > 0
+        ? `Måtten är satta ur modellen. ${movedPorts.length === 1 ? "Porten" : "Portarna"} ` +
+            `${movedPorts.join(", ")} låg utanför och flyttades till kanten — kontrollera ` +
+            `${movedPorts.length === 1 ? "läget" : "lägena"}.`
+        : "Måtten är satta ur modellen.",
+    );
   };
 
   const applyPorts = () => {
-    if (!result || machine.aux) return;
-    onChange({ ...machine, ports: result.ports, dimensionsVerified: false });
+    if (machine.aux) return;
+    apply(
+      applySuggestedPorts(machine),
+      "In- och utport är satta mitt på kortsidorna. Kontrollera lägena mot ritning.",
+    );
   };
 
   const removeStored = async (id: string) => {
@@ -347,10 +379,14 @@ export function ModelPanel({
               </p>
             ))}
             {result.notes.map((note) => (
-              <p key={note} className="mb-2 text-xs text-muted">
+              <p key={note} className="mb-2 border border-warn px-2 py-1 text-xs text-warn">
                 {note}
               </p>
             ))}
+            <p className="mb-2 border border-accent px-2 py-1 text-xs text-accent">
+              Modellen är lagrad och inlagd på maskinen. Den syns i konfiguratorns vy
+              <strong> Modell</strong> när du har tryckt <strong>Spara</strong> uppe till höger.
+            </p>
 
             <table className="mb-3 w-full text-xs">
               <thead>
@@ -393,6 +429,23 @@ export function ModelPanel({
                 Hämta GLB
               </a>
             </div>
+            {applyIssues.length > 0 ? (
+              <div className="mt-2 border border-danger px-2 py-1 text-xs text-danger">
+                <p className="mb-1">
+                  Måtten ur modellen ger en maskin som inte går att spara. Inget är ändrat.
+                </p>
+                <ul className="ml-4 list-disc">
+                  {applyIssues.map((issue) => (
+                    <li key={issue}>{issue}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
+            {applyNote ? (
+              <p className="mt-2 border border-accent px-2 py-1 text-xs text-accent">
+                {applyNote} Glöm inte <strong>Spara</strong> uppe till höger.
+              </p>
+            ) : null}
             <p className="mt-2 text-[11px] leading-relaxed text-muted">
               Portförslaget lägger in- och utport mitt på kortsidorna. Det är en gissning ur
               fotavtrycket, inte ur geometrin — kontrollera lägena mot ritning innan maskinen

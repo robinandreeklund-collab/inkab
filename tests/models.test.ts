@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
+import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
+import { collectIssues, machineSchema } from "@/lib/machineSchema";
+import { BUILTIN_MACHINES } from "@/lib/library";
 
 /**
  * convertStep är samma modul som admin-vyns web worker och CLI-skriptet kör.
@@ -103,5 +106,61 @@ describe("modellagret", () => {
 
   it("ger tillbaka null för en modell som inte finns", async () => {
     expect(await readModel("finns-inte")).toBeNull();
+  });
+});
+
+describe("ta över mått ur modellen", () => {
+  const machine = BUILTIN_MACHINES.find((m) => m.id === "rullbana")!;
+
+  it("flyttar in portarna i det nya fotavtrycket", () => {
+    // Det här var felet: nya mått skrevs in men portarna låg kvar där de var,
+    // maskinen bröt mot schemat och Spara gjorde ingenting utan att säga varför.
+    const small = { lengthMm: 2000, widthMm: 800, heightMm: 700 };
+    const { machine: applied, movedPorts } = applyModelFootprint(machine, small);
+
+    expect(movedPorts.length).toBeGreaterThan(0);
+    for (const port of applied.ports) {
+      expect(port.pos.x).toBeLessThanOrEqual(small.lengthMm);
+      expect(port.pos.y).toBeLessThanOrEqual(small.widthMm);
+    }
+    expect(machineSchema.safeParse(applied).success).toBe(true);
+  });
+
+  it("låter portarna vara när de redan får plats", () => {
+    const bigger = { lengthMm: 12_000, widthMm: 4000, heightMm: 900 };
+    const { machine: applied, movedPorts } = applyModelFootprint(machine, bigger);
+    expect(movedPorts).toEqual([]);
+    expect(applied.ports).toEqual(machine.ports);
+  });
+
+  it("markerar måtten som okontrollerade", () => {
+    const { machine: applied } = applyModelFootprint(machine, machine.footprint);
+    expect(applied.dimensionsVerified).toBe(false);
+  });
+
+  it("portförslaget utgår från maskinens eget fotavtryck", () => {
+    // Inte modellens: annars hamnar portarna utanför maskinen när måtten
+    // inte är övertagna.
+    const applied = applySuggestedPorts(machine);
+    expect(applied.ports.map((p) => p.role).sort()).toEqual(["in", "out"]);
+    expect(applied.ports[1].pos.x).toBe(machine.footprint.lengthMm);
+    expect(machineSchema.safeParse(applied).success).toBe(true);
+  });
+
+  it("avvisar mått som schemat inte tillåter, utan att ändra maskinen", () => {
+    // En modell i fel längdenhet ger en 8 cm hög maskin. Den ska stoppas i
+    // panelen, inte upptäckas som en tyst vägran att spara.
+    const tooSmall = { lengthMm: 200, widthMm: 150, heightMm: 84 };
+    const { machine: applied } = applyModelFootprint(machine, tooSmall);
+    const parsed = machineSchema.safeParse(applied);
+    expect(parsed.success).toBe(false);
+    expect(collectIssues(parsed.error!).map((i) => i.path)).toContain("footprint.heightMm");
+  });
+
+  it("skriver valideringsfelen på svenska", () => {
+    const parsed = machineSchema.safeParse({ ...machine, footprint: { lengthMm: 10, widthMm: 10, heightMm: 10 } });
+    const messages = collectIssues(parsed.error!).map((i) => i.message);
+    expect(messages.join(" ")).toContain("Måste vara minst 100");
+    expect(messages.join(" ")).not.toMatch(/must be|greater than/i);
   });
 });

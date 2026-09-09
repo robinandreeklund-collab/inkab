@@ -189,7 +189,13 @@ export function ModelView() {
               }
 
               const fit = alignToFootprint(THREE, clone, placement);
-              if (fit && Math.abs(fit.scale - 1) > 0.05) {
+              const off =
+                fit &&
+                (Math.abs(fit.modelLengthMm - placement.size.lengthMm) >
+                  placement.size.lengthMm * 0.05 ||
+                  Math.abs(fit.modelWidthMm - placement.size.widthMm) >
+                    placement.size.widthMm * 0.05);
+              if (fit && off) {
                 found.push(
                   `${placement.machine.name}: modellen är ${meters(fit.modelLengthMm)} × ` +
                     `${meters(fit.modelWidthMm)} m men biblioteket säger ` +
@@ -286,8 +292,10 @@ export function ModelView() {
               </li>
             ))}
           </ul>
-          <p className="mt-1 text-[11px] text-muted">
-            Modellen visas skalad till bibliotekets mått. Rätta fotavtrycket i admin.
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            Modellen visas i sin verkliga storlek — den är måttriktig ur STEP-filen, så det
+            är maskindatan som behöver rättas. Ladda upp filen igen i admin, så tas måtten
+            därifrån.
           </p>
         </div>
       ) : null}
@@ -305,37 +313,33 @@ export function ModelView() {
 }
 
 /**
- * Ställer modellen på golvet i maskinens hörn och skalar den likformigt till
- * den deklarerade längden.
+ * Ställer modellen på golvet i maskinens hörn — i sin verkliga storlek.
  *
- * Modellen är måttriktig ur STEP:en, så skalan borde vara 1. Är den det inte
- * betyder det att fotavtrycket i biblioteket inte stämmer med konstruktionen —
- * och då är 3D-vyn en kontroll av datan, inte bara en bild. Avvikelsen
- * rapporteras uppåt i stället för att döljas med en förvrängning.
+ * Modellen skalas INTE till det deklarerade måttet. Den kommer måttriktig ur
+ * STEP:en, och att töja den för att fylla ut en siffra i biblioteket vore att
+ * rita något som inte finns: en tre meter lång rullbana sträckt till tolv fick
+ * rullar som var fyra gånger för stora. Skiljer sig måtten är det datan som
+ * är fel, inte modellen, och då ska skillnaden synas — inte döljas med en
+ * förvrängning. Avvikelsen rapporteras uppåt.
  */
 function alignToFootprint(
   THREE: typeof import("three"),
   object: import("three").Object3D,
   placement: Placement,
-): { scale: number; modelLengthMm: number; modelWidthMm: number } | null {
+): { modelLengthMm: number; modelWidthMm: number } | null {
   const box = new THREE.Box3().setFromObject(object);
   const size = box.getSize(new THREE.Vector3());
   if (size.x < 1e-4 || size.z < 1e-4) return null;
-
-  const along = placement.rotation % 180 === 0;
-  const targetL = (along ? placement.size.lengthMm : placement.size.widthMm) / 1000;
-  const scale = targetL / size.x;
-  object.scale.multiplyScalar(scale);
 
   const after = new THREE.Box3().setFromObject(object);
   object.position.x -= after.min.x;
   object.position.z -= after.min.z;
   object.position.y -= after.min.y;
 
+  const along = placement.rotation % 180 === 0;
   return {
-    scale,
-    modelLengthMm: Math.round(size.x * 1000),
-    modelWidthMm: Math.round(size.z * 1000),
+    modelLengthMm: Math.round((along ? size.x : size.z) * 1000),
+    modelWidthMm: Math.round((along ? size.z : size.x) * 1000),
   };
 }
 

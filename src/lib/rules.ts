@@ -228,6 +228,31 @@ export function runRules(
     }
   }
 
+  /* ── R-206 Längdfrågan styr ingenting ───────────────────────────────── */
+  /*
+   * "Längd på sista kedjetransportören" gäller bara en maskin som verkligen
+   * kapas till längd. Har alla transportörer i linjen uppmätt CAD-modell
+   * eller bestämda utföranden har frågan ingen verkan — och då ska det sägas,
+   * i stället för att kunden ställer in ett mått som inte händer något av.
+   */
+  const adjustable = line.find(
+    (p) => p.machine.parametricLength && !p.machine.model && !(p.machine.variants?.length ?? 0),
+  );
+  const fixedLength = line.filter((p) => p.machine.parametricLength && !adjustable);
+  if (!adjustable && fixedLength.length > 0) {
+    out.push({
+      code: "R-206",
+      severity: "info",
+      title: "Längdfrågan styr ingen maskin",
+      detail:
+        `${fixedLength.map((p) => p.machine.name).join(", ")} har mått ur CAD-modell eller ` +
+        "valt utförande, så längden kommer därifrån. Inställningen \"längd på sista " +
+        "kedjetransportören\" påverkar inget i den här linjen.",
+      instanceIds: fixedLength.map((p) => p.instanceId),
+      anchor: boxCenter(fixedLength[fixedLength.length - 1].bbox),
+    });
+  }
+
   /* ── R-203 Hjälpobjekt står i truckgatan ────────────────────────────── */
   for (const aisle of layout.aisles) {
     for (const p of aux) {

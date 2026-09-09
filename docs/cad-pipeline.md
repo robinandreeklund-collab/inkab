@@ -295,9 +295,15 @@ Två saker att veta:
   till webbläsaren; prisboken gör det aldrig. Saknas pris för ett utförande
   gäller maskinens grundpris, så ett nytt utförande fungerar innan
   prissättningen är gjord.
-- **Utföranden slår steglös längd.** Har en maskin både och kan inte båda
-  gälla, och det diskreta är det som finns att köpa: har någon lagt upp 3, 6
-  och 12 meter är det de längderna som levereras.
+- **Uppmätt geometri slår steglös längd.** Har en maskin utföranden eller en
+  CAD-modell kommer längden därifrån. Frågan "längd på sista
+  kedjetransportören" gäller bara en maskin som verkligen kapas till längd —
+  gör den inte det säger regel R-206 att inställningen inte styr något,
+  i stället för att kunden ställer in ett mått som inte händer något av.
+
+  Symptomet innan: varje ny rullbana blev tolv meter medan den föregående blev
+  korrekt, eftersom rollen som "sista transportör" hoppade till den senast
+  tillagda. Modellen sträcktes då fyra gånger och rullarna blev enorma.
 
 **Var modellen hamnar.** GLB:n lagras i en egen tabell (`machine_model`) och
 serveras av `/api/models/<id>`, aldrig i biblioteksdokumentet — se
@@ -343,8 +349,8 @@ Vyn **Modell** laddar varje SKU en gång och instansierar den, laddar lat vid
 byte av vy, och ritar maskiner utan modell som sitt fotavtryck — så den
 fungerar medan biblioteket fylls på.
 
-Den skalar modellen likformigt till bibliotekets längd. Skiljer sig måtten mer
-än fem procent säger den ifrån:
+Skiljer sig modellens mått från bibliotekets med mer än fem procent säger den
+ifrån:
 
 > **Modell och mått skiljer sig.** Truckströläggare – enkel: modellen är
 > 0,20 × 0,15 m men biblioteket säger 4,20 × 5,00 m.

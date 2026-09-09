@@ -672,10 +672,19 @@ export function solveLayout(
   const lineItems = resolved.filter((r) => !r.machine.aux);
   const auxItems = resolved.filter((r) => r.machine.aux);
 
-  // Sista transportmaskinen med parametrisk längd styrs av flödesfrågan.
+  /*
+   * Sista transportmaskinen med parametrisk längd styrs av flödesfrågan —
+   * men bara om maskinen faktiskt går att kapa till längd.
+   *
+   * En maskin med uppmätt CAD-modell har den längd den har. Att sträcka en
+   * tre meter lång rullbana till tolv vore att rita något som inte finns, och
+   * det syntes: modellen skalades upp fyra gånger så att rullarna blev
+   * enorma. Samma sak för utföranden — där är längderna redan bestämda.
+   */
   const parametricIndex = (() => {
     for (let i = lineItems.length - 1; i >= 0; i--) {
-      if (lineItems[i].machine.parametricLength) return i;
+      const m = lineItems[i].machine;
+      if (m.parametricLength && !m.model && !(m.variants?.length ?? 0)) return i;
     }
     return -1;
   })();

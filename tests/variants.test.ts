@@ -268,3 +268,60 @@ describe("zoner följer måtten", () => {
     expect(applied.zones).toEqual(machine.zones);
   });
 });
+
+describe("uppmätt modell slår steglös längd", () => {
+  /*
+   * Rullbanan har steglös längd, och den sista i kedjan styrs av flödesfrågan
+   * (12 m som standard). Med en uppmätt CAD-modell på 3 m är det fel: den
+   * maskinen har den längd modellen visar. Symptomet var att varje ny rullbana
+   * blev enorm medan den föregående blev korrekt, eftersom rollen som "sista
+   * transportör" hoppade till den senast tillagda.
+   */
+  const parametric = BUILTIN_MACHINES.find((m) => m.id === "rullbana")!;
+  const measured: Machine = {
+    ...parametric,
+    footprint: { lengthMm: 3000, widthMm: 1570, heightMm: 600 },
+    model: { glb: "/api/models/rullbana", upAxis: "y", yawDeg: 270 },
+  };
+
+  const lineOf = (n: number): Configuration => {
+    const template = templateConfig("strolinje");
+    return {
+      ...template,
+      flow: { ...template.flow, finalConveyorLengthMm: 12_000 },
+      line: Array.from({ length: n }, (_, i) => ({
+        instanceId: `i${i}`,
+        machineId: "rullbana",
+        selectedOptions: [],
+      })),
+    };
+  };
+
+  it("låter modellens längd gälla, oavsett plats i kedjan", () => {
+    const library = makeLibrary(
+      BUILTIN_MACHINES.map((m) => (m.id === "rullbana" ? measured : m)),
+    );
+    for (const antal of [1, 2, 3]) {
+      const layout = computeLayout(lineOf(antal), library);
+      for (const placement of layout.placements) {
+        expect(placement.size.lengthMm).toBe(3000);
+      }
+    }
+  });
+
+  it("styr fortfarande en transportör utan modell", () => {
+    // Frågan ska inte sluta fungera för maskiner som verkligen kapas.
+    const plain = makeLibrary(BUILTIN_MACHINES);
+    const layout = computeLayout(lineOf(2), plain);
+    expect(layout.placements[1].size.lengthMm).toBe(12_000);
+    expect(layout.placements[0].size.lengthMm).toBe(parametric.footprint.lengthMm);
+  });
+
+  it("säger till när längdfrågan inte styr något", () => {
+    const library = makeLibrary(
+      BUILTIN_MACHINES.map((m) => (m.id === "rullbana" ? measured : m)),
+    );
+    const codes = computeLayout(lineOf(2), library).diagnostics.map((d) => d.code);
+    expect(codes).toContain("R-206");
+  });
+});

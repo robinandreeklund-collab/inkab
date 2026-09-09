@@ -46,6 +46,14 @@ type Result = {
   stats: Stats;
 };
 
+/**
+ * INKAB:s CAD ritar Y upp — se koordinatkorset i vilken sammanställning som
+ * helst. Nya modeller får därför den riktningen från början i stället för att
+ * behöva rättas en gång per maskin. Kommer en fil från en leverantör med en
+ * annan konvention är det ett byte i listan.
+ */
+const DEFAULT_UP_AXIS = "y" as const;
+
 const STAGE_TEXT: Record<string, string> = {
   laddar: "Startar OpenCascade",
   tessellerar: "Tessellerar geometrin",
@@ -195,7 +203,18 @@ export function ModelPanel({
           persisted: body.persisted,
           stats: { ...stats, seconds: Math.round((Date.now() - started) / 100) / 10 },
         });
-        onChange({ ...machine, model: { glb: body.model.glb, proxy: body.model.proxy } });
+        onChange({
+          ...machine,
+          model: {
+            glb: body.model.glb,
+            proxy: body.model.proxy,
+            // En redan inställd riktning behålls: konverterar man om samma
+            // maskin ska en inställd vridning inte nollställas.
+            upAxis: machine.model?.upAxis ?? DEFAULT_UP_AXIS,
+            yawDeg: machine.model?.yawDeg,
+            flipped: machine.model?.flipped,
+          },
+        });
         loadStored();
       } catch {
         setError("Modellen konverterades men kunde inte sparas. Nätverket svarade inte.");
@@ -470,10 +489,11 @@ export function ModelPanel({
         <div className="mt-3 border-t border-divider pt-3">
           <div className="kicker mb-1">Modellens riktning</div>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            En STEP kommer sällan in rättvänd — CAD-system är oense om vilken axel som är
-            upp, och den som ritade maskinen valde inte nödvändigtvis flödesriktningen som X.
-            Vrid tills modellen står rätt i lådan och pekar med pilen. Ändringen syns direkt
-            och kräver ingen ny konvertering.
+            Era sammanställningar ritas med <strong>Y upp</strong> och längden längs X, och
+            nya modeller får den riktningen automatiskt. Stämmer det inte — en fil från en
+            leverantör, eller en maskin ritad åt andra hållet — vrid tills modellen står rätt
+            i lådan och pekar med pilen. Ändringen syns direkt och kräver ingen ny
+            konvertering.
           </p>
 
           <ModelPreview
@@ -486,11 +506,11 @@ export function ModelPanel({
             <Grid cols={3}>
               <SelectField
                 label="Upp-axel i filen"
-                hint="Z är det vanliga"
+                hint="INKAB:s CAD ritar Y upp"
                 value={orientation.upAxis ?? "z"}
                 options={[
+                  { value: "y", label: "Y upp (INKAB:s CAD)" },
                   { value: "z", label: "Z upp (SolidWorks, Inventor)" },
-                  { value: "y", label: "Y upp (modellen ligger ner)" },
                 ]}
                 onChange={(v) => setOrientation({ upAxis: v === "y" ? "y" : "z" })}
               />

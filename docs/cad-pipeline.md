@@ -236,12 +236,19 @@ upp — SolidWorks och Inventor ritar Z upp, en del exportkedjor Y — och
 konstruktören som ritade maskinen valde inte nödvändigtvis flödesriktningen
 som X. Det är inte fel i filen, bara en annan konvention.
 
-Därför sitter upp-axel, vridning i fjärdedels varv och spegling på maskinen
-och tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen som
-visar ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
+INKAB:s egna sammanställningar ritas med **Y upp och längden längs X** — det
+syns på koordinatkorset i vilken sammanställning som helst — så nya modeller
+får den riktningen från början. En fil från en leverantör med en annan
+konvention är ett byte i listan.
+
+Upp-axel, vridning i fjärdedels varv och spegling sitter på maskinen och
+tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen som visar
+ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
 runda till med filen. Måtten ur modellen permuteras med vridningen — reser man
 en liggande modell byter bredd och höjd plats — så jämförelsen mot biblioteket
-gäller den modell som faktiskt visas.
+gäller den modell som faktiskt visas. Ett test kör samma STEP genom
+konverterarens egen upp-axel och genom permutationen och kräver att de ger
+identiska mått — de två vägarna får inte kunna säga olika saker.
 
 #### Varför inte på servern
 

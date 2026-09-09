@@ -224,3 +224,20 @@ describe("modellens riktning", () => {
     expect(parsed.success, JSON.stringify(parsed.error?.issues)).toBe(true);
   });
 });
+
+describe("riktningen mot konverterarens egen upp-axel", () => {
+  /*
+   * Konverteraren kan själv ta en upp-axel. Riktningen i biblioteket ställs i
+   * stället efteråt, vid uppritningen. De två vägarna måste ge samma mått —
+   * annars visar panelen ett fotavtryck som modellen inte har. Testet kör
+   * båda på samma fil och jämför.
+   */
+  it("ger samma fotavtryck som en konvertering med Y upp", async () => {
+    const step = new Uint8Array(readFileSync(SAMPLE));
+    const [asZ, asY] = await Promise.all([
+      convertStep(step, { minPartMm: 5, up: "z" }),
+      convertStep(step, { minPartMm: 5, up: "y" }),
+    ]);
+    expect(orientedFootprint(asZ.footprint, { upAxis: "y" })).toEqual(asY.footprint);
+  }, 60_000);
+});

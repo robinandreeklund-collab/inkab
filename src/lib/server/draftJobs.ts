@@ -241,7 +241,12 @@ function withoutAnswer(result: {
   const failed = result.steps.filter((s) => !s.ok);
   const parts: string[] = [];
 
-  if (result.stopReason === "max_rounds") {
+  if (result.stopReason === "repeat") {
+    parts.push(
+      "Assistenten fastnade: den gjorde samma verktygsanrop om och om igen och fick samma " +
+        "fel varje gång, så turen avbröts.",
+    );
+  } else if (result.stopReason === "max_rounds") {
     parts.push(
       `Assistenten hann inte bli klar: den gjorde ${result.rounds} arbetsrundor och nådde ` +
         "taket utan att spara ett förslag.",

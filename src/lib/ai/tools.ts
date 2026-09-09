@@ -338,10 +338,10 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
         "Portar anges som en punkt med bredd och sätts in i väggen de ligger närmast.\n\n" +
         "Koordinater i meter från hallens nedre vänstra hörn: X längs hallen, Y tvärs. " +
         "Alla mått är meter.\n\n" +
-        "Skalan måste vara känd innan du ritar. Du får bara anropa verktyget om du kan " +
-        "svara på var skalan kommer ifrån: ett måttsatt mått på ritningen, en skalstock, " +
-        "eller ett mått kunden själv uppgett. Saknas allt det — fråga kunden efter ett " +
-        "känt mått i stället för att gissa. En ritning utan skala går inte att mäta.",
+        "Skalan ska vara belagd: ange scaleSource och scaleNote med det du skalade efter — " +
+        "ett måttsatt mått på ritningen, en skalstock, eller ett mått kunden uppgett. " +
+        "Saknas allt det ritas hallen ändå, men svaret markeras som obelagt och du måste " +
+        "säga det till kunden och tala om vilket mått du behöver.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -427,7 +427,7 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
             },
           },
         },
-        required: ["scaleSource", "scaleNote"],
+        required: [],
         additionalProperties: false,
       },
       strict: true,
@@ -664,14 +664,21 @@ export function executeTool(
     }
 
     case "draw_hall": {
+      /*
+       * Skalan ska vara belagd, men kravet får inte bli en vägg.
+       *
+       * Först vägrade verktyget rita utan scaleNote. En modell som inte fyller
+       * i fältet — och det gör inte alla — svarade då med exakt samma anrop om
+       * och om igen, och kunden fick ingenting. Det var att skydda måttet på
+       * bekostnad av hela ritningen.
+       *
+       * Nu ritas den, och avsaknaden av belägg följer med ut som en varning
+       * ända fram till kunden. Ett omätt underlag som syns är bättre än ett
+       * uteblivet svar.
+       */
       const note = String(input.scaleNote ?? "").trim();
-      if (!note) {
-        return {
-          error:
-            "scaleNote måste säga vad du skalade efter. Utan känd skala går ritningen " +
-            "inte att mäta — fråga kunden efter ett känt mått i stället.",
-        };
-      }
+      const source = typeof input.scaleSource === "string" ? input.scaleSource : null;
+      const scaleVerified = !!note && !!source;
 
       if (typeof input.lengthM === "number") {
         ctx.draft.hall.lengthMm = clamp(Math.round(input.lengthM * 1000), 5000, 300_000);
@@ -721,10 +728,14 @@ export function executeTool(
         hall: ctx.draft.hall,
         added: drawn.length,
         notes,
-        scale: { source: input.scaleSource ?? null, note },
-        reminder:
-          "Ritningen är uppmätt ur en bild. Säg det till kunden och be dem kontrollmäta " +
-          "mot underlaget innan den används som beslutsunderlag.",
+        scale: { source, note, verified: scaleVerified },
+        reminder: scaleVerified
+          ? "Ritningen är uppmätt ur en bild. Säg det till kunden och be dem kontrollmäta " +
+            "mot underlaget innan den används som beslutsunderlag."
+          : "OBS: du angav inte var skalan kommer ifrån (scaleSource och scaleNote), så " +
+            "måtten är obelagda. Ritningen är gjord ändå. Skriv i ditt svar och i förslagets " +
+            "beskrivning att skalan är gissad och vilket mått kunden behöver lämna för att " +
+            "den ska bli riktig. Anropa inte draw_hall igen bara för att fylla i fälten.",
         layout: layoutSummary(ctx.draft, ctx.library),
       };
     }

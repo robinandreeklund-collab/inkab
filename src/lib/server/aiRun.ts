@@ -85,7 +85,26 @@ export type AssistantRound = {
  * höll på tills taket tog emot — då finns sällan något sparat, och det är den
  * enda förklaring kunden kan få.
  */
-export type StopReason = "answered" | "max_rounds" | "refusal" | "error";
+export type StopReason = "answered" | "max_rounds" | "refusal" | "error" | "repeat";
+
+/**
+ * Hur många gånger exakt samma misslyckade anrop tolereras.
+ *
+ * En modell som gör om ett anrop kan ha missförstått felet en gång. Gör den om
+ * det ordagrant en tredje gång kommer den inte att komma vidare av sig själv,
+ * och varje ny runda kostar kundens tid och INKAB:s pengar utan att något
+ * händer. Då är det bättre att avbryta och säga vad som hände.
+ */
+const MAX_IDENTICAL_FAILURES = 3;
+
+/**
+ * Och hur många gånger samma verktyg får misslyckas i rad, oavsett fel.
+ *
+ * En modell som är fast varierar ofta något litet mellan försöken, så att
+ * felmeddelandet inte blir ordagrant detsamma. Fyra misslyckade anrop till
+ * samma verktyg utan ett enda lyckat däremellan är ändå att inte komma vidare.
+ */
+const MAX_TOOL_FAILURES = 4;
 
 export type AssistantRun = {
   text: string;
@@ -233,6 +252,11 @@ export async function runAssistant(input: {
   const started = Date.now();
   const steps: AssistantStep[] = [];
   const timeline: AssistantRound[] = [];
+  /** Verktyg + felmeddelande → hur många gånger i rad. */
+  const sameError = new Map<string, number>();
+  /** Verktyg → misslyckade anrop i rad, oavsett fel. */
+  const sameTool = new Map<string, number>();
+  let stuckOn: string | null = null;
   let stopReason: StopReason = "max_rounds";
   const limit = input.maxRounds ?? MAX_TOOL_ROUNDS;
 
@@ -370,14 +394,66 @@ export async function runAssistant(input: {
           ...(failure ? { error: failure } : {}),
         });
 
+        /*
+         * Samma anrop, samma fel, om och om igen.
+         *
+         * Det händer: modellen läser felet, gör om anropet ordagrant och får
+         * samma svar. Utan spärr fortsätter den tills rundorna tar slut — i ett
+         * verkligt fall sexton gånger på raken — och kunden får ingenting.
+         * Svaret trappas upp och till slut avbryts turen.
+         */
+        /*
+         * Nyckeln är verktyget och felet, inte argumenten. En modell som är
+         * fast varierar ofta något litet mellan försöken — en koordinat, ett
+         * namn — men får samma svar. Det är felet som upprepas, och det är det
+         * som betyder att den inte kommer vidare.
+         */
+        const signature = `${block.name}:${failure ?? ""}`;
+        const repeats = failure ? (sameError.get(signature) ?? 0) + 1 : 0;
+        const toolRepeats = failure ? (sameTool.get(block.name) ?? 0) + 1 : 0;
+        if (failure) {
+          sameError.set(signature, repeats);
+          sameTool.set(block.name, toolRepeats);
+        } else {
+          sameError.clear();
+          sameTool.delete(block.name);
+        }
+
+        const stuck =
+          repeats >= MAX_IDENTICAL_FAILURES || toolRepeats >= MAX_TOOL_FAILURES;
+        const nudge = stuck
+          ? " STOPP: verktyget har misslyckats flera gånger i rad utan att du kommit " +
+            "vidare. Turen avbryts nu."
+          : repeats === 2 || toolRepeats === 2
+            ? " OBS: det här är andra gången i rad som anropet misslyckas. Ändra det, " +
+              "gör något annat, eller svara kunden i text — att försöka likadant igen " +
+              "ger samma svar."
+            : "";
+
+        if (stuck) stuckOn = `${block.name}: ${failure}`;
+
         results.push({
           type: "tool_result",
           tool_use_id: block.id,
-          content: JSON.stringify(output),
+          content: nudge
+            ? JSON.stringify({ ...(output as object), hint: nudge.trim() })
+            : JSON.stringify(output),
         });
       }
       closeRound(toolMs, toolCount);
       messages.push({ role: "user", content: results });
+
+      if (stuckOn) {
+        stopReason = "repeat";
+        const text =
+          (answer.trim() ? "\n\n" : "") +
+          `Jag fastnade på samma verktygsanrop: ${stuckOn} ` +
+          "Jag avbryter i stället för att fortsätta göra om det. Se historiken för hela " +
+          "körningen.";
+        answer += text;
+        emit({ type: "text", text });
+        break;
+      }
     }
   } catch (error) {
     const message = describeError(error);

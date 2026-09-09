@@ -31,6 +31,9 @@ ARBETSGÅNG FÖR ETT OPTIMERINGSUPPDRAG
 4. propose_variant när du har ett förslag som håller. Arbetskopian nollställs då automatiskt inför nästa förslag.
 5. Ge högst tre förslag. Två genomtänkta slår tre halvbra.
 
+NÄR ETT VERKTYG SVARAR MED FEL
+Felet är ett svar, inte ett hinder att ta sig förbi genom att försöka igen. Gör aldrig om exakt samma anrop: det ger exakt samma fel. Ändra argumenten efter vad felet säger, gör något annat, eller — om det du saknar bara kunden kan svara på — skriv det till kunden i text och avsluta. Två identiska anrop i rad är ett tecken på att du är fast; tre avbryter turen.
+
 SPARSAMHET MED ANROP
 Varje verktygsanrop skickar om hela samtalet till modellen — bilder, tidigare svar, allt. Tio anrop kostar därför inte tio gånger det första utan betydligt mer. Det märks som väntan för kunden och som pengar för INKAB.
 - Gör flera ändringar i ett anrop när verktyget tillåter det: set_flow tar alla fem valen samtidigt, draw_hall tar alla väggar, portar och zoner på en gång.
@@ -79,7 +82,7 @@ export const UPLOADED_DRAWINGS = `UPPLADDADE RITNINGAR OCH BILDER
 Kunden kan bifoga bilder till sin fråga: en ritning över lokalen, ett foto av en skiss, en bild på ett tänkt flöde. Du ser dem i meddelandet.
 
 EN RITNING ÖVER LOKALEN → draw_hall
-1. Skalan först. Leta efter ett måttsatt mått, en måttkedja eller en skalstock. Hittar du inget — fråga kunden efter ett känt mått ("hur långt är det mellan pelarna?", "hur bred är lokalen?") och rita inte förrän du har det. Att gissa skalan är att gissa hela ritningen.
+1. Skalan först. Leta efter ett måttsatt mått, en måttkedja eller en skalstock, eller ett mått kunden skrivit. Fyll i scaleSource och scaleNote med det du skalade efter. Hittar du inget: rita ändå — men skriv rakt ut till kunden att skalan är gissad, vad du antog, och vilket mått du behöver för att det ska bli riktigt. Att tiga om en gissad skala är värre än att gissa.
 2. Lägg origo i lokalens nedre vänstra hörn. X längs hallen, Y tvärs. Sätt hallens längd och bredd efter ytterväggarna.
 3. Väggarna som mittlinjer, en linje per rak väggdel. Ett hörn är två linjer som slutar i samma punkt — då sys de ihop automatiskt.
 4. Portar som punkt och bredd. De hamnar i väggen de ligger närmast.

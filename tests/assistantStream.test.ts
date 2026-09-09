@@ -25,7 +25,7 @@ const sse = (event: string, data: unknown) =>
   `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 
 /** Ett meddelande med ett verktygsanrop. */
-function toolUseMessage(name: string): string {
+function toolUseMessage(name: string, input: Record<string, unknown> = {}): string {
   return (
     sse("message_start", {
       type: "message_start",
@@ -48,7 +48,7 @@ function toolUseMessage(name: string): string {
     sse("content_block_delta", {
       type: "content_block_delta",
       index: 0,
-      delta: { type: "input_json_delta", partial_json: "{}" },
+      delta: { type: "input_json_delta", partial_json: JSON.stringify(input) },
     }) +
     sse("content_block_stop", { type: "content_block_stop", index: 0 }) +
     sse("message_delta", {
@@ -96,13 +96,19 @@ const ANSWER = "Ritningen saknar mått. Jag behöver hallens längd för att kun
 let server: Server;
 let baseURL = "";
 let calls = 0;
-/** "svara" gör ett verktygsanrop och sedan text; "loopa" anropar i all evighet. */
-let mode: "svara" | "loopa" = "svara";
+/** "svara": ett anrop och sedan text. "loopa": anrop i all evighet.
+ *  "trasigt": samma anrop som alltid misslyckas. */
+let mode: "svara" | "loopa" | "trasigt" = "svara";
 
 beforeAll(async () => {
   server = createServer((request, response) => {
     calls += 1;
     response.writeHead(200, { "Content-Type": "text/event-stream" });
+    if (mode === "trasigt") {
+      // En maskin som inte finns: verktyget svarar med fel, varje gång.
+      response.end(toolUseMessage("add_machine", { machineId: "finns-inte" }));
+      return;
+    }
     const keepCalling = mode === "loopa" || calls === 1;
     response.end(
       keepCalling ? toolUseMessage("get_current_layout") : textInBlockMessage(ANSWER),
@@ -238,5 +244,107 @@ describe("ett jobb som inte blev något", () => {
     expect(finished?.detail.model).toBe("provsvar");
     expect(finished?.detail.steps?.length).toBeGreaterThan(0);
     expect(finished?.detail.stopReason).toBe("max_rounds");
+  }, 30_000);
+});
+
+
+describe("samma misslyckade anrop om och om igen", () => {
+  it("avbryter i stället för att köra tills rundorna tar slut", async () => {
+    mode = "trasigt";
+    const result = await runAssistant({
+      config: defaultConfig(),
+      message: "Bygg linjen.",
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      // Taket är högt; spärren ska slå till långt innan.
+      maxRounds: 16,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL,
+        traits: TRAITS.grok,
+      },
+    });
+    mode = "svara";
+
+    expect(result.stopReason).toBe("repeat");
+    expect(result.rounds).toBe(3);
+    expect(result.steps).toHaveLength(3);
+    expect(result.steps.every((step) => !step.ok)).toBe(true);
+    // Kunden ska få veta det, inte bara loggen.
+    expect(result.text).toContain("fastnade");
+  }, 20_000);
+});
+
+describe("samma fel fast anropet varieras", () => {
+  it("räknar felet, inte argumenten", async () => {
+    // Servern varierar maskin-id:t varje gång men får samma sorts fel. En
+    // modell som är fast brukar just småändra i stället för att upprepa exakt.
+    let variant = 0;
+    const varying = createServer((request, response) => {
+      variant += 1;
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      response.end(toolUseMessage("add_machine", { machineId: `finns-inte-${variant}` }));
+    });
+    await new Promise<void>((resolve) => varying.listen(0, "127.0.0.1", resolve));
+    const address = varying.address();
+    const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const result = await runAssistant({
+      config: defaultConfig(),
+      message: "Bygg linjen.",
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      maxRounds: 16,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL: url,
+        traits: TRAITS.grok,
+      },
+    });
+    varying.close();
+
+    expect(result.stopReason).toBe("repeat");
+    expect(result.rounds).toBeLessThanOrEqual(4);
+  }, 20_000);
+});
+
+describe("jobbet när assistenten fastnar", () => {
+  it("lämnar en läsbar förklaring i stället för tystnad", async () => {
+    mode = "trasigt";
+    const job = await startDraftJob({
+      config: defaultConfig(),
+      note: "Gör ett förslag på denna ritning.",
+      attachments: [{ name: "ritning.png", mediaType: "image/png", data: "AAAA" }],
+      userId: null,
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL,
+        traits: TRAITS.grok,
+      },
+    });
+
+    let finished = await readDraftJob(job.id, null);
+    for (let i = 0; i < 200 && finished && (finished.status === "queued" || finished.status === "running"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      finished = await readDraftJob(job.id, null);
+    }
+    mode = "svara";
+
+    expect(finished?.status).toBe("done");
+    expect(finished?.summary).toContain("fastnade");
+    expect(finished?.detail.stopReason).toBe("repeat");
+    // Och det ska inte ha kostat sexton rundor att komma dit.
+    expect(finished?.detail.rounds).toBeLessThanOrEqual(4);
   }, 30_000);
 });

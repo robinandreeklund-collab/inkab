@@ -162,16 +162,23 @@ describe("draw_hall", () => {
     expect(door.w).toBe(wall.w);
   });
 
-  it("vägrar rita utan att skalans ursprung är angivet", () => {
+  it("markerar skalan som obelagd när anteckningen är tom", () => {
+    // Verktyget vägrade förr rita utan anteckning. En modell som inte fyllde i
+    // fältet gjorde då om samma anrop tills rundorna tog slut, och kunden fick
+    // ingenting — måttet skyddades på bekostnad av hela ritningen.
     const ctx = context(defaultConfig());
     const result = executeTool(
       "draw_hall",
-      { scaleSource: "dimension_on_drawing", scaleNote: "   ", walls: [] },
+      {
+        scaleSource: "dimension_on_drawing",
+        scaleNote: "   ",
+        walls: [{ fromXM: 0, fromYM: 0, toXM: 20, toYM: 0 }],
+      },
       ctx,
-    ) as { error?: string };
-    expect(result.error).toContain("skala");
-    // Ingenting ritades: det som ligger kvar är utgångslägets egna objekt.
-    expect(ctx.draft.drawn).toEqual(context(defaultConfig()).draft.drawn);
+    ) as { error?: string; scale: { verified: boolean }; added: number };
+    expect(result.error).toBeUndefined();
+    expect(result.scale.verified).toBe(false);
+    expect(result.added).toBe(1);
   });
 
   it("påminner om att en uppmätt bild ska kontrollmätas", () => {
@@ -388,5 +395,56 @@ describe("remove_machine", () => {
 
     expect(result.alsoRemoved).toContain(branch.added.instanceId);
     expect(ctx.draft.line).toHaveLength(0);
+  });
+});
+
+describe("draw_hall utan belagd skala", () => {
+  const PLAN = {
+    lengthM: 15,
+    widthM: 10,
+    replaceExisting: true,
+    walls: [
+      { fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 },
+      { fromXM: 15, fromYM: 0, toXM: 15, toYM: 10 },
+    ],
+  };
+
+  it("ritar ändå, men säger att måtten är obelagda", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool("draw_hall", PLAN, ctx) as {
+      added: number;
+      scale: { verified: boolean };
+      reminder: string;
+      error?: string;
+    };
+
+    // Att vägra rita gjorde att modeller utan strikt schema körde fast i samma
+    // anrop om och om igen, och kunden fick ingenting alls.
+    expect(result.error).toBeUndefined();
+    expect(result.added).toBe(2);
+    expect(result.scale.verified).toBe(false);
+    expect(result.reminder).toContain("obelagda");
+    expect(result.reminder).toContain("Anropa inte draw_hall igen");
+    expect(ctx.draft.hall.lengthMm).toBe(15_000);
+  });
+
+  it("räknar skalan som belagd när både källa och anteckning finns", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool(
+      "draw_hall",
+      { ...PLAN, scaleSource: "dimension_on_drawing", scaleNote: "Måttkedjan 15 000 mm." },
+      ctx,
+    ) as { scale: { verified: boolean; note: string }; reminder: string };
+
+    expect(result.scale.verified).toBe(true);
+    expect(result.scale.note).toContain("15 000");
+    expect(result.reminder).toContain("kontrollmäta");
+  });
+
+  it("kräver inte längre skalfälten i schemat", () => {
+    // Schemat måste stämma med vad servern faktiskt gör: ett krav som bara
+    // står i schemat och inte hålls av mottagaren är en fälla.
+    const drawHall = toolDefinitions().find((t) => t.name === "draw_hall")!;
+    expect(drawHall.input_schema.required).toEqual([]);
   });
 });

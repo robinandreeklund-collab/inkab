@@ -324,7 +324,13 @@ function placeOne(
   pos: number,
   cursor: Cursor,
   preferMirrored: boolean,
-): { placement: Placement; idealBbox: Box; idealClearBox: Box; next: Cursor } | null {
+): {
+  placement: Placement;
+  idealBbox: Box;
+  idealClearBox: Box;
+  idealPorts: PlacedPort[];
+  next: Cursor;
+} | null {
   const fit = fitMachine(m, cursor, preferMirrored, item.outPortId);
   if (!fit) return null;
 
@@ -406,7 +412,18 @@ function placeOne(
   const clearLocal = clearanceZone(m)?.box ?? { x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm };
   const idealClearBox = boxToWorld(clearLocal, { ...opts, origin });
 
-  return { placement, idealBbox, idealClearBox, next };
+  // Grenar utgår från de ideala portlägena av samma skäl som kedjan gör det:
+  // en manuellt flyttad maskin ska inte dra med sig det som hänger på den.
+  const ideal = { ...opts, origin };
+  const idealPorts: PlacedPort[] = ports.map((p) => ({
+    id: p.id,
+    role: p.role,
+    pos: toWorld(p.pos, ideal),
+    dir: transformDir(p.dir, opts),
+    levelMm: p.levelMm,
+  }));
+
+  return { placement, idealBbox, idealClearBox, idealPorts, next };
 }
 
 /**
@@ -615,7 +632,18 @@ type ChainResult = {
   turnedToMainAxis: boolean;
 };
 
-/** Bygger kedjan med en given längd på den parametriska maskinen. */
+/**
+ * Bygger linjen — som är ett träd, inte en kedja.
+ *
+ * En maskin kan ha flera utgångar, och på var och en kan det hänga en gren.
+ * Listan är platt och behåller sin ordning; grenarna ligger i länkarna. En
+ * post med `branch` startar en gren på en tidigare maskins utgång, och allt
+ * som följer i listan hör till samma gren tills nästa grenrot.
+ *
+ * Grenarna löses i listans ordning, så en gren kan alltid utgå från en maskin
+ * som redan är placerad. Alla grenar delar samma hinderlista, så en gren
+ * lägger sig fritt från huvudlinjen i stället för rakt igenom den.
+ */
 function walkChain(
   config: Configuration,
   lineItems: { item: LineItem; machine: Machine }[],
@@ -625,14 +653,41 @@ function walkChain(
 ): ChainResult {
   const placements: Placement[] = [];
   const unplaced: SolveOutput["unplaced"] = [];
-  const idealBoxes: Box[] = [];
-  // Samma boxar utvidgade med maskinzonen, så att kedjan lägger sig fritt.
-  const idealClearBoxes: Box[] = [];
+  /** Placerad geometri, delad av alla grenar. */
+  const placed: { instanceId: string; bbox: Box; clear: Box; ports: PlacedPort[] }[] = [];
 
   let cursor = startCursor(config);
   let turnedToMainAxis = cursor.dir === "x+";
+  /** Maskinen nästa post kopplas till, port mot port. */
+  let connectedTo: string | null = null;
+  /** Markören där huvudlinjen slutade, som är den slutpunkten gäller. */
+  let mainCursor: Cursor | null = null;
+  let inMain = true;
 
   lineItems.forEach(({ item, machine }, index) => {
+    if (item.branch) {
+      // Grenrot: hoppa till den utpekade utgången på en redan placerad maskin.
+      if (inMain) mainCursor = cursor;
+      inMain = false;
+
+      const parent = placed.find((p) => p.instanceId === item.branch!.fromInstanceId);
+      const port = parent?.ports.find(
+        (p) => p.role === "out" && p.id === item.branch!.outPortId,
+      );
+      if (!parent || !port) {
+        unplaced.push({
+          instanceId: item.instanceId,
+          machineId: machine.id,
+          reason: parent
+            ? `Utgången "${item.branch.outPortId}" finns inte på maskinen grenen utgår från.`
+            : "Maskinen grenen utgår från ligger inte före den i linjen.",
+        });
+        return;
+      }
+      cursor = { point: port.pos, dir: port.dir };
+      connectedTo = parent.instanceId;
+    }
+
     const eff = effectiveMachine(
       machine,
       item.selectedOptions,
@@ -653,10 +708,10 @@ function walkChain(
 
     /*
      * Skjut fram markören tills maskinen står fri. Tidigare maskiner räknas
-     * med sin maskinzon — utom den närmast föregående, som är inkopplad port
-     * mot port och därför med rätta står i frigången framåt.
+     * med sin maskinzon — utom den den kopplas till, som är inkopplad port mot
+     * port och därför med rätta står i frigången framåt.
      */
-    const blockers = [...idealClearBoxes.slice(0, -1), ...idealBoxes.slice(-1)];
+    const blockers = placed.map((p) => (p.instanceId === connectedTo ? p.bbox : p.clear));
     for (let attempt = 0; attempt < MAX_CLEARANCE_ATTEMPTS; attempt++) {
       const shift = clearanceShift(result.idealBbox, blockers, cursor.dir, TURN_CLEARANCE_MM);
       if (shift <= 0) break;
@@ -674,13 +729,24 @@ function walkChain(
     }
 
     placements.push(result.placement);
-    idealBoxes.push(result.idealBbox);
-    idealClearBoxes.push(result.idealClearBox);
+    placed.push({
+      instanceId: item.instanceId,
+      bbox: result.idealBbox,
+      clear: result.idealClearBox,
+      ports: result.idealPorts,
+    });
     cursor = result.next;
-    if (cursor.dir === "x+") turnedToMainAxis = true;
+    connectedTo = item.instanceId;
+    if (inMain && cursor.dir === "x+") turnedToMainAxis = true;
   });
 
-  return { placements, unplaced, cursor, turnedToMainAxis };
+  return {
+    placements,
+    unplaced,
+    // Slutpunkten gäller huvudlinjen; en gren slutar där den slutar.
+    cursor: mainCursor ?? cursor,
+    turnedToMainAxis,
+  };
 }
 
 export function solveLayout(

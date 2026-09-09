@@ -6,6 +6,7 @@ import { meters, parseMeters } from "@/lib/format";
 import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
+import { usedOutPorts } from "@/lib/branches";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
@@ -17,6 +18,8 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleOption,
     setVariant,
     setOutPort,
+    setBranchTarget,
+    branchTarget,
     removeItem,
     removeDrawn,
     updateDrawn,
@@ -27,6 +30,11 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
+  /** Utgångar som redan har något kopplat till sig. */
+  const used =
+    item && placement
+      ? usedOutPorts(config.line, item.instanceId, placement.machine)
+      : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (
@@ -195,35 +203,59 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item && placement.machine.ports.filter((p) => p.role === "out").length > 1 ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Utgång</div>
+              <div className="kicker mb-2">Utgångar</div>
               <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                Maskinen har flera utgångar. Välj den linjen fortsätter ur — de andra finns
-                kvar på maskinen och ritas ut.
+                Maskinen har flera utgångar. Den markerade är den linjen fortsätter ur. På en
+                ledig utgång kan du bygga vidare med en egen gren.
               </p>
               <div className="space-y-1">
                 {placement.machine.ports
                   .filter((p) => p.role === "out")
-                  .map((port, index) => (
-                    <label
-                      key={port.id}
-                      className="flex cursor-pointer items-center gap-2 text-[13px]"
-                    >
-                      <input
-                        type="radio"
-                        name={`out-${item.instanceId}`}
-                        checked={
-                          item.outPortId
-                            ? item.outPortId === port.id
-                            : index === 0
-                        }
-                        onChange={() => setOutPort(item.instanceId, port.id)}
-                        className="accent-accent"
-                      />
-                      <span className="flex-1">{port.name || port.id}</span>
-                      <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
-                    </label>
-                  ))}
+                  .map((port, index) => {
+                    const chosen = item.outPortId ? item.outPortId === port.id : index === 0;
+                    const taken = used.has(port.id);
+                    const targeted =
+                      branchTarget?.instanceId === item.instanceId &&
+                      branchTarget.outPortId === port.id;
+                    return (
+                      <div key={port.id} className="flex items-center gap-2 text-[13px]">
+                        <input
+                          type="radio"
+                          name={`out-${item.instanceId}`}
+                          checked={chosen}
+                          onChange={() => setOutPort(item.instanceId, port.id)}
+                          className="accent-accent"
+                        />
+                        <span className="flex-1">{port.name || port.id}</span>
+                        <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
+                        {taken ? (
+                          <Tag>kopplad</Tag>
+                        ) : (
+                          <button
+                            className={
+                              targeted
+                                ? "border border-accent px-1 text-[11px] text-accent"
+                                : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
+                            }
+                            onClick={() =>
+                              setBranchTarget(
+                                targeted ? null : { instanceId: item.instanceId, outPortId: port.id },
+                              )
+                            }
+                          >
+                            {targeted ? "Avbryt" : "Bygg vidare"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
               </div>
+              {branchTarget?.instanceId === item.instanceId ? (
+                <p className="mt-2 border border-accent px-2 py-1 text-[11px] leading-relaxed text-accent">
+                  Välj en maskin i katalogen till vänster — den hamnar på den utgången och
+                  startar en gren.
+                </p>
+              ) : null}
             </div>
           ) : null}
 

@@ -4,6 +4,7 @@ import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
+import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
 import type {
   ConfigPatch,
   Configuration,
@@ -60,6 +61,12 @@ type State = {
   showPorts: boolean;
   hydrated: boolean;
   shareNotice: ShareNotice | null;
+  /**
+   * Utgången nästa maskin ska hängas på. Satt när någon tryckt "bygg vidare
+   * härifrån" på en ledig utgång; nästa maskin ur katalogen startar då en
+   * gren i stället för att läggas sist.
+   */
+  branchTarget: { instanceId: string; outPortId: string } | null;
 };
 
 type Actions = {
@@ -84,6 +91,7 @@ type Actions = {
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
   setVariant: (instanceId: string, variantId: string) => void;
+  setBranchTarget: (target: { instanceId: string; outPortId: string } | null) => void;
   setOutPort: (instanceId: string, outPortId: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
@@ -162,6 +170,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     showPorts: false,
     hydrated: false,
     shareNotice: null,
+    branchTarget: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -226,16 +235,31 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       // inte tyst byta maskin.
       const item = lineItem(machineId);
       if (machine.variants?.length) item.variantId = machine.variants[0].id;
+
+      /*
+       * Var maskinen hamnar: på den utpekade utgången om någon är vald, annars
+       * sist i samma gren som den markerade maskinen. Utan markering sist i
+       * listan, som förut.
+       */
+      const target = get().branchTarget;
+      if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
+      const fallback = target
+        ? segmentEndIndex(get().config.line, target.instanceId)
+        : segmentEndIndex(get().config.line, get().selectedId);
+
       get().update((d) => {
-        const index = atIndex ?? d.line.length;
+        const index = atIndex ?? fallback;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
-      set({ selectedId: item.instanceId });
+      set({ selectedId: item.instanceId, branchTarget: null });
     },
 
     removeItem: (instanceId) => {
       get().update((d) => {
-        d.line = d.line.filter((i) => i.instanceId !== instanceId);
+        // Grenar som hänger på maskinen följer med: en gren utan fäste går
+        // inte att placera, och att lämna kvar den vore att lämna maskiner
+        // som varken kan ritas eller hittas.
+        d.line = removeWithBranches(d.line, instanceId);
       });
       if (get().selectedId === instanceId) set({ selectedId: null });
     },
@@ -247,6 +271,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         const [item] = d.line.splice(from, 1);
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
       }),
+
+    setBranchTarget: (branchTarget) => set({ branchTarget }),
 
     setVariant: (instanceId, variantId) =>
       get().update((d) => {

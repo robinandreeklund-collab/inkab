@@ -1,3 +1,4 @@
+import { connectedPairs } from "./branches";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -118,15 +119,19 @@ export function runRules(
   }
 
   /* ── R-106 Maskinzonen inkräktad ────────────────────────────────────── */
+  const connected = connectedPairs(config.line);
+  const isConnected = (a: string, b: string) => connected.has([a, b].sort().join("|"));
+
   for (const p of all) {
     const clearance = p.zones.find((z) => z.type === "clearance");
     if (!clearance) continue;
 
     for (const other of all) {
       if (other.instanceId === p.instanceId) continue;
-      // Grannen i kedjan är inkopplad port mot port och står med rätta i
-      // frigången framåt respektive bakåt. Zonen gäller allt annat.
-      if (!p.aux && !other.aux && Math.abs(p.pos - other.pos) === 1) continue;
+      // Den inkopplade grannen står port mot port och därmed med rätta i
+      // frigången. Kopplingen läses ur linjens träd, inte ur positionsnummer:
+      // en grenrot kan ha nummer 3 och sitta på nummer 1.
+      if (!p.aux && !other.aux && isConnected(p.instanceId, other.instanceId)) continue;
       if (!boxesOverlap(clearance.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",

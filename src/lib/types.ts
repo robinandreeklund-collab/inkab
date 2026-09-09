@@ -211,6 +211,15 @@ export type LineItem = {
    * används den första.
    */
   outPortId?: string;
+  /**
+   * Grenrot: maskinen sitter på en annan maskins utgång i stället för på den
+   * föregående i listan. Allt som följer i listan hör till samma gren tills
+   * nästa grenrot.
+   *
+   * Linjen är alltså ett träd, lagrat som en platt lista. Listan behåller
+   * ordningen för offert, ångra och numrering; grenarna ligger i länkarna.
+   */
+  branch?: { fromInstanceId: string; outPortId: string };
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;

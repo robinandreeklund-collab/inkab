@@ -533,3 +533,50 @@ describe("skalan räknas som belagd av måttet, inte av kategorin", () => {
     expect(ctx.scaleVerified).toBe(true);
   });
 });
+
+describe("upprepade uppritningar av samma lokal", () => {
+  it("säger ifrån från andra gången", () => {
+    const ctx = context(defaultConfig());
+    const plan = {
+      lengthM: 15,
+      widthM: 9,
+      scaleNote: "15 m",
+      replaceExisting: true,
+      walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
+    };
+    const first = executeTool("draw_hall", plan, ctx) as { alreadyDrawn?: string };
+    expect(first.alreadyDrawn).toBeUndefined();
+
+    const second = executeTool("draw_hall", plan, ctx) as { alreadyDrawn?: string };
+    // Fyra uppritningar av samma hall i en tur är fyra rundor för samma sak.
+    expect(second.alreadyDrawn).toContain("2 gånger");
+    expect(second.alreadyDrawn).toContain("ett enda anrop");
+  });
+});
+
+describe("propose_variant när add_machine aldrig anropats", () => {
+  it("säger att layouten är facit", () => {
+    const ctx = context(defaultConfig());
+    executeTool("clear_line", {}, ctx);
+    const result = executeTool(
+      "propose_variant",
+      { name: "Lokalen", description: "Bara hallen." },
+      ctx,
+    ) as { warnings?: string[] };
+    expect(result.warnings?.join(" ")).toContain("inte anropat add_machine");
+    expect(result.warnings?.join(" ")).toContain("machineCount: 0");
+  });
+
+  it("nöjer sig med en kort varning när den faktiskt försökt", () => {
+    const ctx = context(defaultConfig());
+    executeTool("clear_line", {}, ctx);
+    executeTool("add_machine", { machineId: "finns-inte" }, ctx);
+    const result = executeTool(
+      "propose_variant",
+      { name: "Lokalen", description: "Bara hallen." },
+      ctx,
+    ) as { warnings?: string[] };
+    expect(result.warnings?.join(" ")).toContain("inga maskiner");
+    expect(result.warnings?.join(" ")).not.toContain("inte anropat add_machine");
+  });
+});

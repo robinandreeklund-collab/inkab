@@ -37,6 +37,24 @@ const STEPS: Record<string, string> = {
   propose_variant: "Sammanställer förslaget",
 };
 
+/**
+ * Andra turen, när den första lämnade ett halvt svar.
+ *
+ * Det händer att assistenten ritar upp lokalen, glömmer maskinerna och ändå
+ * sparar — ibland med en förklaring den hittat på. Ingen väntar på jobbet, så
+ * i stället för att lämna ifrån sig hälften får den en tur till med lokalen på
+ * plats och en enda uppgift kvar. En gång, inte fler.
+ */
+const FOLLOWUP_PROMPT = `Du ritade upp lokalen men sparade ett förslag utan en enda maskin. Layouten säger machineCount: 0 — det är facit, oavsett vad du skrev i ditt svar.
+
+Nu ligger lokalen i arbetskopian. Bygg linjen efter samma underlag:
+1. Läs bilagorna igen och skriv vilka maskinrutor du ser, i flödets ordning.
+2. add_machine för var och en, med det utförande måtten anger. Kontrollera maskin-id mot maskinbiblioteket i systemprompten innan du anropar.
+3. set_flow efter hur paketen går in och ut.
+4. propose_variant när linjen står. Kontrollera i svaret att machineCount stämmer med antalet rutor på ritningen.
+
+Visar underlaget verkligen inga maskiner — bara en lokal — så säg det i klartext och spara ingenting mer.`;
+
 const JOB_PROMPT = `Kunden har laddat upp underlag och vill ha ett färdigt förslag att titta på. Ingen sitter och väntar på svaret, så arbeta klart hela vägen och spara resultatet — ett svar utan sparat förslag är inget svar.
 
 1. Läs bilagorna. Skriv först vad du ser: en ritning över lokalen, ett flödesschema, en skiss, ett foto.
@@ -128,7 +146,7 @@ async function run(
   };
 
   try {
-    const result = await runAssistant({
+    let result = await runAssistant({
       config: input.config,
       message: `${JOB_PROMPT}\n\nKundens egna ord: ${input.note.trim() || "(inget skrivet)"}`,
       attachments: input.attachments,
@@ -153,6 +171,57 @@ async function run(
         }
       },
     });
+
+    /*
+     * Ett förslag med bara en lokal i, när underlaget visar maskiner, är ett
+     * halvt svar. Assistenten får då en tur till med lokalen på plats — en
+     * gång — i stället för att kunden ska behöva be om resten.
+     */
+    const onlyHall =
+      !result.error &&
+      input.attachments.length > 0 &&
+      !result.triedMachines &&
+      result.variants.length > 0 &&
+      result.variants.every((v) => (v.config as Configuration).line.length === 0);
+
+    if (onlyHall) {
+      publish("Bygger linjen", true);
+      const withHall = result.variants[result.variants.length - 1].config as Configuration;
+      const second = await runAssistant({
+        config: withHall,
+        message: FOLLOWUP_PROMPT,
+        attachments: input.attachments,
+        role: input.role,
+        library: input.library,
+        priceBook: input.priceBook,
+        provider: input.provider,
+        maxRounds: MAX_ROUNDS,
+        effort: "high",
+        onEvent: (event) => {
+          if (event.type === "tool" && event.phase === "run") {
+            done.push({ name: event.name, ok: true });
+            publish(STEPS[event.name] ?? "Arbetar", true);
+          }
+        },
+      });
+
+      // Turerna slås ihop till en körning: kunden beställde ett jobb, och
+      // rapporten ska visa allt som gjordes för hennes räkning.
+      result = {
+        ...second,
+        text: [result.text.trim(), second.text.trim()].filter(Boolean).join("\n\n"),
+        // Det fylligaste först: en linje slår en tom lokal.
+        variants: [...second.variants, ...result.variants],
+        scaleVerified: result.scaleVerified ?? second.scaleVerified,
+        rounds: result.rounds + second.rounds,
+        steps: [...result.steps, ...second.steps],
+        timeline: [
+          ...result.timeline,
+          ...second.timeline.map((round) => ({ ...round, round: round.round + result.rounds })),
+        ],
+        totalMs: result.totalMs + second.totalMs,
+      };
+    }
 
     /*
      * Sparade förslag är det jobbet levererar. Har assistenten ändrat

@@ -37,6 +37,10 @@ export type ToolContext = {
   role: Role;
   library: MachineLibrary;
   priceBook: PriceBook;
+  /** Antal gånger lokalen ritats i den här turen. */
+  hallDrawings?: number;
+  /** Sant så snart add_machine anropats, oavsett hur det gick. */
+  triedMachines?: boolean;
   /**
    * Om hallen ritades med belagd skala. null tills draw_hall använts.
    *
@@ -531,6 +535,7 @@ export function executeTool(
             `t.ex. { "machineId": "${ctx.library.machines[0]?.id ?? "rullbana"}" }.`,
         };
       }
+      ctx.triedMachines = true;
       const machineId = String(input.machineId);
       if (!getMachine(machineId, ctx.library)) {
         return {
@@ -766,6 +771,7 @@ export function executeTool(
       };
 
       ctx.scaleVerified = scaleVerified;
+      ctx.hallDrawings = (ctx.hallDrawings ?? 0) + 1;
       if (input.replaceExisting === true) ctx.draft.drawn = [];
       const { drawn, notes } = planToDrawn(plan, ctx.draft.hall, ctx.draft.drawn);
       ctx.draft.drawn = [...ctx.draft.drawn, ...drawn].slice(0, MAX_DRAWN);
@@ -774,6 +780,14 @@ export function executeTool(
         hall: ctx.draft.hall,
         added: drawn.length,
         notes,
+        ...(ctx.hallDrawings > 1
+          ? {
+              alreadyDrawn:
+                `Du har nu ritat lokalen ${ctx.hallDrawings} gånger i den här turen. ` +
+                "draw_hall tar alla väggar, portar och zoner i ett enda anrop — rita om " +
+                "bara när något faktiskt är fel, annars går rundorna åt till samma sak.",
+            }
+          : {}),
         scale: { source, note, verified: scaleVerified },
         reminder: scaleVerified
           ? "Ritningen är uppmätt ur en bild. Säg det till kunden och be dem kontrollmäta " +
@@ -808,9 +822,13 @@ export function executeTool(
       const warnings: string[] = [];
       if (variant.config.line.length === 0) {
         warnings.push(
-          "Förslaget innehåller inga maskiner. Att kundens linje var tom är inte ett skäl " +
-            "att lämna den tom — visar underlaget maskiner ska du bygga linjen med " +
-            "add_machine och spara ett nytt förslag.",
+          ctx.triedMachines
+            ? "Förslaget innehåller inga maskiner."
+            : "Förslaget innehåller inga maskiner, och du har inte anropat add_machine en " +
+              "enda gång i den här turen. Att kundens linje var tom är inte ett skäl att " +
+              "lämna den tom — visar underlaget maskiner ska du bygga linjen och spara ett " +
+              "nytt förslag. Layouten i det här svaret är facit: står det machineCount: 0 " +
+              "finns inga maskiner, oavsett vad du tror att du gjort.",
         );
       }
       if (JSON.stringify(variant.config) === JSON.stringify(ctx.original)) {

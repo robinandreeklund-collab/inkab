@@ -119,6 +119,8 @@ export type AssistantRun = {
   variants: Variant[];
   /** Om hallen ritades med belagd skala. null när draw_hall inte användes. */
   scaleVerified: boolean | null;
+  /** Sant om add_machine anropades någon gång under turen. */
+  triedMachines: boolean;
   /** Arbetskopian som den såg ut när turen tog slut. */
   draft: Configuration;
   rounds: number;
@@ -170,6 +172,7 @@ export async function runAssistant(input: {
       text: "",
       variants: [],
       scaleVerified: null,
+      triedMachines: false,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -196,6 +199,7 @@ export async function runAssistant(input: {
       text: "",
       variants: [],
       scaleVerified: null,
+      triedMachines: false,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -474,6 +478,7 @@ export async function runAssistant(input: {
       text: answer,
       variants: ctx.variants,
       scaleVerified: ctx.scaleVerified ?? null,
+      triedMachines: !!ctx.triedMachines,
       draft: ctx.draft,
       rounds,
       steps,
@@ -488,6 +493,7 @@ export async function runAssistant(input: {
     text: answer,
     variants: ctx.variants,
     scaleVerified: ctx.scaleVerified ?? null,
+    triedMachines: !!ctx.triedMachines,
     draft: ctx.draft,
     rounds,
     steps,

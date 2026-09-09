@@ -4,7 +4,7 @@ import { runAssistant, type AssistantRun } from "@/lib/server/aiRun";
 import { TRAITS } from "@/lib/server/assistant";
 import { BUILTIN_LIBRARY } from "@/lib/library";
 import { BUILTIN_PRICE_BOOK } from "@/lib/server/pricebook";
-import { defaultConfig } from "@/lib/templates";
+import { defaultConfig, emptyConfig } from "@/lib/templates";
 import { startDraftJob } from "@/lib/server/draftJobs";
 import { readDraftJob } from "@/lib/server/store";
 
@@ -346,5 +346,77 @@ describe("jobbet när assistenten fastnar", () => {
     expect(finished?.detail.stopReason).toBe("repeat");
     // Och det ska inte ha kostat sexton rundor att komma dit.
     expect(finished?.detail.rounds).toBeLessThanOrEqual(4);
+  }, 30_000);
+});
+
+describe("jobbet ger en tur till när bara lokalen ritades", () => {
+  it("bygger linjen i en andra tur i stället för att lämna ett halvt svar", async () => {
+    /*
+     * Första turen ritar hallen och sparar ett förslag utan maskiner — precis
+     * som det gick i verkligheten. Andra turen ska då komma, med lokalen på
+     * plats, och lägga till maskinen.
+     */
+    let turn = 0;
+    let calls = 0;
+    const server = createServer((request, response) => {
+      calls += 1;
+      response.writeHead(200, { "Content-Type": "text/event-stream" });
+      if (turn === 0) {
+        if (calls === 1) return void response.end(toolUseMessage("draw_hall", { lengthM: 15, widthM: 9 }));
+        if (calls === 2) {
+          return void response.end(
+            toolUseMessage("propose_variant", { name: "Lokalen", description: "Bara hallen." }),
+          );
+        }
+        turn = 1;
+        calls = 0;
+        return void response.end(textInBlockMessage("Jag ritade lokalen."));
+      }
+      if (calls === 1) {
+        return void response.end(toolUseMessage("add_machine", { machineId: "rullbana" }));
+      }
+      if (calls === 2) {
+        return void response.end(
+          toolUseMessage("propose_variant", { name: "Med linje", description: "Hall och linje." }),
+        );
+      }
+      response.end(textInBlockMessage("Nu står linjen också."));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    const url = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}`;
+
+    const job = await startDraftJob({
+      // Som när kunden väljer "Ladda upp ritning": tom ritning, inga maskiner.
+      config: emptyConfig(),
+      note: "Gör ett förslag på ritningen.",
+      attachments: [{ name: "ritning.png", mediaType: "image/png", data: "AAAA" }],
+      userId: null,
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      provider: {
+        provider: "grok",
+        model: "provsvar",
+        apiKey: "prov",
+        baseURL: url,
+        traits: TRAITS.grok,
+      },
+    });
+
+    let finished = await readDraftJob(job.id, null);
+    for (let i = 0; i < 200 && finished && (finished.status === "queued" || finished.status === "running"); i++) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      finished = await readDraftJob(job.id, null);
+    }
+    server.close();
+
+    expect(finished?.status).toBe("done");
+    // Två förslag, och det med maskiner ligger först.
+    expect(finished?.variants).toHaveLength(2);
+    expect(finished?.variants[0].name).toBe("Med linje");
+    // Rapporten visar hela arbetet, båda turerna.
+    expect(finished?.detail.steps?.map((s) => s.name)).toContain("add_machine");
+    expect(finished?.detail.rounds).toBeGreaterThan(3);
   }, 30_000);
 });

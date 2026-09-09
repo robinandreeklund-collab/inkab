@@ -15,6 +15,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     selectedId,
     toggleInspector,
     toggleOption,
+    setVariant,
     removeItem,
     removeDrawn,
     updateDrawn,
@@ -164,6 +165,32 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           ) : null}
 
           <MachineImages machine={placement.machine} />
+
+          {item && (placement.machine.variants?.length ?? 0) > 1 ? (
+            <div className="mt-4">
+              <div className="kicker mb-2">Utförande</div>
+              <div className="space-y-1">
+                {placement.machine.variants!.map((variant) => (
+                  <label
+                    key={variant.id}
+                    className="flex cursor-pointer items-center gap-2 text-[13px]"
+                  >
+                    <input
+                      type="radio"
+                      name={`variant-${item.instanceId}`}
+                      checked={(item.variantId ?? placement.machine.variants![0].id) === variant.id}
+                      onChange={() => setVariant(item.instanceId, variant.id)}
+                      className="accent-accent"
+                    />
+                    <span className="flex-1">{variant.name}</span>
+                    <span className="num text-[11px] text-muted">
+                      {meters(variant.footprint.lengthMm)} × {meters(variant.footprint.widthMm)} m
+                    </span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">

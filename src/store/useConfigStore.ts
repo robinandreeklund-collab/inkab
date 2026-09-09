@@ -83,6 +83,7 @@ type Actions = {
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
+  setVariant: (instanceId: string, variantId: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
@@ -219,7 +220,11 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         set({ selectedId: existing.instanceId });
         return;
       }
+      // Utförandet skrivs in vid tillägget i stället för att lämnas tomt:
+      // ändrar admin ordningen på utförandena ska en sparad konfiguration
+      // inte tyst byta maskin.
       const item = lineItem(machineId);
+      if (machine.variants?.length) item.variantId = machine.variants[0].id;
       get().update((d) => {
         const index = atIndex ?? d.line.length;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
@@ -240,6 +245,16 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (from < 0) return;
         const [item] = d.line.splice(from, 1);
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
+      }),
+
+    setVariant: (instanceId, variantId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (!item) return;
+        item.variantId = variantId;
+        // Manuell förskjutning hör ihop med det gamla måttet. Ett nytt
+        // utförande är en annan maskin i geometrin, så justeringen släpps.
+        delete item.manualOffset;
       }),
 
     setParameter: (instanceId, parameterId, value) =>

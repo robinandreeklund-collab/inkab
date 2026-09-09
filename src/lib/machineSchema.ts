@@ -114,6 +114,28 @@ export const parameterSchema = z
     }
   });
 
+const modelSchema = z.object({
+  glb: z.string().max(400),
+  proxy: z.string().max(400).optional(),
+  upAxis: z.enum(["z", "y"]).optional(),
+  yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  flipped: z.boolean().optional(),
+});
+
+export const variantSchema = z.object({
+  id: z.string().min(1).max(40),
+  name: z.string().min(1).max(60),
+  footprint: z.object({
+    lengthMm: z.number().int().min(100).max(200_000),
+    widthMm: z.number().int().min(100).max(60_000),
+    heightMm: z.number().int().min(100).max(40_000),
+  }),
+  ports: z.array(portSchema).max(8).optional(),
+  model: modelSchema.optional(),
+  packagesPerHour: z.number().int().min(0).max(500).optional(),
+  dimensionsVerified: z.boolean().optional(),
+});
+
 export const machineSchema = z
   .object({
     id: machineIdSchema,
@@ -180,15 +202,8 @@ export const machineSchema = z
 
     parameters: z.array(parameterSchema).max(20).optional(),
     images: z.array(z.string().max(80)).max(8).optional(),
-    model: z
-      .object({
-        glb: z.string().max(400),
-        proxy: z.string().max(400).optional(),
-        upAxis: z.enum(["z", "y"]).optional(),
-        yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
-        flipped: z.boolean().optional(),
-      })
-      .optional(),
+    variants: z.array(variantSchema).max(12).optional(),
+    model: modelSchema.optional(),
     productUrl: z.string().max(400).optional(),
     datasheetUrl: z.string().max(400).optional(),
   })
@@ -213,6 +228,33 @@ export const machineSchema = z
         message: "En maskin i kedjan behöver minst en inport och en utport.",
       });
     }
+    const variantIds = (machine.variants ?? []).map((v) => v.id);
+    if (new Set(variantIds).size !== variantIds.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["variants"],
+        message: "Utförandena måste ha unika id.",
+      });
+    }
+    for (const [index, variant] of (machine.variants ?? []).entries()) {
+      for (const [portIndex, port] of (variant.ports ?? []).entries()) {
+        if (port.pos.x < 0 || port.pos.x > variant.footprint.lengthMm) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["variants", index, "ports", portIndex, "pos", "x"],
+            message: `X måste ligga mellan 0 och ${variant.footprint.lengthMm} mm.`,
+          });
+        }
+        if (port.pos.y < 0 || port.pos.y > variant.footprint.widthMm) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["variants", index, "ports", portIndex, "pos", "y"],
+            message: `Y måste ligga mellan 0 och ${variant.footprint.widthMm} mm.`,
+          });
+        }
+      }
+    }
+
     const ids = machine.ports.map((p) => p.id);
     if (new Set(ids).size !== ids.length) {
       ctx.addIssue({
@@ -259,6 +301,20 @@ export const priceEntrySchema = z.object({
   list: z.number().int().min(0).max(1_000_000_000),
   cost: z.number().int().min(0).max(1_000_000_000),
   options: z.record(z.string().max(40), z.number().int().min(0).max(100_000_000)),
+  /**
+   * Pris per utförande. Finns posten ersätter den maskinens grundpris — en
+   * tolvmetersbana kostar inte samma som en tremeters. Saknas den används
+   * grundpriset, så ett nytt utförande fungerar innan priset är satt.
+   */
+  variants: z
+    .record(
+      z.string().max(40),
+      z.object({
+        list: z.number().int().min(0).max(1_000_000_000),
+        cost: z.number().int().min(0).max(1_000_000_000),
+      }),
+    )
+    .optional(),
 });
 
 export const priceBookSchema = z.object({

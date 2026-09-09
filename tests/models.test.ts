@@ -120,7 +120,7 @@ describe("modellagret", () => {
 describe("ta över mått ur modellen", () => {
   const machine = BUILTIN_MACHINES.find((m) => m.id === "rullbana")!;
 
-  it("flyttar in portarna i det nya fotavtrycket", () => {
+  it("håller portarna innanför ett mindre fotavtryck", () => {
     // Det här var felet: nya mått skrevs in men portarna låg kvar där de var,
     // maskinen bröt mot schemat och Spara gjorde ingenting utan att säga varför.
     const small = { lengthMm: 2000, widthMm: 800, heightMm: 700 };
@@ -134,9 +134,27 @@ describe("ta över mått ur modellen", () => {
     expect(machineSchema.safeParse(applied).success).toBe(true);
   });
 
-  it("låter portarna vara när de redan får plats", () => {
-    const bigger = { lengthMm: 12_000, widthMm: 4000, heightMm: 900 };
-    const { machine: applied, movedPorts } = applyModelFootprint(machine, bigger);
+  it("skalar portarna med måtten i stället för att klippa dem", () => {
+    // Samma maskin, uppmätt i stället för uppskattad: en port mitt på ska
+    // sitta mitt på även efteråt, och utporten kvar i änden.
+    const doubled = {
+      lengthMm: machine.footprint.lengthMm * 2,
+      widthMm: machine.footprint.widthMm * 2,
+      heightMm: machine.footprint.heightMm,
+    };
+    const { machine: applied } = applyModelFootprint(machine, doubled);
+
+    for (const [i, port] of applied.ports.entries()) {
+      expect(port.pos.x).toBe(machine.ports[i].pos.x * 2);
+      expect(port.pos.y).toBe(machine.ports[i].pos.y * 2);
+    }
+    const out = applied.ports.find((p) => p.role === "out")!;
+    expect(out.pos.x).toBe(doubled.lengthMm);
+    expect(machineSchema.safeParse(applied).success).toBe(true);
+  });
+
+  it("rör inga portar när måtten är oförändrade", () => {
+    const { machine: applied, movedPorts } = applyModelFootprint(machine, machine.footprint);
     expect(movedPorts).toEqual([]);
     expect(applied.ports).toEqual(machine.ports);
   });

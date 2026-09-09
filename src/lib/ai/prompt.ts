@@ -76,6 +76,15 @@ ${library.machines.map((m) => {
       (m.capacity.packagesPerHour > 0 ? `, ${m.capacity.packagesPerHour} paket/h` : "") +
       `, ${m.utilities.powerKw} kW`,
   ];
+  if (m.variants?.length) {
+    // Utförandena är maskinens verkliga mått; grundmåttet ovan är bara det
+    // första. Assistenten ska kunna välja rätt längd åt kunden.
+    parts.push(
+      `  Utföranden: ${m.variants
+        .map((v) => `${v.id} = ${v.name} (${v.footprint.lengthMm / 1000} m)`)
+        .join(", ")}. Förval ${m.variants[0].id}.`,
+    );
+  }
   if (m.parametricLength) {
     parts.push(
       `  Valfri längd ${m.parametricLength.minMm / 1000}–${m.parametricLength.maxMm / 1000} m.`,

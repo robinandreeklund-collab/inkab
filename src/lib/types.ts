@@ -166,6 +166,15 @@ export type Machine = {
    * Webbmodeller framtagna av scripts/step-to-glb.mjs. GLB ligger i
    * objektlagring eller under public/, aldrig i biblioteksdokumentet.
    */
+  /**
+   * Utföranden av samma maskin — samma konstruktion i olika längder.
+   * En rullbana finns som 3, 6 och 12 meter; det är inte tre maskiner utan
+   * en maskin med tre mått. Kunden väljer utförande i konfiguratorn, och
+   * varje utförande bär sin egen modell och sina egna mått, mätta ur sin
+   * egen STEP-fil.
+   */
+  variants?: MachineVariant[];
+
   model?: {
     glb: string;
     /** Kraftigt förenklad variant för översikt. Valfri. */
@@ -188,6 +197,8 @@ export type Machine = {
 export type LineItem = {
   instanceId: string;
   machineId: string;
+  /** Valt utförande. Utelämnas används maskinens första variant, om någon. */
+  variantId?: string;
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;
@@ -254,6 +265,31 @@ export type Product = {
   packageHeightMm: number;
   packageWeightKg: number;
   targetPackagesPerHour: number;
+};
+
+/**
+ * Ett utförande. Måtten kommer ur variantens egen CAD-modell och är därmed
+ * mätta, inte uppskattade. Priser står aldrig här — maskinbiblioteket går
+ * till webbläsaren, prisboken gör det aldrig.
+ */
+export type MachineVariant = {
+  id: string;
+  /** Vad kunden ser: "3 m", "6 m", "12 m". */
+  name: string;
+  footprint: { lengthMm: number; widthMm: number; heightMm: number };
+  /** Egna portlägen. Utelämnas de skalas basmaskinens mot variantens mått. */
+  ports?: Port[];
+  model?: {
+    glb: string;
+    proxy?: string;
+    upAxis?: "z" | "y";
+    yawDeg?: 0 | 90 | 180 | 270;
+    flipped?: boolean;
+  };
+  /** Avvikande kapacitet, om utförandet ändrar den. */
+  packagesPerHour?: number;
+  /** Sant när måtten är kontrollerade mot ritning. */
+  dimensionsVerified?: boolean;
 };
 
 export type Configuration = {

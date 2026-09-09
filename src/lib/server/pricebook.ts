@@ -19,6 +19,12 @@ export type PriceEntry = {
   /** Internt inköpspris, SEK. Visas bara i säljläge. */
   cost: number;
   options: Record<string, number>;
+  /**
+   * Pris per utförande. Ersätter grundpriset när det finns — en tolvmeters
+   * rullbana kostar inte samma som en tremeters. Saknas posten gäller
+   * grundpriset, så ett nytt utförande fungerar innan priset är satt.
+   */
+  variants?: Record<string, { list: number; cost: number }>;
 };
 
 export type PriceBook = {

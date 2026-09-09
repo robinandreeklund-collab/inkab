@@ -8,6 +8,7 @@ import { MachinePreview } from "./MachinePreview";
 import { ParameterPanel } from "./ParameterPanel";
 import { ImagePanel } from "./ImagePanel";
 import { ModelPanel } from "./ModelPanel";
+import { VariantPanel } from "./VariantPanel";
 import {
   CheckField,
   Grid,
@@ -466,6 +467,13 @@ export function MachineForm({
           />
 
           <ModelPanel machine={machine} onChange={onChange} />
+
+          <VariantPanel
+            machine={machine}
+            price={price}
+            onChange={onChange}
+            onPriceChange={onPriceChange}
+          />
 
           <OptionPanel machine={machine} price={price} onChange={onChange} onPriceChange={onPriceChange} />
 

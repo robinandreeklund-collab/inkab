@@ -181,6 +181,12 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
             type: "integer",
             description: "Position i kedjan, 0 eller större. Utelämna för att lägga sist.",
           },
+          variantId: {
+            type: "string",
+            description:
+              "Utförande, för maskiner som finns i flera längder. Id:na står i " +
+              "maskinbiblioteket. Utelämna för maskinens förval.",
+          },
         },
         required: ["machineId"],
         additionalProperties: false,
@@ -316,7 +322,24 @@ export function executeTool(
           error: `Okänd maskin: ${machineId}. Anropa get_machine_library först.`,
         };
       }
+      const machine = getMachine(machineId, ctx.library)!;
       const item = lineItem(machineId);
+
+      // Utförandet valideras mot biblioteket: assistenten får inte hitta på
+      // ett mått som inte finns att bygga.
+      const variants = machine.variants ?? [];
+      if (variants.length > 0) {
+        const wanted = input.variantId ? String(input.variantId) : null;
+        if (wanted && !variants.some((v) => v.id === wanted)) {
+          return {
+            error:
+              `Okänt utförande: ${wanted}. ${machine.name} finns som ` +
+              `${variants.map((v) => `${v.id} (${v.name})`).join(", ")}.`,
+          };
+        }
+        item.variantId = wanted ?? variants[0].id;
+      }
+
       const at =
         typeof input.atIndex === "number"
           ? input.atIndex
@@ -327,7 +350,7 @@ export function executeTool(
         item,
       );
       return {
-        added: { instanceId: item.instanceId, machineId },
+        added: { instanceId: item.instanceId, machineId, variantId: item.variantId },
         layout: layoutSummary(ctx.draft, ctx.library),
       };
     }

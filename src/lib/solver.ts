@@ -58,15 +58,65 @@ export type EffectiveMachine = Machine & {
 };
 
 /**
- * Räknar ut maskinens verkliga mått efter valda optioner och, för sista
- * kedjetransportören, efter den längd kunden angett.
+ * Löser upp valt utförande till en maskin.
+ *
+ * Ett utförande är samma konstruktion i ett annat mått — en rullbana på 3, 6
+ * eller 12 meter. Det byter fotavtryck, modell och eventuellt portar och
+ * kapacitet; allt annat är maskinens. Genom att göra det HÄR, före optioner
+ * och parametrar, behöver ingenting nedströms känna till varianter alls:
+ * solvern, reglerna och 3D-vyn ser bara en maskin med sina mått.
+ *
+ * Utan valt utförande används det första, om maskinen har några. En maskin
+ * med utföranden har inget eget "grundmått" som är rimligt att rita.
+ */
+export function resolveVariant(machine: Machine, variantId?: string): Machine {
+  const variants = machine.variants ?? [];
+  if (variants.length === 0) return machine;
+
+  const variant = variants.find((v) => v.id === variantId) ?? variants[0];
+
+  /*
+   * Utan egna portlägen ärver utförandet maskinens, skalade till sitt mått.
+   * Utan skalningen skulle en tolvmetersbana ha sin utport där sexmetersbanan
+   * slutar — mitt på maskinen — och kedjan skulle byggas ihop på fel ställe.
+   * Att kräva egna portar per utförande vore att be om samma uppgift tre
+   * gånger för samma konstruktion.
+   */
+  const lr = variant.footprint.lengthMm / machine.footprint.lengthMm;
+  const wr = variant.footprint.widthMm / machine.footprint.widthMm;
+  const ports =
+    variant.ports ??
+    machine.ports.map((port) => ({
+      ...port,
+      pos: { x: Math.round(port.pos.x * lr), y: Math.round(port.pos.y * wr) },
+    }));
+
+  return {
+    ...machine,
+    footprint: variant.footprint,
+    ports,
+    model: variant.model ?? machine.model,
+    capacity: {
+      ...machine.capacity,
+      packagesPerHour: variant.packagesPerHour ?? machine.capacity.packagesPerHour,
+    },
+    dimensionsVerified: variant.dimensionsVerified ?? machine.dimensionsVerified,
+  };
+}
+
+/**
+ * Räknar ut maskinens verkliga mått efter valt utförande, valda optioner och,
+ * för sista kedjetransportören, efter den längd kunden angett.
  */
 export function effectiveMachine(
-  machine: Machine,
+  base: Machine,
   selectedOptions: string[],
   overrideLengthMm?: number,
   parameters?: Record<string, ParameterValue>,
+  variantId?: string,
 ): EffectiveMachine {
+  const machine = resolveVariant(base, variantId);
+
   let lengthMm = machine.footprint.lengthMm;
   let widthMm = machine.footprint.widthMm;
   let heightMm = machine.footprint.heightMm;
@@ -94,7 +144,15 @@ export function effectiveMachine(
     powerKw += opt.deltaPowerKw ?? 0;
   }
 
-  if (machine.parametricLength && overrideLengthMm != null) {
+  /*
+   * Utföranden slår steglös längd. Två sätt att sätta samma mått på samma
+   * maskin kan inte båda gälla, och det diskreta är det som finns att köpa:
+   * har någon lagt upp 3, 6 och 12 meter är det de längderna som levereras,
+   * inte ett värde däremellan. Maskiner utan utföranden påverkas inte.
+   */
+  const hasVariants = (base.variants?.length ?? 0) > 0;
+
+  if (machine.parametricLength && overrideLengthMm != null && !hasVariants) {
     lengthMm = Math.min(
       machine.parametricLength.maxMm,
       Math.max(machine.parametricLength.minMm, Math.round(overrideLengthMm)),
@@ -566,6 +624,7 @@ function walkChain(
       item.selectedOptions,
       index === parametricIndex ? finalLengthMm : undefined,
       item.parameters,
+      item.variantId,
     );
 
     let result = placeOne(item, eff, index + 1, cursor, preferMirrored);
@@ -663,7 +722,13 @@ export function solveLayout(
 
   // Hjälpobjekt placeras relativt sin ankarmaskin.
   for (const { item, machine } of auxItems) {
-    const eff = effectiveMachine(machine, item.selectedOptions, undefined, item.parameters);
+    const eff = effectiveMachine(
+      machine,
+      item.selectedOptions,
+      undefined,
+      item.parameters,
+      item.variantId,
+    );
     let anchor: Placement | null = null;
 
     if (machine.anchorFor) {

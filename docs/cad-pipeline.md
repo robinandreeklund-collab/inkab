@@ -221,9 +221,12 @@ Panelen visar sedan:
 
 - **Mätvärdena** — filstorlek in och ut, antal delar, trianglar, tid.
 - **Varningarna** — fel längdenhet, orimlig höjd, för mycket geometri.
-- **Skillnaden mot biblioteket**, mått för mått. Måtten skrivs *inte* in
-  automatiskt. Ett uppmätt fotavtryck är sanning tills någon medvetet byter ut
-  det, så knappen **Använd modellens mått** finns, men den trycker du på.
+- **Måtten**, som tas över automatiskt. Modellen är ritningen: måtten ur den är
+  mätta och inte uppskattade, så biblioteket följer konstruktionen i stället
+  för tvärtom. Portarna skalas med — en port mitt på maskinen sitter mitt på
+  även efteråt — och vilka som flyttades sägs rakt ut. Går måtten inte att
+  spara, till exempel en modell i fel längdenhet som ger en 8 cm hög maskin,
+  ändras ingenting och panelen säger varför.
 - **Portförslaget**, som ligger mitt på kortsidorna. Det är räknat ur
   fotavtryckets kanter, inte ur geometrin — kontrollera det mot ritning.
 
@@ -289,6 +292,31 @@ Priset är att OpenCascades wasm — 7,6 MB — hämtas första gången någon
 konverterar. Den kopieras till `public/occt/` vid bygget av
 `scripts/copy-occt-wasm.mjs`, så den kan aldrig bli en annan version än den
 `occt-import-js` i `node_modules` förväntar sig.
+
+#### Utföranden
+
+Samma maskin finns ofta i flera längder. En rullbana som 3, 6 och 12 meter är
+inte tre maskiner i biblioteket utan en maskin med tre mått: samma
+beskrivning, samma optioner, samma regler.
+
+Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Utan egna
+portlägen ärver utförandet maskinens, skalade till sitt mått — annars skulle en
+tolvmetersbana ha sin utport där sexmetersbanan slutar, och kedjan byggas ihop
+mitt på maskinen.
+
+Upplösningen sker i `effectiveMachine`, före optioner och parametrar. Det är
+avsiktligt: solvern, reglerna, prissättningen och 3D-vyn ser bara en maskin med
+sina mått och behöver inte känna till utföranden alls.
+
+Två saker att veta:
+
+- **Priset ligger i prisboken**, aldrig i utförandet. Maskinbiblioteket går
+  till webbläsaren; prisboken gör det aldrig. Saknas pris för ett utförande
+  gäller maskinens grundpris, så ett nytt utförande fungerar innan
+  prissättningen är gjord.
+- **Utföranden slår steglös längd.** Har en maskin både och kan inte båda
+  gälla, och det diskreta är det som finns att köpa: har någon lagt upp 3, 6
+  och 12 meter är det de längderna som levereras.
 
 **Var modellen hamnar.** GLB:n lagras i en egen tabell (`machine_model`) och
 serveras av `/api/models/<id>`, aldrig i biblioteksdokumentet — se

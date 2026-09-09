@@ -74,7 +74,21 @@ export function priceConfiguration(
       machine,
       item.selectedOptions,
       machine.parametricLength ? config.flow.finalConveyorLengthMm : undefined,
+      item.parameters,
+      item.variantId,
     );
+
+    /*
+     * Utförandet har eget pris när det är satt. En tolvmetersbana kostar inte
+     * samma som en tremeters, och att låta grundpriset gälla vore att lova
+     * ett pris som inte finns. Saknas posten används grundpriset, så ett nytt
+     * utförande fungerar innan prissättningen är gjord.
+     */
+    const variant = (machine.variants ?? []).find(
+      (v) => v.id === (item.variantId ?? machine.variants?.[0]?.id),
+    );
+    const variantPrice = variant ? entry.variants?.[variant.id] : undefined;
+    const basePrice = variantPrice ?? { list: entry.list, cost: entry.cost };
 
     // Parametriska maskiner prissätts per löpmeter ovanpå grundpriset.
     const lengthPrice = machine.parametricLength
@@ -114,14 +128,14 @@ export function priceConfiguration(
       parameterLines.push(`${parameter.label}: ${value ? "Ja" : "Nej"}`);
     }
 
-    const listPrice = entry.list + lengthPrice;
+    const listPrice = basePrice.list + lengthPrice;
     const rowTotal = listPrice + optionsPrice + parametersPrice;
     const factor = priceBook.installFactor[machine.category] ?? 0.12;
 
     machines += rowTotal;
     install += Math.round(rowTotal * factor);
     cost +=
-      entry.cost +
+      basePrice.cost +
       Math.round(lengthPrice * 0.62) +
       Math.round((optionsPrice + parametersPrice) * 0.64);
 
@@ -130,7 +144,7 @@ export function priceConfiguration(
       pos: index + 1,
       machineId: machine.id,
       sku: machine.sku,
-      name: machine.name,
+      name: variant ? `${machine.name} – ${variant.name}` : machine.name,
       quantity: 1,
       optionNames: item.selectedOptions
         .map((id) => machine.options.find((o) => o.id === id)?.name)

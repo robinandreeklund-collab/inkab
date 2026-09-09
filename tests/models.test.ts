@@ -4,7 +4,7 @@ import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
-import { orientationEuler, orientationLabel, orientedFootprint } from "@/lib/cad/orientation";
+import { bestOrientation, orientationEuler, orientationLabel, orientedFootprint } from "@/lib/cad/orientation";
 import { BUILTIN_MACHINES } from "@/lib/library";
 
 /**
@@ -240,4 +240,49 @@ describe("riktningen mot konverterarens egen upp-axel", () => {
     ]);
     expect(orientedFootprint(asZ.footprint, { upAxis: "y" })).toEqual(asY.footprint);
   }, 60_000);
+});
+
+describe("automatisk riktning", () => {
+  it("hittar riktningen på en maskin ritad med längden längs Z", () => {
+    /*
+     * Verkligt fall. Maskinen är 3,00 × 1,57 × 0,60 m. Konverteraren mätte
+     * 1,57 × 0,60 × 3,00 (X, Y, Z), alltså Y upp och längden längs Z. Rätt
+     * svar är Y upp och ett kvarts varv — och det ska hittas trots att
+     * bibliotekets fotavtryck fortfarande är en grov uppskattning.
+     */
+    const measured = { lengthMm: 1570, widthMm: 600, heightMm: 3000 };
+    const library = { lengthMm: 6000, widthMm: 1800, heightMm: 700 };
+
+    const fit = bestOrientation(measured, library);
+    expect(fit.orientation).toEqual({ upAxis: "y", yawDeg: 90 });
+    expect(fit.footprint).toEqual({ lengthMm: 3000, widthMm: 1570, heightMm: 600 });
+    // Avvikelsen är stor i absoluta tal — biblioteket säger 6 m där maskinen
+    // är 3 — men formen pekar ändå entydigt ut rätt läge.
+    expect(fit.confident).toBe(true);
+  });
+
+  it("låter en redan rättvänd modell vara", () => {
+    const target = { lengthMm: 6000, widthMm: 1800, heightMm: 700 };
+    const fit = bestOrientation(target, target);
+    expect(fit.footprint).toEqual(target);
+    expect(fit.error).toBeCloseTo(0);
+    expect(fit.confident).toBe(true);
+  });
+
+  it("reser en modell som ligger ner", () => {
+    // Måtten säger 6,0 × 0,7 × 1,8: höjden hamnade på djupledsaxeln.
+    const measured = { lengthMm: 6000, widthMm: 700, heightMm: 1800 };
+    const fit = bestOrientation(measured, { lengthMm: 6000, widthMm: 1800, heightMm: 700 });
+    expect(fit.orientation.upAxis).toBe("y");
+    expect(fit.footprint).toEqual({ lengthMm: 6000, widthMm: 1800, heightMm: 700 });
+  });
+
+  it("avstår när formen inte skiljer lägena åt", () => {
+    const fit = bestOrientation(
+      { lengthMm: 1000, widthMm: 1000, heightMm: 1000 },
+      { lengthMm: 12_000, widthMm: 2200, heightMm: 800 },
+    );
+    // En kub ser likadan ut från alla håll: då ska verktyget avstå.
+    expect(fit.confident).toBe(false);
+  });
 });

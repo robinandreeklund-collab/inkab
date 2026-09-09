@@ -236,14 +236,19 @@ upp — SolidWorks och Inventor ritar Z upp, en del exportkedjor Y — och
 konstruktören som ritade maskinen valde inte nödvändigtvis flödesriktningen
 som X. Det är inte fel i filen, bara en annan konvention.
 
-INKAB:s egna sammanställningar ritas med **Y upp och längden längs X** — det
-syns på koordinatkorset i vilken sammanställning som helst — så nya modeller
-får den riktningen från början. En fil från en leverantör med en annan
-konvention är ett byte i listan.
+Riktningen gissas därför inte ur en konvention — den räknas fram. Vid
+konverteringen provas alla fyra måttgivande lägen (Z eller Y upp, 0° eller 90°)
+mot maskinens fotavtryck i biblioteket, och det som ger rätt form väljs.
+Jämförelsen görs på **proportioner**, inte på absoluta mått: bibliotekets
+siffror är ofta uppskattningar, och även den rätta riktningen kan då ligga
+långt fel i meter medan formen ändå pekar entydigt. Skiljer formen inte lägena
+åt — en nästan kvadratisk maskin — avstår verktyget och säger det, i stället
+för att singla slant.
 
-Upp-axel, vridning i fjärdedels varv och spegling sitter på maskinen och
-tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen som visar
-ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
+Kvar åt ögat är bara vilket håll maskinen pekar åt: ett halvt varv ändrar inga
+mått, och spegling inte heller. Upp-axel, vridning och spegling sitter på
+maskinen och tillämpas vid uppritningen, med en 3D-förhandsgranskning i panelen
+som visar ändringen direkt. Att vrida en modell rätt ska vara ett klick, inte en
 runda till med filen. Måtten ur modellen permuteras med vridningen — reser man
 en liggande modell byter bredd och höjd plats — så jämförelsen mot biblioteket
 gäller den modell som faktiskt visas. Ett test kör samma STEP genom

@@ -69,3 +69,73 @@ export function orientationLabel(orientation: ModelOrientation | undefined): str
   if (orientation?.flipped) parts.push("speglad");
   return parts.join(" · ");
 }
+
+/* ── Automatisk riktning ───────────────────────────────────────────────── */
+
+/**
+ * Hur mycket bättre den bästa riktningen måste vara än den näst bästa för att
+ * få användas utan att någon tittat.
+ *
+ * En absolut gräns vore fel mått: bibliotekets fotavtryck är ofta en
+ * uppskattning, så även den rätta riktningen kan ha stor avvikelse. Frågan är
+ * inte hur nära den kommer, utan om formen alls skiljer lägena åt. Gör den
+ * inte det — en nästan kvadratisk maskin — ska verktyget avstå i stället för
+ * att singla slant.
+ */
+export const AMBIGUITY_RATIO = 0.7;
+
+export type OrientationFit = {
+  orientation: ModelOrientation;
+  footprint: { lengthMm: number; widthMm: number; heightMm: number };
+  /** 0 = samma form. Lägre är bättre. */
+  error: number;
+  /** Sant när formen pekar tydligt ut det här läget framför de andra. */
+  confident: boolean;
+};
+
+/** Jämför form, inte storlek: båda normeras mot sitt största mått. */
+function shapeError(
+  a: { lengthMm: number; widthMm: number; heightMm: number },
+  b: { lengthMm: number; widthMm: number; heightMm: number },
+): number {
+  const na = Math.max(a.lengthMm, a.widthMm, a.heightMm) || 1;
+  const nb = Math.max(b.lengthMm, b.widthMm, b.heightMm) || 1;
+  const keys = ["lengthMm", "widthMm", "heightMm"] as const;
+  return keys.reduce((sum, key) => {
+    const x = a[key] / na;
+    const y = b[key] / nb;
+    return sum + Math.abs(x - y) / Math.max(x, y, 1e-6);
+  }, 0);
+}
+
+/**
+ * Väljer den riktning vars mått bäst liknar maskinens fotavtryck.
+ *
+ * Ett CAD-system ritar inte alltid längden längs X, och vilken axel som är
+ * upp varierar. I stället för att gissa en konvention — och gissa fel —
+ * provas alla lägen mot måtten som redan står i biblioteket. Bara fyra är
+ * intressanta: ett halvt varv ändrar inga mått, så 0° och 180° ger samma
+ * fotavtryck, liksom 90° och 270°. Vilket av de två paren som är rätt avgörs
+ * av hur maskinen ser ut, inte av dess mått, och lämnas åt ögat.
+ */
+export function bestOrientation(
+  measured: { lengthMm: number; widthMm: number; heightMm: number },
+  target: { lengthMm: number; widthMm: number; heightMm: number },
+): OrientationFit {
+  const candidates: ModelOrientation[] = [
+    { upAxis: "z", yawDeg: 0 },
+    { upAxis: "z", yawDeg: 90 },
+    { upAxis: "y", yawDeg: 0 },
+    { upAxis: "y", yawDeg: 90 },
+  ];
+
+  const ranked = candidates
+    .map((orientation) => {
+      const footprint = orientedFootprint(measured, orientation);
+      return { orientation, footprint, error: shapeError(footprint, target) };
+    })
+    .sort((a, b) => a.error - b.error);
+
+  const [best, runnerUp] = ranked;
+  return { ...best, confident: best.error < runnerUp.error * AMBIGUITY_RATIO };
+}

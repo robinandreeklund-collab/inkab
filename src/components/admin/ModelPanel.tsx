@@ -5,7 +5,13 @@ import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, SelectField, TextField } from "./fields";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
-import { orientedFootprint, YAW_STEPS, type ModelOrientation } from "@/lib/cad/orientation";
+import {
+  bestOrientation,
+  orientationLabel,
+  orientedFootprint,
+  YAW_STEPS,
+  type ModelOrientation,
+} from "@/lib/cad/orientation";
 import { ModelPreview } from "./ModelPreview";
 import type { WorkerRequest, WorkerResponse } from "@/workers/step.worker";
 import type { Machine, Port } from "@/lib/types";
@@ -47,12 +53,12 @@ type Result = {
 };
 
 /**
- * INKAB:s CAD ritar Y upp — se koordinatkorset i vilken sammanställning som
- * helst. Nya modeller får därför den riktningen från början i stället för att
- * behöva rättas en gång per maskin. Kommer en fil från en leverantör med en
- * annan konvention är det ett byte i listan.
+ * Reservriktning när måtten inte kan avgöra saken — en nästan kvadratisk
+ * maskin, eller ett fotavtryck i biblioteket som inte liknar något. INKAB:s
+ * CAD ritar Y upp, så det är den bästa gissningen när gissa är allt som
+ * återstår.
  */
-const DEFAULT_UP_AXIS = "y" as const;
+const FALLBACK_UP_AXIS = "y" as const;
 
 const STAGE_TEXT: Record<string, string> = {
   laddar: "Startar OpenCascade",
@@ -94,6 +100,10 @@ export function ModelPanel({
   const [stored, setStored] = useState<StoredModel[]>([]);
   const [applyIssues, setApplyIssues] = useState<string[]>([]);
   const [applyNote, setApplyNote] = useState<string | null>(null);
+  /** Riktningen verktyget räknade fram vid konverteringen, om någon. */
+  const [autoFit, setAutoFit] = useState<import("@/lib/cad/orientation").OrientationFit | null>(
+    null,
+  );
 
   const busy = stage !== null;
 
@@ -113,6 +123,7 @@ export function ModelPanel({
     setError(null);
     setApplyIssues([]);
     setApplyNote(null);
+    setAutoFit(null);
     loadStored();
   }, [loadStored]);
 
@@ -203,18 +214,31 @@ export function ModelPanel({
           persisted: body.persisted,
           stats: { ...stats, seconds: Math.round((Date.now() - started) / 100) / 10 },
         });
+        /*
+         * Riktningen räknas ut ur måtten i stället för att gissas ur en
+         * konvention. Alla fyra lägen provas mot maskinens fotavtryck, och
+         * det som ger rätt form vinner — även när bibliotekets mått bara är
+         * en uppskattning, eftersom jämförelsen görs på proportioner.
+         * Skiljer inte formen lägena åt lämnas det åt ögat.
+         */
+        const fit = bestOrientation(message.footprint, machine.footprint);
+        const auto = fit.confident
+          ? fit.orientation
+          : { upAxis: FALLBACK_UP_AXIS, yawDeg: 0 as const };
+
         onChange({
           ...machine,
           model: {
             glb: body.model.glb,
             proxy: body.model.proxy,
-            // En redan inställd riktning behålls: konverterar man om samma
-            // maskin ska en inställd vridning inte nollställas.
-            upAxis: machine.model?.upAxis ?? DEFAULT_UP_AXIS,
-            yawDeg: machine.model?.yawDeg,
+            // En riktning som redan är inställd för hand står över: har någon
+            // vridit maskinen rätt ska en ny konvertering inte slå bort det.
+            upAxis: machine.model?.upAxis ?? auto.upAxis,
+            yawDeg: machine.model?.yawDeg ?? auto.yawDeg,
             flipped: machine.model?.flipped,
           },
         });
+        setAutoFit(machine.model?.upAxis ? null : fit);
         loadStored();
       } catch {
         setError("Modellen konverterades men kunde inte sparas. Nätverket svarade inte.");
@@ -489,12 +513,32 @@ export function ModelPanel({
         <div className="mt-3 border-t border-divider pt-3">
           <div className="kicker mb-1">Modellens riktning</div>
           <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Era sammanställningar ritas med <strong>Y upp</strong> och längden längs X, och
-            nya modeller får den riktningen automatiskt. Stämmer det inte — en fil från en
-            leverantör, eller en maskin ritad åt andra hållet — vrid tills modellen står rätt
-            i lådan och pekar med pilen. Ändringen syns direkt och kräver ingen ny
-            konvertering.
+            Riktningen räknas fram ur måtten vid konverteringen: alla lägen provas mot
+            maskinens fotavtryck och det som ger rätt form väljs. Kvar är bara vilket håll
+            maskinen pekar åt — vrid ett halvt varv om den står bakvänd, och spegla om den
+            är ritad åt andra hållet. Ändringen syns direkt och kräver ingen ny konvertering.
           </p>
+
+          {autoFit ? (
+            <p
+              className={`mb-2 border px-2 py-1 text-xs ${
+                autoFit.confident ? "border-accent text-accent" : "border-warn text-warn"
+              }`}
+            >
+              {autoFit.confident ? (
+                <>
+                  Riktningen sattes automatiskt till{" "}
+                  <strong>{orientationLabel(autoFit.orientation)}</strong> — det är den enda
+                  som ger modellen ungefär maskinens form.
+                </>
+              ) : (
+                <>
+                  Måtten kunde inte avgöra riktningen — maskinen är för nära kvadratisk, eller
+                  så liknar fotavtrycket i biblioteket inte modellen. Ställ den för hand.
+                </>
+              )}
+            </p>
+          ) : null}
 
           <ModelPreview
             url={machine.model.glb}

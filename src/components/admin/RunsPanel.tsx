@@ -157,6 +157,9 @@ export function RunsPanel() {
                             {step.ok ? "✓" : "✕"} {step.name}
                             {typeof step.ms === "number" ? ` (${step.ms} ms)` : ""}
                             {step.error ? ` — ${step.error}` : ""}
+                            {step.input ? (
+                              <span className="num block pl-4 text-muted">{step.input}</span>
+                            ) : null}
                           </li>
                         ))}
                       </ul>

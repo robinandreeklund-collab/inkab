@@ -2,6 +2,7 @@ import "server-only";
 import { computeLayout } from "@/lib/layout";
 import { removeWithBranches, segmentEndIndex, usedOutPorts } from "@/lib/branches";
 import { MAX_DRAWN, planToDrawn, type Plan } from "@/lib/drawing";
+import { normaliseToolInput } from "./toolInput";
 import {
   BUILTIN_LIBRARY,
   CATEGORY_LABEL,
@@ -473,9 +474,12 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
 
 export function executeTool(
   name: string,
-  input: Record<string, unknown>,
+  rawInput: Record<string, unknown>,
   ctx: ToolContext,
 ): unknown {
+  // Formen rättas innan den läses; se lib/ai/toolInput.ts.
+  const input = normaliseToolInput(rawInput);
+
   switch (name) {
     case "get_machine_library": {
       const category = input.category as string | undefined;
@@ -513,10 +517,27 @@ export function executeTool(
     }
 
     case "add_machine": {
+      /*
+       * Ett saknat argument och ett felstavat är två olika fel, och modellen
+       * kan bara rätta det den förstår. "Okänd maskin: undefined" fick en
+       * modell att göra om samma anrop tre gånger — den hade ju skickat ett
+       * id, trodde den.
+       */
+      if (input.machineId === undefined || input.machineId === null || input.machineId === "") {
+        return {
+          error:
+            "Argumentet machineId saknas i anropet. Du skickade: " +
+            `${JSON.stringify(input).slice(0, 200)}. Skicka machineId som en sträng, ` +
+            `t.ex. { "machineId": "${ctx.library.machines[0]?.id ?? "rullbana"}" }.`,
+        };
+      }
       const machineId = String(input.machineId);
       if (!getMachine(machineId, ctx.library)) {
         return {
-          error: `Okänd maskin: ${machineId}. Anropa get_machine_library först.`,
+          error:
+            `Okänd maskin: ${machineId}. Giltiga id: ` +
+            `${ctx.library.machines.slice(0, 12).map((machine) => machine.id).join(", ")}` +
+            `${ctx.library.machines.length > 12 ? " …" : ""}.`,
         };
       }
       const machine = getMachine(machineId, ctx.library)!;

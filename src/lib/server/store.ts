@@ -746,7 +746,7 @@ export type DraftJobDetail = {
   provider?: string;
   rounds?: number;
   stopReason?: string;
-  steps?: { name: string; ok: boolean; error?: string; ms?: number }[];
+  steps?: { name: string; ok: boolean; error?: string; ms?: number; input?: string }[];
   /** Tiden per runda: modellens egen och verktygens. */
   timeline?: { round: number; modelMs: number; toolMs: number; tools: number }[];
   totalMs?: number;

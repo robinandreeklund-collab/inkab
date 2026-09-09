@@ -52,7 +52,15 @@ export type AssistantEvent =
   | { type: "error"; message: string };
 
 /** Ett verktygsanrop, som det gick och vad det tog. */
-export type AssistantStep = { name: string; ok: boolean; error?: string; ms?: number };
+export type AssistantStep = {
+  name: string;
+  ok: boolean;
+  error?: string;
+  ms?: number;
+  /** Argumenten modellen skickade, förkortade. Utan dem går ett argumentfel
+   *  inte att felsöka — felet säger vad som saknades, inte vad som kom. */
+  input?: string;
+};
 
 /**
  * En runda: modellens egen tid och verktygens.
@@ -395,7 +403,7 @@ export async function runAssistant(input: {
           name: block.name,
           ok: !failure,
           ms,
-          ...(failure ? { error: failure } : {}),
+          ...(failure ? { error: failure, input: JSON.stringify(block.input).slice(0, 400) } : {}),
         });
 
         /*

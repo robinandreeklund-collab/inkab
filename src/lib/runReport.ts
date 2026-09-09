@@ -16,7 +16,14 @@ export type ReportRound = {
   usage?: { input: number; output: number; cacheRead: number; cacheWrite: number };
 };
 
-export type ReportStep = { name: string; ok: boolean; error?: string; ms?: number };
+export type ReportStep = {
+  name: string;
+  ok: boolean;
+  error?: string;
+  ms?: number;
+  /** Argumenten som skickades. Finns bara för de anrop som gick fel. */
+  input?: string;
+};
 
 export type RunReport = {
   id: string;
@@ -117,6 +124,7 @@ export function runReport(job: RunReport): string {
       lines.push(
         `${pad(index + 1, 3)}. ${step.ok ? "ok  " : "FEL "} ${step.name}` +
           (typeof step.ms === "number" ? ` (${step.ms} ms)` : "") +
+          (step.input ? `\n     argument: ${step.input}` : "") +
           (step.error ? `\n     ${step.error}` : ""),
       );
     });

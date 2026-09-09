@@ -448,3 +448,32 @@ describe("draw_hall utan belagd skala", () => {
     expect(drawHall.input_schema.required).toEqual([]);
   });
 });
+
+describe("skalflaggan följer med ut ur körningen", () => {
+  it("sätts till falskt när hallen ritades utan belagd skala", () => {
+    const ctx = context(defaultConfig());
+    expect(ctx.scaleVerified).toBeUndefined();
+    executeTool(
+      "draw_hall",
+      { lengthM: 15, widthM: 10, walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }] },
+      ctx,
+    );
+    expect(ctx.scaleVerified).toBe(false);
+  });
+
+  it("sätts till sant när måttet är angivet", () => {
+    const ctx = context(defaultConfig());
+    executeTool(
+      "draw_hall",
+      {
+        lengthM: 15,
+        widthM: 10,
+        scaleSource: "dimension_on_drawing",
+        scaleNote: "15m längs långsidan",
+        walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
+      },
+      ctx,
+    );
+    expect(ctx.scaleVerified).toBe(true);
+  });
+});

@@ -755,6 +755,8 @@ export type DraftJobDetail = {
   /** Vad kunden bad om, för admins felsökning. */
   note?: string;
   fileCount?: number;
+  /** Om hallen ritades med belagd skala. null när den inte ritades alls. */
+  scaleVerified?: boolean | null;
 };
 
 export type StoredDraftJob = {

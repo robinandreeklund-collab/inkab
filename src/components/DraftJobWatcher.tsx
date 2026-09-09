@@ -32,6 +32,7 @@ type Job = {
     timeline?: { round: number; modelMs: number; toolMs: number; tools: number }[];
     totalMs?: number;
     stepSince?: string;
+    scaleVerified?: boolean | null;
   };
   error: string | null;
   createdAt: string;
@@ -217,6 +218,15 @@ export function DraftJobWatcher() {
           –
         </button>
       </div>
+
+      {/* Assistenten uppmanas att säga ifrån själv när skalan är gissad. Det
+          här säger det oavsett vad den skrev. */}
+      {job.detail?.scaleVerified === false ? (
+        <p className="mb-2 border border-warn px-2 py-1 text-xs leading-relaxed text-warn">
+          Skalan är inte belagd. Assistenten hittade inget mått att skala ritningen efter, så
+          hallens mått är en gissning — mät i verkligheten innan du går vidare.
+        </p>
+      ) : null}
 
       {job.summary ? (
         <p className="scroll-thin mb-3 max-h-40 overflow-y-auto whitespace-pre-wrap text-xs leading-relaxed">

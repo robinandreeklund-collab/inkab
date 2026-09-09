@@ -109,6 +109,8 @@ const MAX_TOOL_FAILURES = 4;
 export type AssistantRun = {
   text: string;
   variants: Variant[];
+  /** Om hallen ritades med belagd skala. null när draw_hall inte användes. */
+  scaleVerified: boolean | null;
   /** Arbetskopian som den såg ut när turen tog slut. */
   draft: Configuration;
   rounds: number;
@@ -159,6 +161,7 @@ export async function runAssistant(input: {
     return {
       text: "",
       variants: [],
+      scaleVerified: null,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -184,6 +187,7 @@ export async function runAssistant(input: {
     return {
       text: "",
       variants: [],
+      scaleVerified: null,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -461,6 +465,7 @@ export async function runAssistant(input: {
     return {
       text: answer,
       variants: ctx.variants,
+      scaleVerified: ctx.scaleVerified ?? null,
       draft: ctx.draft,
       rounds,
       steps,
@@ -474,6 +479,7 @@ export async function runAssistant(input: {
   return {
     text: answer,
     variants: ctx.variants,
+    scaleVerified: ctx.scaleVerified ?? null,
     draft: ctx.draft,
     rounds,
     steps,

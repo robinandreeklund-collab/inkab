@@ -120,6 +120,7 @@ export async function POST(request: Request) {
             config: v.config,
           })),
           aiConfigured: true,
+          scaleVerified: run.scaleVerified,
           // Vad som faktiskt gjordes. Behövs när svaret blev tomt: då är det
           // enda beskedet kunden kan få.
           trace: {

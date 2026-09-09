@@ -54,6 +54,7 @@ export function AiPanel() {
   const [error, setError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
   const [trace, setTrace] = useState<Trace | null>(null);
+  const [scaleVerified, setScaleVerified] = useState<boolean | null>(null);
   /** Vad som redan är gjort i den pågående turen, i ordning. */
   const [activity, setActivity] = useState<string[]>([]);
   const { files, add, removeAt, clear, reading, problem, setProblem } = useAttachments();
@@ -119,6 +120,7 @@ export function AiPanel() {
     setText("");
     setThinking("");
     setTrace(null);
+    setScaleVerified(null);
     setActivity([]);
     setVariants([]);
     setPreview(null);
@@ -195,6 +197,7 @@ export function AiPanel() {
               setVariants(payload.variants ?? []);
               runTrace = payload.trace ?? null;
               setTrace(runTrace);
+              setScaleVerified(payload.scaleVerified ?? null);
               setAiConfigured(payload.aiConfigured);
               setActiveTool(null);
               setThinking("");
@@ -290,6 +293,12 @@ export function AiPanel() {
         <p className="mb-2 border border-accent px-3 py-2 text-xs text-accent">
           Underlaget är inskickat. Du får besked uppe till vänster när förslaget står — rita
           vidare under tiden.
+        </p>
+      ) : null}
+      {scaleVerified === false ? (
+        <p className="mb-2 max-w-3xl border border-warn px-3 py-2 text-xs leading-relaxed text-warn">
+          Skalan är inte belagd: assistenten hittade inget mått på ritningen att skala efter, så
+          hallens mått är en gissning. Skriv ett känt mått så räknar den om.
         </p>
       ) : null}
       {text ? <p className="mb-3 max-w-3xl whitespace-pre-wrap text-sm leading-relaxed">{text}</p> : null}

@@ -197,6 +197,7 @@ async function run(
         steps: result.steps,
         timeline: result.timeline,
         totalMs: result.totalMs,
+        scaleVerified: result.scaleVerified,
       },
       error: result.error,
       updatedAt: new Date().toISOString(),

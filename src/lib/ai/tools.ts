@@ -36,6 +36,14 @@ export type ToolContext = {
   role: Role;
   library: MachineLibrary;
   priceBook: PriceBook;
+  /**
+   * Om hallen ritades med belagd skala. null tills draw_hall använts.
+   *
+   * Assistenten uppmanas att säga ifrån själv när skalan är gissad, men en
+   * uppmaning är inte en garanti. Flaggan gör att gränssnittet kan säga det
+   * oavsett vad modellen skriver.
+   */
+  scaleVerified?: boolean | null;
 };
 
 const clone = <T>(v: T): T => JSON.parse(JSON.stringify(v));
@@ -367,8 +375,11 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           scaleNote: {
             type: "string",
             description:
-              "Det du skalade efter, med siffror: 't.ex. måttkedjan 48 000 mm längs " +
-              "södra ytterväggen'. Kunden ska kunna kontrollera din utgångspunkt.",
+              "Måttet du skalade efter, ordagrant som det står på ritningen: " +
+              "\"15m längs långsidan\", \"måttkedjan 48 000 mm mot söder\", " +
+              "\"kunden uppgav 21 m mellan gavlarna\". Har ritningen flera mått: " +
+              "skriv det du utgick från och att de andra stämde mot det. " +
+              "Kunden ska kunna kontrollera din utgångspunkt.",
           },
           replaceExisting: {
             type: "boolean",
@@ -720,6 +731,7 @@ export function executeTool(
           .filter((a) => finite(a.box.x, a.box.y, a.box.l, a.box.w)),
       };
 
+      ctx.scaleVerified = scaleVerified;
       if (input.replaceExisting === true) ctx.draft.drawn = [];
       const { drawn, notes } = planToDrawn(plan, ctx.draft.hall, ctx.draft.drawn);
       ctx.draft.drawn = [...ctx.draft.drawn, ...drawn].slice(0, MAX_DRAWN);

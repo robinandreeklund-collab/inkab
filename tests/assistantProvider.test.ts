@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   DEFAULT_ASSISTANT_SETTINGS,
   keyStatus,
+  otherProvider,
   resolveProvider,
   TRAITS,
 } from "@/lib/server/assistant";
@@ -180,5 +181,27 @@ describe("felmeddelanden från leverantören", () => {
 
   it("skyller inte på leverantören när felet inte kom därifrån", () => {
     expect(describeError(new Error("nätet dog"))).toContain("tillfälligt otillgänglig");
+  });
+});
+
+describe("byte av modell när verktygen inte går att anropa", () => {
+  it("pekar ut den andra leverantören när den har en nyckel", () => {
+    only("ANTHROPIC_API_KEY", "XAI_API_KEY");
+    const fromGrok = otherProvider({ ...DEFAULT_ASSISTANT_SETTINGS, provider: "grok" }, "grok");
+    expect(fromGrok?.provider).toBe("anthropic");
+    expect(fromGrok?.model).toBe(DEFAULT_ASSISTANT_SETTINGS.anthropicModel);
+
+    const fromClaude = otherProvider(DEFAULT_ASSISTANT_SETTINGS, "anthropic");
+    expect(fromClaude?.provider).toBe("grok");
+    expect(fromClaude?.baseURL).toContain("x.ai");
+  });
+
+  it("ger null när det inte finns någon annan med nyckel", () => {
+    only("ANTHROPIC_API_KEY");
+    expect(otherProvider(DEFAULT_ASSISTANT_SETTINGS, "anthropic")).toBeNull();
+  });
+
+  it("är påslaget som förval", () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.failover).toBe(true);
   });
 });

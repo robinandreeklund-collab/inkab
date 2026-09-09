@@ -757,6 +757,9 @@ export type DraftJobDetail = {
   fileCount?: number;
   /** Om hallen ritades med belagd skala. null när den inte ritades alls. */
   scaleVerified?: boolean | null;
+  /** Modellen jobbet började med, när den byttes under vägen. */
+  switchedFrom?: string;
+  switchedWhy?: string;
 };
 
 export type StoredDraftJob = {

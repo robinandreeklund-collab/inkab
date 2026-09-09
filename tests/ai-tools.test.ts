@@ -599,3 +599,51 @@ describe("draw_hall med ett tomt anrop", () => {
     expect(ctx.draft.hall.lengthMm).toBe(15_000);
   });
 });
+
+
+/**
+ * Taket på valfria parametrar.
+ *
+ * Anthropic kompilerar en grammatik ur verktygsschemana när strict är på, och
+ * avvisar hela anropet med 400 om de valfria parametrarna är fler än 24 — inte
+ * per verktyg utan tillsammans. Det märks först i produktion, med riktig
+ * nyckel, som ett jobb som dör på en halv sekund.
+ *
+ * Det hände: när scaleSource och scaleNote gjordes valfria för att en annan
+ * leverantör inte kunde fylla i dem hamnade summan på 26, och Claude slutade
+ * fungera helt. Testet räknar dem i stället.
+ */
+describe("verktygsschemanas budget", () => {
+  const LIMIT = 24;
+  const HEADROOM = 21;
+
+  function optionalPaths(node: unknown, path: string, found: string[]): void {
+    if (Array.isArray(node)) {
+      node.forEach((item) => optionalPaths(item, path, found));
+      return;
+    }
+    if (!node || typeof node !== "object") return;
+    const record = node as Record<string, unknown>;
+    if (record.type === "object" && record.properties) {
+      const required = new Set((record.required as string[] | undefined) ?? []);
+      for (const key of Object.keys(record.properties as object)) {
+        if (!required.has(key)) found.push(`${path}.${key}`);
+      }
+    }
+    for (const [key, value] of Object.entries(record)) {
+      optionalPaths(value, `${path}.${key}`, found);
+    }
+  }
+
+  it("håller sig under Anthropics gräns, med marginal", () => {
+    const found: string[] = [];
+    for (const tool of toolDefinitions()) optionalPaths(tool.input_schema, tool.name, found);
+
+    expect(found.length, found.join(", ")).toBeLessThan(LIMIT);
+    // Marginalen är till för nästa fält som behöver läggas till: går det över
+    // ska det märkas här och inte som ett 400 hos kunden.
+    expect(found.length, `${found.length} valfria parametrar: ${found.join(", ")}`).toBeLessThanOrEqual(
+      HEADROOM,
+    );
+  });
+});

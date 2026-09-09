@@ -345,7 +345,8 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
     {
       name: "draw_hall",
       description:
-        "Ritar upp lokalen i arbetskopian: hallens mått, väggar, portar, truckzoner och " +
+        "Ritar upp lokalen i arbetskopian: hallens längd och bredd, väggar, portar, " +
+        "truckzoner och " +
         "no-go-zoner. Väggarna anges som mittlinjer mellan två punkter — verktyget ger " +
         "dem tjocklek, rätar dem till närmaste axel och stänger hörnen där de möts. " +
         "Portar anges som en punkt med bredd och sätts in i väggen de ligger närmast.\n\n" +
@@ -366,17 +367,6 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
             type: "number",
             description: "Hallens bredd i meter, 5–150. Utelämna för att behålla nuvarande.",
           },
-          clearHeightM: {
-            type: "number",
-            description: "Fri höjd i meter, 2–30. Utelämna för att behålla nuvarande.",
-          },
-          scaleSource: {
-            type: "string",
-            enum: ["dimension_on_drawing", "scale_bar", "stated_by_customer"],
-            description:
-              "Var skalan kommer ifrån: måttsatt mått på ritningen, skalstock, eller " +
-              "uppgift från kunden.",
-          },
           scaleNote: {
             type: "string",
             description:
@@ -394,11 +384,10 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           },
           walls: {
             type: "array",
-            description: "Väggarnas mittlinjer.",
+            description: "Väggarnas mittlinjer. Namnges automatiskt: Vägg 1, Vägg 2 …",
             items: {
               type: "object",
               properties: {
-                name: { type: "string" },
                 fromXM: { type: "number" },
                 fromYM: { type: "number" },
                 toXM: { type: "number" },
@@ -410,11 +399,12 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           },
           doors: {
             type: "array",
-            description: "Portar: mittpunkt och bredd. Sätts in i närmaste vägg.",
+            description:
+              "Portar: mittpunkt och bredd. Sätts in i närmaste vägg och namnges " +
+              "automatiskt: Port A, Port B …",
             items: {
               type: "object",
               properties: {
-                name: { type: "string" },
                 xM: { type: "number" },
                 yM: { type: "number" },
                 widthM: { type: "number" },
@@ -432,7 +422,6 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
               type: "object",
               properties: {
                 kind: { type: "string", enum: ["truck", "nogo"] },
-                name: { type: "string" },
                 xM: { type: "number" },
                 yM: { type: "number" },
                 lengthM: { type: "number" },

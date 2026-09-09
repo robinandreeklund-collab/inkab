@@ -19,12 +19,21 @@ export type AssistantSettings = {
   provider: AssistantProvider;
   anthropicModel: string;
   grokModel: string;
+  /**
+   * Byt modell när den valda inte klarar verktygsanropen.
+   *
+   * En modell som anropar verktygen utan argument kommer inte vidare hur många
+   * rundor den än får. Då är det bättre att göra om jobbet med den andra
+   * modellen än att lämna kunden utan svar — och säga att det gjordes.
+   */
+  failover: boolean;
 };
 
 export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = {
   provider: "anthropic",
   anthropicModel: "claude-opus-5",
   grokModel: "grok-4",
+  failover: true,
 };
 
 /** xAI svarar på Anthropics eget protokoll, så samma klient duger. */
@@ -102,6 +111,23 @@ export type ResolvedProvider = {
  * den som fungerar än ett fel kunden inte kan göra något åt. Saknas båda
  * returneras null och anropet degraderar till regelmotorn.
  */
+/** Den andra leverantören, om den har en nyckel. Null när det inte finns någon. */
+export function otherProvider(
+  settings: AssistantSettings,
+  current: AssistantProvider,
+): ResolvedProvider | null {
+  const other: AssistantProvider = current === "grok" ? "anthropic" : "grok";
+  const apiKey = other === "grok" ? grokKey() : anthropicKey();
+  if (!apiKey) return null;
+  return {
+    provider: other,
+    model: other === "grok" ? settings.grokModel : settings.anthropicModel,
+    apiKey,
+    baseURL: other === "grok" ? GROK_BASE_URL : undefined,
+    traits: TRAITS[other],
+  };
+}
+
 export function resolveProvider(settings: AssistantSettings): ResolvedProvider | null {
   const order: AssistantProvider[] =
     settings.provider === "grok" ? ["grok", "anthropic"] : ["anthropic", "grok"];

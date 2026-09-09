@@ -121,6 +121,14 @@ export type AssistantRun = {
   scaleVerified: boolean | null;
   /** Sant om add_machine anropades någon gång under turen. */
   triedMachines: boolean;
+  /**
+   * Verktygsanrop som kom utan argument alls.
+   *
+   * Det är inte ett vanligt misstag utan ett tecken på att modellen inte klarar
+   * verktygen i den här formen — den kan inte rätta sig, för den skickade
+   * ingenting att rätta.
+   */
+  emptyArgCalls: number;
   /** Arbetskopian som den såg ut när turen tog slut. */
   draft: Configuration;
   rounds: number;
@@ -173,6 +181,7 @@ export async function runAssistant(input: {
       variants: [],
       scaleVerified: null,
       triedMachines: false,
+      emptyArgCalls: 0,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -200,6 +209,7 @@ export async function runAssistant(input: {
       variants: [],
       scaleVerified: null,
       triedMachines: false,
+      emptyArgCalls: 0,
       draft: JSON.parse(JSON.stringify(input.config)),
       rounds: 0,
       steps: [],
@@ -268,6 +278,7 @@ export async function runAssistant(input: {
   const started = Date.now();
   const steps: AssistantStep[] = [];
   const timeline: AssistantRound[] = [];
+  let emptyArgCalls = 0;
   /** Verktyg + felmeddelande → hur många gånger i rad. */
   const sameError = new Map<string, number>();
   /** Verktyg → misslyckade anrop i rad, oavsett fel. */
@@ -430,6 +441,7 @@ export async function runAssistant(input: {
          * råmaterialet. Därför sparas det undan när argumenten uteblir.
          */
         const raw = rawJsonFor(block.id, idByIndex, jsonByIndex);
+        if (!hasContent(args)) emptyArgCalls += 1;
         const argsNote = hasContent(args)
           ? null
           : raw
@@ -528,6 +540,7 @@ export async function runAssistant(input: {
       variants: ctx.variants,
       scaleVerified: ctx.scaleVerified ?? null,
       triedMachines: !!ctx.triedMachines,
+      emptyArgCalls,
       draft: ctx.draft,
       rounds,
       steps,
@@ -543,6 +556,7 @@ export async function runAssistant(input: {
     variants: ctx.variants,
     scaleVerified: ctx.scaleVerified ?? null,
     triedMachines: !!ctx.triedMachines,
+    emptyArgCalls,
     draft: ctx.draft,
     rounds,
     steps,

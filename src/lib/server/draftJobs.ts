@@ -1,7 +1,7 @@
 import "server-only";
 import { randomBytes } from "node:crypto";
-import { runAssistant, type AssistantAttachment } from "./aiRun";
-import type { ResolvedProvider } from "./assistant";
+import { assistantSettings, runAssistant, type AssistantAttachment } from "./aiRun";
+import { otherProvider, PROVIDER_LABEL, type ResolvedProvider } from "./assistant";
 import { saveProposal, writeDraftJob, type StoredDraftJob } from "./store";
 import { quoteReference } from "@/lib/quote";
 import type { MachineLibrary } from "@/lib/library";
@@ -146,6 +146,7 @@ async function run(
   };
 
   try {
+    let switched: { from: string; to: string; why: string } | null = null;
     let result = await runAssistant({
       config: input.config,
       message: `${JOB_PROMPT}\n\nKundens egna ord: ${input.note.trim() || "(inget skrivet)"}`,
@@ -171,6 +172,62 @@ async function run(
         }
       },
     });
+
+    /*
+     * Modellen som inte kan anropa verktygen.
+     *
+     * Ett anrop utan argument går inte att rätta — modellen skickade ingenting
+     * att rätta — och fler rundor hjälper inte. Finns det en annan modell med
+     * nyckel görs jobbet om med den, en gång, och bytet står i svaret. Att
+     * lämna kunden utan förslag för att en modell inte klarar sitt eget
+     * protokoll vore att låta driftvalet bli hennes problem.
+     */
+    const brokenTools =
+      !result.error &&
+      result.emptyArgCalls >= 2 &&
+      result.variants.length === 0;
+
+    if (brokenTools && input.provider && (await assistantSettings()).failover) {
+      const fallback = otherProvider(await assistantSettings(), input.provider.provider);
+      if (fallback && fallback.provider !== input.provider.provider) {
+        publish(`Byter till ${PROVIDER_LABEL[fallback.provider]}`, true);
+        const retry = await runAssistant({
+          config: input.config,
+          message: `${JOB_PROMPT}\n\nKundens egna ord: ${input.note.trim() || "(inget skrivet)"}`,
+          attachments: input.attachments,
+          role: input.role,
+          library: input.library,
+          priceBook: input.priceBook,
+          provider: fallback,
+          maxRounds: MAX_ROUNDS,
+          effort: "high",
+          onEvent: (event) => {
+            if (event.type === "tool" && event.phase === "run") {
+              done.push({ name: event.name, ok: true });
+              publish(STEPS[event.name] ?? "Arbetar", true);
+            }
+          },
+        });
+
+        switched = {
+          from: input.provider.model,
+          to: fallback.model,
+          why:
+            `${input.provider.model} anropade verktygen utan argument ` +
+            `${result.emptyArgCalls} gånger och kom inte vidare.`,
+        };
+        result = {
+          ...retry,
+          rounds: result.rounds + retry.rounds,
+          steps: [...result.steps, ...retry.steps],
+          timeline: [
+            ...result.timeline,
+            ...retry.timeline.map((round) => ({ ...round, round: round.round + result.rounds })),
+          ],
+          totalMs: result.totalMs + retry.totalMs,
+        };
+      }
+    }
 
     /*
      * Ett förslag med bara en lokal i, när underlaget visar maskiner, är ett
@@ -254,11 +311,20 @@ async function run(
       ...current,
       status: result.error ? "failed" : "done",
       step: result.error ? "Avbröts" : "Klart",
-      summary: result.text.trim() || withoutAnswer(result),
+      summary:
+        [
+          switched ? `Modellen byttes under jobbet: ${switched.why}` : "",
+          result.text.trim() || withoutAnswer(result),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim(),
       variants,
       detail: {
-        model: input.provider?.model,
+        model: switched ? switched.to : input.provider?.model,
         provider: input.provider?.provider,
+        switchedFrom: switched?.from,
+        switchedWhy: switched?.why,
         rounds: result.rounds,
         stopReason: result.stopReason,
         // Körningens egen bokföring, med verktygens felsvar. Den live-uppdaterade

@@ -27,6 +27,7 @@ const settingsSchema = z.object({
   provider: z.enum(["anthropic", "grok"]),
   anthropicModel: z.string().min(1).max(80),
   grokModel: z.string().min(1).max(80),
+  failover: z.boolean().default(true),
 });
 
 export async function GET() {

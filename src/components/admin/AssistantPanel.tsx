@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { Button, Tag } from "../ui";
-import { Grid, Panel, SelectField, TextField } from "./fields";
+import { CheckField, Grid, Panel, SelectField, TextField } from "./fields";
 import { RunsPanel } from "./RunsPanel";
 
 /**
@@ -20,6 +20,7 @@ type Settings = {
   provider: Provider;
   anthropicModel: string;
   grokModel: string;
+  failover: boolean;
 };
 
 type Probe = {
@@ -166,6 +167,20 @@ export function AssistantPanel() {
             hint="t.ex. grok-4"
           />
         </Grid>
+
+        <div className="mt-3">
+          <CheckField
+            label="Byt modell när den valda inte klarar verktygen"
+            checked={settings.failover !== false}
+            onChange={(failover) => setSettings({ ...settings, failover })}
+            hint="Kräver nyckel för båda"
+          />
+          <p className="mt-1 text-[11px] leading-relaxed text-muted">
+            En modell som anropar verktygen utan argument kommer inte vidare hur många rundor
+            den än får. Med detta påslaget görs bakgrundsjobbet om med den andra modellen, en
+            gång, och bytet står i svaret och i körningsrapporten.
+          </p>
+        </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2 text-[11px]">
           {(["anthropic", "grok"] as Provider[]).map((provider) => (

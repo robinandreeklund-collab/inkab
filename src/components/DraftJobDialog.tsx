@@ -1,8 +1,10 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { ACCEPTED, MAX_ATTACHMENTS, toAttachment, type Attachment } from "@/lib/attachments";
+import { ACCEPTED, MAX_ATTACHMENTS } from "@/lib/attachments";
 import { rememberJob } from "@/lib/draftJobClient";
+import { AttachmentChips } from "./AttachmentChips";
+import { useAttachments } from "./useAttachments";
 import { Button } from "./ui";
 import type { Configuration } from "@/lib/types";
 
@@ -24,36 +26,18 @@ export function DraftJobDialog({
   onQueued: () => void;
   onSkip: () => void;
 }) {
-  const [files, setFiles] = useState<Attachment[]>([]);
+  const { files, add, removeAt, reading, problem, setProblem } = useAttachments();
   const [note, setNote] = useState("");
   const [busy, setBusy] = useState(false);
-  const [reading, setReading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const input = useRef<HTMLInputElement | null>(null);
 
-  const attach = async (chosen: FileList | null) => {
-    if (!chosen?.length) return;
-    setReading(true);
-    setError(null);
-    const added: Attachment[] = [];
-    const problems: string[] = [];
-    for (const file of Array.from(chosen).slice(0, MAX_ATTACHMENTS)) {
-      try {
-        added.push(await toAttachment(file));
-      } catch (problem) {
-        problems.push(problem instanceof Error ? problem.message : `${file.name} gick inte att läsa.`);
-      }
-    }
-    setFiles((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
-    if (problems.length) setError(problems.join(" · "));
-    setReading(false);
-    if (input.current) input.current.value = "";
-  };
 
   const send = async () => {
     if (files.length === 0 || busy) return;
     setBusy(true);
     setError(null);
+    setProblem(null);
     try {
       const response = await fetch("/api/ai/draft", {
         method: "POST",
@@ -89,8 +73,10 @@ export function DraftJobDialog({
           maskiner under tiden, och får besked här i verktyget när förslaget står.
         </p>
 
-        {error ? (
-          <p className="mb-3 border border-danger px-2 py-1 text-xs text-danger">{error}</p>
+        {error || problem ? (
+          <p className="mb-3 border border-danger px-2 py-1 text-xs text-danger">
+            {[error, problem].filter(Boolean).join(" · ")}
+          </p>
         ) : null}
 
         <input
@@ -98,7 +84,11 @@ export function DraftJobDialog({
           type="file"
           accept={ACCEPTED}
           multiple
-          onChange={(e) => attach(e.target.files)}
+          onChange={(e) => {
+            // Nollställ fältet, annars går det inte att välja samma fil igen.
+            const element = e.currentTarget;
+            add(e.target.files).finally(() => (element.value = ""));
+          }}
           className="hidden"
           aria-label="Välj ritning eller bild"
         />
@@ -116,32 +106,7 @@ export function DraftJobDialog({
           </span>
         </div>
 
-        {files.length > 0 ? (
-          <div className="mb-3 flex flex-wrap gap-2">
-            {files.map((file, index) => (
-              <span
-                key={`${file.name}-${index}`}
-                className="flex items-center gap-2 border border-divider px-2 py-1 text-[11px]"
-              >
-                {file.previewUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={file.previewUrl} alt="" className="h-8 w-8 object-cover" />
-                ) : (
-                  <span className="kicker text-muted">PDF</span>
-                )}
-                <span className="max-w-[180px] truncate">{file.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
-                  aria-label={`Ta bort ${file.name}`}
-                  className="px-1 text-muted hover:text-danger"
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        ) : null}
+        <AttachmentChips files={files} onRemove={removeAt} />
 
         <label className="mb-4 block">
           <span className="kicker mb-1 block">Vad ska anläggningen göra? (frivilligt)</span>

@@ -59,11 +59,34 @@ export type ProviderTraits = {
   effort: boolean;
   promptCache: boolean;
   strictTools: boolean;
+  /** Bilder i meddelandet. */
+  images: boolean;
+  /** Pdf som dokument, med text och allt. Annars görs den om till sidbilder. */
+  documents: boolean;
 };
 
 export const TRAITS: Record<AssistantProvider, ProviderTraits> = {
-  anthropic: { thinking: true, effort: true, promptCache: true, strictTools: true },
-  grok: { thinking: false, effort: false, promptCache: false, strictTools: false },
+  anthropic: {
+    thinking: true,
+    effort: true,
+    promptCache: true,
+    strictTools: true,
+    images: true,
+    documents: true,
+  },
+  /*
+   * xAI svarar på Anthropics protokoll men inte på allt som finns i det.
+   * Bilder går in; ett dokumentblock med en pdf ger 422, så pdf:en görs om
+   * till sidbilder i webbläsaren innan den skickas.
+   */
+  grok: {
+    thinking: false,
+    effort: false,
+    promptCache: false,
+    strictTools: false,
+    images: true,
+    documents: false,
+  },
 };
 
 export type ResolvedProvider = {

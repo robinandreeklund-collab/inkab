@@ -9,5 +9,6 @@ next-env.d.ts
 .env.local
 .DS_Store
 
-# Kopieras från node_modules vid bygget, se scripts/copy-occt-wasm.mjs
+# Kopieras från node_modules vid bygget, se scripts/copy-vendor-assets.mjs
 /public/occt/
+/public/pdf/

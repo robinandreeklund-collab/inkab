@@ -5,13 +5,10 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { computeLayout } from "@/lib/layout";
 import { meters } from "@/lib/format";
 import { Button, Tag } from "./ui";
-import {
-  ACCEPTED,
-  MAX_ATTACHMENTS,
-  toAttachment,
-  type Attachment,
-} from "@/lib/attachments";
+import { ACCEPTED, MAX_ATTACHMENTS } from "@/lib/attachments";
 import { rememberJob } from "@/lib/draftJobClient";
+import { AttachmentChips } from "./AttachmentChips";
+import { useAttachments } from "./useAttachments";
 import type { Configuration } from "@/lib/types";
 
 type Variant = { id: string; name: string; description: string; config: Configuration };
@@ -42,8 +39,7 @@ export function AiPanel() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null);
-  const [files, setFiles] = useState<Attachment[]>([]);
-  const [reading, setReading] = useState(false);
+  const { files, add, removeAt, clear, reading, problem, setProblem } = useAttachments();
   const [queued, setQueued] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const historyRef = useRef<ChatTurn[]>([]);
@@ -80,7 +76,7 @@ export function AiPanel() {
         return;
       }
       rememberJob(body.job.id);
-      setFiles([]);
+      clear();
       setInput("");
       setQueued(true);
     } catch {
@@ -90,29 +86,12 @@ export function AiPanel() {
     }
   };
 
-  const attach = async (chosen: FileList | null) => {
-    if (!chosen?.length) return;
-    setReading(true);
-    setError(null);
-    const added: Attachment[] = [];
-    const problems: string[] = [];
-    for (const file of Array.from(chosen).slice(0, MAX_ATTACHMENTS)) {
-      try {
-        added.push(await toAttachment(file));
-      } catch (problem) {
-        problems.push(problem instanceof Error ? problem.message : `${file.name} gick inte att läsa.`);
-      }
-    }
-    setFiles((current) => [...current, ...added].slice(0, MAX_ATTACHMENTS));
-    if (problems.length) setError(problems.join(" · "));
-    setReading(false);
-    if (fileInput.current) fileInput.current.value = "";
-  };
 
   const send = async (question: string) => {
     if (!question.trim() || busy) return;
     setBusy(true);
     setError(null);
+    setProblem(null);
     setQueued(false);
     setText("");
     setThinking("");
@@ -122,7 +101,7 @@ export function AiPanel() {
     toggleAi(true);
     // Bilagorna hör till frågan de skickas med och töms när den är skickad.
     const sent = files;
-    setFiles([]);
+    clear();
 
     try {
       const response = await fetch("/api/ai/chat", {
@@ -236,7 +215,11 @@ export function AiPanel() {
         </Button>
       </div>
 
-      {error ? <p className="mb-2 border border-danger px-3 py-2 text-xs text-danger">{error}</p> : null}
+      {error || problem ? (
+        <p className="mb-2 border border-danger px-3 py-2 text-xs text-danger">
+          {[error, problem].filter(Boolean).join(" · ")}
+        </p>
+      ) : null}
       {queued ? (
         <p className="mb-2 border border-accent px-3 py-2 text-xs text-accent">
           Underlaget är inskickat. Du får besked uppe till vänster när förslaget står — rita
@@ -292,33 +275,7 @@ export function AiPanel() {
         </div>
       ) : null}
 
-      {files.length > 0 ? (
-        <div className="mb-2 flex flex-wrap gap-2">
-          {files.map((file, index) => (
-            <span
-              key={`${file.name}-${index}`}
-              className="flex items-center gap-2 border border-divider px-2 py-1 text-[11px]"
-            >
-              {file.previewUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={file.previewUrl} alt="" className="h-8 w-8 object-cover" />
-              ) : (
-                <span className="kicker text-muted">PDF</span>
-              )}
-              <span className="max-w-[180px] truncate">{file.name}</span>
-              <span className="num text-muted">{Math.max(1, Math.round(file.bytes / 1000))} kB</span>
-              <button
-                type="button"
-                onClick={() => setFiles((current) => current.filter((_, i) => i !== index))}
-                aria-label={`Ta bort ${file.name}`}
-                className="px-1 text-muted hover:text-danger"
-              >
-                ×
-              </button>
-            </span>
-          ))}
-        </div>
-      ) : null}
+      <AttachmentChips files={files} onRemove={removeAt} />
 
       <form
         onSubmit={(e) => {
@@ -332,7 +289,11 @@ export function AiPanel() {
           type="file"
           accept={ACCEPTED}
           multiple
-          onChange={(e) => attach(e.target.files)}
+          onChange={(e) => {
+            // Nollställ fältet, annars går det inte att välja samma fil igen.
+            const element = e.currentTarget;
+            add(e.target.files).finally(() => (element.value = ""));
+          }}
           className="hidden"
           aria-label="Bifoga ritning eller bild"
         />

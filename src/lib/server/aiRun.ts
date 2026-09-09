@@ -107,6 +107,30 @@ export async function runAssistant(input: {
         "så assistenten kan inte svara.",
     };
   }
+  /*
+   * Klienten gör om det mottagaren inte klarar innan den skickar — en pdf blir
+   * sidbilder — men servern litar inte på det. Ett tydligt svar här är bättre
+   * än leverantörens 422 en runda senare.
+   */
+  const unsupported = attachments.find(
+    (file) =>
+      (file.mediaType === "application/pdf" && !provider.traits.documents) ||
+      (file.mediaType !== "application/pdf" && !provider.traits.images),
+  );
+  if (unsupported) {
+    return {
+      text: "",
+      variants: [],
+      draft: JSON.parse(JSON.stringify(input.config)),
+      rounds: 0,
+      error:
+        `Den valda modellen kan inte läsa ${
+          unsupported.mediaType === "application/pdf" ? "pdf" : "bilder"
+        }. Ladda om sidan och prova igen — verktyget gör då om ritningen till ` +
+        "bilder — eller byt modell i adminvyn.",
+    };
+  }
+
   const client = new Anthropic({ apiKey: provider.apiKey, baseURL: provider.baseURL });
 
   const ctx: ToolContext = {
@@ -274,21 +298,49 @@ export function providerTools(library: MachineLibrary, provider: ResolvedProvide
   return tools.map(({ strict: _strict, ...rest }) => rest);
 }
 
-/** Översätter API-fel till något som går att agera på. */
+/**
+ * Översätter API-fel till något som går att agera på.
+ *
+ * Leverantörens egna ord följer med. Ett naket "svarade inte (422)" säger att
+ * något är fel men inte vad, och när samma verktyg kan gå mot olika modeller är
+ * det just skillnaden mellan dem som felet brukar handla om.
+ */
 export function describeError(error: unknown): string {
   if (error instanceof Anthropic.APIError) {
-    if (error.status === 401) {
-      return "Nyckeln avvisades (401). Kontrollera att rätt nyckel är sparad under Environment Variables för den leverantör assistenten är inställd på.";
+    const detail = providerMessage(error);
+    if (error.status === 401 || error.status === 403) {
+      return (
+        `Nyckeln avvisades (${error.status}). Kontrollera att rätt nyckel är sparad under ` +
+        `Environment Variables för den leverantör assistenten är inställd på.` +
+        (detail ? ` Leverantören säger: ${detail}` : "")
+      );
     }
     if (error.status === 429) {
-      return "Leverantören svarade 429 — för många anrop just nu. Prova igen om en stund.";
+      return `Leverantören svarade 429 — för många anrop just nu. Prova igen om en stund.${
+        detail ? ` (${detail})` : ""
+      }`;
     }
-    if (error.status === 400) {
-      return `Leverantören avvisade förfrågan (400): ${error.message}`;
-    }
-    return `Assistenten svarade inte (${error.status}). Verktyget fungerar utan den.`;
+    return (
+      `Leverantören avvisade förfrågan (${error.status ?? "okänd status"})` +
+      (detail ? `: ${detail}` : ". Inget mer sa den.")
+    );
   }
   return "Assistenten är tillfälligt otillgänglig. Verktyget fungerar utan den.";
+}
+
+/** Plockar ut det leverantören faktiskt skrev, oavsett hur den paketerar det. */
+function providerMessage(error: InstanceType<typeof Anthropic.APIError>): string | null {
+  const body = (error as { error?: unknown }).error as
+    | { error?: { message?: string }; message?: string; detail?: unknown }
+    | undefined;
+  const found =
+    body?.error?.message ??
+    body?.message ??
+    (typeof body?.detail === "string" ? body.detail : null) ??
+    (body?.detail ? JSON.stringify(body.detail) : null) ??
+    error.message;
+  if (!found) return null;
+  return String(found).slice(0, 600);
 }
 
 /**

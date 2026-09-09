@@ -22,6 +22,8 @@ export type Attachment = {
   bytes: number;
 };
 
+import { MAX_PDF_PAGES, pdfToImages } from "./pdfPages";
+
 export const ACCEPTED = "image/png,image/jpeg,image/webp,image/gif,application/pdf";
 export const MAX_ATTACHMENTS = 4;
 /** Längsta sida efter krympning. Räcker för att läsa måttsatta ritningar. */
@@ -56,10 +58,17 @@ const readAsDataUrl = (file: Blob) =>
   });
 
 /**
- * Gör en fil till en bilaga. Kastar med ett meddelande som går att visa för
+ * Gör en fil till bilagor. Kastar med ett meddelande som går att visa för
  * kunden — det är enda felhanteringen som betyder något här.
+ *
+ * En pdf blir en bilaga när mottagaren kan läsa dokument, och annars en bilaga
+ * per sida. Listan i stället för ett enda värde är alltså inte en
+ * bekvämlighet: en ritning på tre sidor är tre bilder.
  */
-export async function toAttachment(file: File): Promise<Attachment> {
+export async function toAttachments(
+  file: File,
+  options: { acceptsPdf?: boolean } = {},
+): Promise<Attachment[]> {
   if (!isAccepted(file.type)) {
     throw new Error(`${file.name}: bara bilder (png, jpg, webp, gif) och pdf går att läsa.`);
   }
@@ -71,26 +80,59 @@ export async function toAttachment(file: File): Promise<Attachment> {
           `ritningen i stället, eller en mindre pdf (max ${MAX_PDF_BYTES / 1e6} MB).`,
       );
     }
+
+    if (options.acceptsPdf === false) return await pdfAsImages(file);
+
     const dataUrl = await readAsDataUrl(file);
-    return {
-      name: file.name,
-      mediaType: "application/pdf",
-      data: base64Of(dataUrl),
-      previewUrl: "",
-      bytes: file.size,
-    };
+    return [
+      {
+        name: file.name,
+        mediaType: "application/pdf",
+        data: base64Of(dataUrl),
+        previewUrl: "",
+        bytes: file.size,
+      },
+    ];
   }
 
   const original = await readAsDataUrl(file);
   const shrunk = await shrink(original, file.type);
-  return {
-    name: file.name,
-    mediaType: shrunk.mediaType,
-    data: base64Of(shrunk.dataUrl),
-    previewUrl: shrunk.dataUrl,
-    bytes: Math.round((shrunk.dataUrl.length - shrunk.dataUrl.indexOf(",") - 1) * 0.75),
-  };
+  return [
+    {
+      name: file.name,
+      mediaType: shrunk.mediaType,
+      data: base64Of(shrunk.dataUrl),
+      previewUrl: shrunk.dataUrl,
+      bytes: Math.round((shrunk.dataUrl.length - shrunk.dataUrl.indexOf(",") - 1) * 0.75),
+    },
+  ];
 }
+
+/** Sidorna som bilder, för mottagare som inte läser pdf. */
+async function pdfAsImages(file: File): Promise<Attachment[]> {
+  let pages;
+  try {
+    pages = await pdfToImages(file);
+  } catch (error) {
+    throw new Error(
+      `${file.name} gick inte att rita upp (${
+        error instanceof Error ? error.message : "okänt fel"
+      }). Skicka en skärmbild av ritningen i stället.`,
+    );
+  }
+  if (pages.length === 0) throw new Error(`${file.name} innehöll inga sidor att läsa.`);
+
+  const base = file.name.replace(/\.pdf$/i, "");
+  return pages.map((page) => ({
+    name: page.pages > 1 ? `${base} (sida ${page.page} av ${page.pages})` : base,
+    mediaType: "image/png" as const,
+    data: base64Of(page.dataUrl),
+    previewUrl: page.dataUrl,
+    bytes: Math.round((page.dataUrl.length - page.dataUrl.indexOf(",") - 1) * 0.75),
+  }));
+}
+
+export { MAX_PDF_PAGES };
 
 /**
  * Skalar ned en bild till MAX_EDGE_PX.

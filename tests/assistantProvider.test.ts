@@ -5,8 +5,11 @@ import {
   resolveProvider,
   TRAITS,
 } from "@/lib/server/assistant";
-import { providerSystem, providerTools } from "@/lib/server/aiRun";
+import Anthropic from "@anthropic-ai/sdk";
+import { describeError, providerSystem, providerTools, runAssistant } from "@/lib/server/aiRun";
 import { BUILTIN_LIBRARY } from "@/lib/library";
+import { BUILTIN_PRICE_BOOK } from "@/lib/server/pricebook";
+import { defaultConfig } from "@/lib/templates";
 
 /**
  * Vilken modell assistenten går mot.
@@ -108,5 +111,74 @@ describe("anpassning till leverantören", () => {
         (tool) => (tool as { strict?: boolean }).strict === true,
       ),
     ).toBe(true);
+  });
+});
+
+describe("bilagor som leverantören inte klarar", () => {
+  const grok = {
+    provider: "grok" as const,
+    model: "grok-4",
+    apiKey: "x",
+    baseURL: "https://api.x.ai",
+    traits: TRAITS.grok,
+  };
+
+  it("stoppar en pdf innan den blir ett 422", async () => {
+    const run = await runAssistant({
+      config: defaultConfig(),
+      message: "Rita upp lokalen.",
+      attachments: [{ name: "ritning.pdf", mediaType: "application/pdf", data: "AAAA" }],
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      provider: grok,
+    });
+    // Inget anrop gjordes: felet kommer före nätet.
+    expect(run.rounds).toBe(0);
+    expect(run.error).toContain("kan inte läsa pdf");
+  });
+
+  it("släpper igenom bilder", async () => {
+    // Bilder är tillåtna, så körningen går vidare till anropet — och faller
+    // där, på en påhittad nyckel. Det är skillnaden vi vill se.
+    const run = await runAssistant({
+      config: defaultConfig(),
+      message: "Rita upp lokalen.",
+      attachments: [{ name: "sida.png", mediaType: "image/png", data: "AAAA" }],
+      role: "guest",
+      library: BUILTIN_LIBRARY,
+      priceBook: BUILTIN_PRICE_BOOK,
+      provider: { ...grok, baseURL: "http://127.0.0.1:1" },
+    });
+    expect(run.error).not.toContain("kan inte läsa");
+  });
+});
+
+describe("felmeddelanden från leverantören", () => {
+  const apiError = (status: number, body: object) =>
+    new Anthropic.APIError(status, body, "fel", new Headers());
+
+  it("återger vad leverantören faktiskt sa", () => {
+    const text = describeError(
+      apiError(422, { error: { message: "document blocks are not supported" } }),
+    );
+    expect(text).toContain("422");
+    expect(text).toContain("document blocks are not supported");
+  });
+
+  it("tar meddelandet även när det ligger i roten", () => {
+    expect(describeError(apiError(500, { message: "internal" }))).toContain("internal");
+  });
+
+  it("säger till om nyckeln när svaret är 401 eller 403", () => {
+    for (const status of [401, 403]) {
+      expect(describeError(apiError(status, { error: { message: "bad key" } }))).toContain(
+        "Nyckeln avvisades",
+      );
+    }
+  });
+
+  it("skyller inte på leverantören när felet inte kom därifrån", () => {
+    expect(describeError(new Error("nätet dog"))).toContain("tillfälligt otillgänglig");
   });
 });

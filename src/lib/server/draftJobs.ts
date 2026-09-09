@@ -82,6 +82,8 @@ export async function startDraftJob(input: {
   priceBook: PriceBook;
   /** Leverantören valdes när jobbet beställdes och gäller hela jobbet. */
   provider?: ResolvedProvider;
+  /** Tankenivå, satt i adminvyn. */
+  effort?: "low" | "medium" | "high";
 }): Promise<StoredDraftJob> {
   const now = new Date().toISOString();
   const job: StoredDraftJob = {
@@ -156,8 +158,8 @@ async function run(
       priceBook: input.priceBook,
       provider: input.provider,
       maxRounds: MAX_ROUNDS,
-      // Ingen väntar på jobbet, så det får tänka så noga det behöver.
-      effort: "high",
+      // Ingen väntar på jobbet, men någon betalar. Nivån sätts i adminvyn.
+      effort: input.effort ?? "high",
       onEvent: (event) => {
         if (event.type === "tool" && event.phase === "start") {
           publish(STEPS[event.name] ?? "Arbetar");
@@ -200,7 +202,7 @@ async function run(
           priceBook: input.priceBook,
           provider: fallback,
           maxRounds: MAX_ROUNDS,
-          effort: "high",
+          effort: input.effort ?? "high",
           onEvent: (event) => {
             if (event.type === "tool" && event.phase === "run") {
               done.push({ name: event.name, ok: true });
@@ -253,7 +255,7 @@ async function run(
         priceBook: input.priceBook,
         provider: input.provider,
         maxRounds: MAX_ROUNDS,
-        effort: "high",
+        effort: input.effort ?? "high",
         onEvent: (event) => {
           if (event.type === "tool" && event.phase === "run") {
             done.push({ name: event.name, ok: true });

@@ -28,6 +28,7 @@ const settingsSchema = z.object({
   anthropicModel: z.string().min(1).max(80),
   grokModel: z.string().min(1).max(80),
   failover: z.boolean().default(true),
+  jobEffort: z.enum(["low", "medium", "high"]).default("high"),
 });
 
 export async function GET() {

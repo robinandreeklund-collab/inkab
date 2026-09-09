@@ -21,6 +21,7 @@ type Settings = {
   anthropicModel: string;
   grokModel: string;
   failover: boolean;
+  jobEffort: "low" | "medium" | "high";
 };
 
 type Probe = {
@@ -165,6 +166,17 @@ export function AssistantPanel() {
             mono
             onChange={(grokModel) => setSettings({ ...settings, grokModel })}
             hint="t.ex. grok-4"
+          />
+          <SelectField
+            label="Tankenivå i bakgrundsjobb"
+            value={settings.jobEffort ?? "high"}
+            options={[
+              { value: "high" as const, label: "Hög — noggrannast, flera minuter" },
+              { value: "medium" as const, label: "Medel — snabbare, kortare resonemang" },
+              { value: "low" as const, label: "Låg — snabbast, för enkla underlag" },
+            ]}
+            onChange={(jobEffort) => setSettings({ ...settings, jobEffort })}
+            hint="Tiden är modellens tänketid"
           />
         </Grid>
 

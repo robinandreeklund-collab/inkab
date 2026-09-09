@@ -647,3 +647,54 @@ describe("verktygsschemanas budget", () => {
     );
   });
 });
+
+describe("skalans belägg över en hel tur", () => {
+  const PLAN = {
+    lengthM: 15,
+    widthM: 9,
+    walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
+  };
+
+  it("tar emot skalanoteringen i efterhand", () => {
+    const ctx = context(defaultConfig());
+    executeTool("draw_hall", PLAN, ctx);
+    expect(ctx.scaleVerified).toBe(false);
+
+    // Assistenten ritade först och kom på efteråt att den inte skrivit vad den
+    // skalade efter. Det ska gå att komplettera utan att rita om.
+    const result = executeTool(
+      "draw_hall",
+      { scaleNote: "15m längs långsidan, 9m på kortsidan" },
+      ctx,
+    ) as { error?: string; scale?: { verified: boolean } };
+
+    expect(result.error).toBeUndefined();
+    expect(result.scale?.verified).toBe(true);
+    expect(ctx.scaleVerified).toBe(true);
+  });
+
+  it("glömmer inte ett belägg när lokalen ritas om", () => {
+    const ctx = context(defaultConfig());
+    executeTool("draw_hall", { ...PLAN, scaleNote: "15m längs långsidan" }, ctx);
+    expect(ctx.scaleVerified).toBe(true);
+
+    // Den sista uppritningen saknar noteringen. Måttet är inte ogjort för det.
+    executeTool("draw_hall", PLAN, ctx);
+    expect(ctx.scaleVerified).toBe(true);
+  });
+
+  it("avvisar fortfarande ett anrop utan både plan och notering", () => {
+    const result = executeTool("draw_hall", {}, context(defaultConfig())) as { error?: string };
+    expect(result.error).toContain("ingenting att rita");
+  });
+
+  it("avvisar en notering innan något ritats", () => {
+    // Utan en ritning att sätta skalan på är noteringen bara en mening.
+    const result = executeTool(
+      "draw_hall",
+      { scaleNote: "15m" },
+      context(defaultConfig()),
+    ) as { error?: string };
+    expect(result.error).toContain("ingenting att rita");
+  });
+});

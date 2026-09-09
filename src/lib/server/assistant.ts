@@ -27,6 +27,15 @@ export type AssistantSettings = {
    * modellen än att lämna kunden utan svar — och säga att det gjordes.
    */
   failover: boolean;
+  /**
+   * Hur noga bakgrundsjobben ska tänka.
+   *
+   * Tiden i ett jobb är modellens egen tänketid, inte plattformens: verktygen
+   * räknar layout på millisekunder. "high" gav nio minuter och ett svar som
+   * hittade två verkliga fel i lokalen; "medium" går fortare och tänker
+   * kortare. Ingen väntar på jobbet, men någon betalar för det.
+   */
+  jobEffort: "low" | "medium" | "high";
 };
 
 export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = {
@@ -34,6 +43,7 @@ export const DEFAULT_ASSISTANT_SETTINGS: AssistantSettings = {
   anthropicModel: "claude-opus-5",
   grokModel: "grok-4",
   failover: true,
+  jobEffort: "high",
 };
 
 /** xAI svarar på Anthropics eget protokoll, så samma klient duger. */

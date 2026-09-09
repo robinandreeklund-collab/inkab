@@ -713,6 +713,28 @@ export function executeTool(
         (Array.isArray(input.walls) && input.walls.length > 0) ||
         (Array.isArray(input.doors) && input.doors.length > 0) ||
         (Array.isArray(input.areas) && input.areas.length > 0);
+
+      const note = String(input.scaleNote ?? "").trim();
+
+      /*
+       * Ett anrop med bara skalanoteringen är att komplettera i efterhand.
+       *
+       * Assistenten ritade hallen, insåg att den glömt skriva vad den skalade
+       * efter, och skickade bara noteringen. Det avvisades som "ingenting att
+       * rita" — och kunden fick veta att skalan var obelagd fast måttet stod
+       * med i anropet. Det är att kräva en blankett i rätt ordning.
+       */
+      if (!hasPlan && note && (ctx.hallDrawings ?? 0) > 0) {
+        ctx.scaleVerified = true;
+        return {
+          scale: { source: "dimension_on_drawing", note, verified: true },
+          note:
+            "Skalan noterad för lokalen du redan ritat. Inget ritades om — " +
+            "rita bara om när något faktiskt är fel.",
+          layout: layoutSummary(ctx.draft, ctx.library),
+        };
+      }
+
       if (!hasPlan) {
         return {
           error:
@@ -722,8 +744,6 @@ export function executeTool(
             '"toXM": 15, "toYM": 0 }] }.',
         };
       }
-
-      const note = String(input.scaleNote ?? "").trim();
       /*
        * Beläggningen sitter i anteckningen, inte i kategorin.
        *
@@ -780,7 +800,13 @@ export function executeTool(
           .filter((a) => finite(a.box.x, a.box.y, a.box.l, a.box.w)),
       };
 
-      ctx.scaleVerified = scaleVerified;
+      /*
+       * Beläggningen är klibbig uppåt. Har skalan en gång styrkts i turen är
+       * den styrkt: en senare uppritning som råkar sakna noteringen gör inte
+       * måttet ogjort, och att låta den nollställa flaggan gav kunden en
+       * varning om gissade mått på en ritning som var uppmätt.
+       */
+      ctx.scaleVerified = ctx.scaleVerified === true ? true : scaleVerified;
       ctx.hallDrawings = (ctx.hallDrawings ?? 0) + 1;
       if (input.replaceExisting === true) ctx.draft.drawn = [];
       const { drawn, notes } = planToDrawn(plan, ctx.draft.hall, ctx.draft.drawn);

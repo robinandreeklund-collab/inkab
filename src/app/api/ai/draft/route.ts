@@ -4,7 +4,7 @@ import { configurationSchema } from "@/lib/schema";
 import { currentRole, currentUser } from "@/lib/server/session";
 import { activeContext } from "@/lib/server/context";
 import { startDraftJob } from "@/lib/server/draftJobs";
-import { activeProvider } from "@/lib/server/aiRun";
+import { activeProvider, assistantSettings } from "@/lib/server/aiRun";
 import { listDraftJobs } from "@/lib/server/store";
 import { attachmentSchema, MAX_ATTACHMENTS, MAX_TOTAL_CHARS } from "@/lib/server/attachmentSchema";
 import type { Configuration } from "@/lib/types";
@@ -55,7 +55,12 @@ export async function POST(request: Request) {
     );
   }
 
-  const [user, role, context] = await Promise.all([currentUser(), currentRole(), activeContext()]);
+  const [user, role, context, settings] = await Promise.all([
+    currentUser(),
+    currentRole(),
+    activeContext(),
+    assistantSettings(),
+  ]);
   const job = await startDraftJob({
     config: config as Configuration,
     note,
@@ -65,6 +70,7 @@ export async function POST(request: Request) {
     library: context.library,
     priceBook: context.priceBook,
     provider,
+    effort: settings.jobEffort,
   });
 
   return NextResponse.json({ job: { id: job.id, status: job.status, step: job.step } });

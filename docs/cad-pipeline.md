@@ -264,6 +264,22 @@ mått, och spegling inte heller. Upp-axel, vridning och spegling sitter på
 maskinen och tillämpas vid uppritningen, med en 3D-förhandsgranskning i
 panelen som visar ändringen direkt.
 
+#### Peka ut flödet i stället för att lita på axlarna
+
+En fil som inte följer husets konvention ger fel flöde, och att rätta det
+genom att skriva in portkoordinater kräver att man tänker i maskinens lokala
+system i stället för att titta på maskinen.
+
+Knappen **Peka ut flödet** vänder på det: klicka på modellen där paketen
+kommer in, och där de går ut. Ur de två punkterna följer allt annat —
+vilken väg maskinen ska vändas och var portarna sitter. Är riktningen tvärs
+mot den ritade blir det ett kvarts varv, och då byter längd och bredd plats.
+
+Vridningstabellen i `pickFlow.ts` är härledd för hand, och ett test räknar
+samma sak genom den riktiga rotationsmatrisen och kräver att de ger samma
+svar. Utan den kontrollen vore det bara en tabell någon trodde stämde — och
+det var precis så upp-axelfelet uppstod en gång.
+
 En fälla värd att känna till: vridningen måste ske kring den lodräta axeln,
 alltså **efter** att modellen rests upp. three.js standardordning för Euler-
 vinklar är XYZ, vilket ger matrisen Rx·Ry — vridning först, upprätning sedan —

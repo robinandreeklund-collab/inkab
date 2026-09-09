@@ -5,6 +5,7 @@ import { Button, Tag } from "../ui";
 import { Grid, NumField, Panel, SelectField, TextField } from "./fields";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
+import { addYaw, flowFromPicks, snapToEdge } from "@/lib/cad/pickFlow";
 import {
   bestOrientation,
   DEFAULT_ORIENTATION,
@@ -62,6 +63,9 @@ export function ModelPanel({
   const [issues, setIssues] = useState<string[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const [autoFit, setAutoFit] = useState<ReturnType<typeof bestOrientation> | null>(null);
+  /** Utpekning av flödet: null, väntar på inport, eller på utport. */
+  const [picking, setPicking] = useState<null | "in" | "out">(null);
+  const [inPoint, setInPoint] = useState<{ x: number; y: number } | null>(null);
 
   const loadStored = useCallback(async () => {
     try {
@@ -191,6 +195,53 @@ export function ModelPanel({
         (scaledZones > 0
           ? ` ${scaledZones === 1 ? "Zonen räknades" : `${scaledZones} zoner räknades`} om.`
           : ""),
+    );
+  };
+
+  /*
+   * Flödet pekas ut på maskinen i stället för att härledas ur filens axlar.
+   * Två klick — där paketen kommer in och där de går ut — ger både vilken väg
+   * maskinen ska vändas och var portarna sitter. Det är samma sak man annars
+   * gör genom att skriva in portkoordinater för hand, fast utan att behöva
+   * tänka i maskinens lokala system.
+   */
+  const pick = (point: { x: number; y: number }) => {
+    if (picking === "in") {
+      setInPoint(point);
+      setPicking("out");
+      return;
+    }
+    if (picking !== "out" || !inPoint) return;
+
+    setPicking(null);
+    const flow = flowFromPicks(inPoint, point, machine.footprint);
+    const footprint = { ...machine.footprint, ...flow.footprint };
+
+    const ports = machine.ports.length > 0 ? machine.ports : applySuggestedPorts(machine).ports;
+    const next: Machine = {
+      ...machine,
+      footprint,
+      ports: ports.map((port) =>
+        port.role === "in"
+          ? { ...port, pos: snapToEdge(flow.inPos, footprint, "in"), dir: "x+" as const }
+          : { ...port, pos: snapToEdge(flow.outPos, footprint, "out"), dir: "x+" as const },
+      ),
+      model: machine.model
+        ? { ...machine.model, yawDeg: addYaw(machine.model.yawDeg, flow.yawDelta) }
+        : machine.model,
+      dimensionsVerified: false,
+    };
+
+    apply(
+      next,
+      flow.yawDelta === 0
+        ? "Flödet stämde redan. Portarna är satta där du pekade."
+        : `Maskinen vändes ${flow.yawDelta}° och portarna är satta där du pekade.` +
+            (flow.swapsFootprint
+              ? ` Längd och bredd bytte plats: ${(footprint.lengthMm / 1000)
+                  .toFixed(2)
+                  .replace(".", ",")} × ${(footprint.widthMm / 1000).toFixed(2).replace(".", ",")} m.`
+              : ""),
     );
   };
 
@@ -401,10 +452,32 @@ export function ModelPanel({
             </p>
           ) : null}
 
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <Button
+              size="sm"
+              variant={picking ? "primary" : "secondary"}
+              onClick={() => {
+                setInPoint(null);
+                setPicking(picking ? null : "in");
+              }}
+            >
+              {picking ? "Avbryt utpekning" : "Peka ut flödet"}
+            </Button>
+            <span className="text-[11px] leading-relaxed text-muted">
+              {picking === "in"
+                ? "Klicka på modellen där paketen kommer in."
+                : picking === "out"
+                  ? "Klicka där de går ut."
+                  : "Två klick i vyn sätter både vändningen och portarna — enklare än att skriva koordinater."}
+            </span>
+          </div>
+
           <ModelPreview
             url={machine.model.glb}
             orientation={orientation}
             footprint={machine.footprint}
+            picking={picking}
+            onPick={pick}
           />
 
           <div className="mt-2">

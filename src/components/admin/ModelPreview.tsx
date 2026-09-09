@@ -16,16 +16,30 @@ export function ModelPreview({
   url,
   orientation,
   footprint,
+  picking,
+  onPick,
 }: {
   url: string;
   orientation: ModelOrientation;
   footprint: { lengthMm: number; widthMm: number; heightMm: number };
+  /** Vilken port som ska pekas ut, om någon. */
+  picking?: "in" | "out" | null;
+  /** Punkten på modellen, i maskinkoordinater mm. */
+  onPick?: (point: { x: number; y: number }) => void;
 }) {
   const mount = useRef<HTMLDivElement | null>(null);
   const api = useRef<{
     setOrientation: (o: ModelOrientation) => void;
     dispose: () => void;
   } | null>(null);
+  /*
+   * Klickhanteraren lever i three.js-scenen men behöver alltid det senaste
+   * läget. Refs i stället för att bygga om scenen vid varje ändring.
+   */
+  const pickingRef = useRef(picking);
+  const onPickRef = useRef(onPick);
+  pickingRef.current = picking;
+  onPickRef.current = onPick;
   const [status, setStatus] = useState("Laddar modellen…");
   /** Satt när modellen behövde skalas för att fylla lådan. */
   const [scaled, setScaled] = useState<number | null>(null);
@@ -137,6 +151,30 @@ export function ModelPreview({
       };
       setOrientation(orientation);
 
+      /*
+       * Peka ut flödet: ett klick på modellen ger en punkt i maskinens eget
+       * system. Lådan är ritad med x från 0 till längden och z centrerad
+       * kring bredden, och modellen är inpassad i den — så träffpunkten i
+       * världen ÄR maskinkoordinater, i meter.
+       */
+      const raycaster = new THREE.Raycaster();
+      const onClick = (event: MouseEvent) => {
+        if (!pickingRef.current || !model) return;
+        const rect = renderer.domElement.getBoundingClientRect();
+        const ndc = new THREE.Vector2(
+          ((event.clientX - rect.left) / rect.width) * 2 - 1,
+          -((event.clientY - rect.top) / rect.height) * 2 + 1,
+        );
+        raycaster.setFromCamera(ndc, camera);
+        const hit = raycaster.intersectObject(model, true)[0];
+        if (!hit) return;
+        onPickRef.current?.({
+          x: Math.round(hit.point.x * 1000),
+          y: Math.round((hit.point.z + w / 2) * 1000),
+        });
+      };
+      renderer.domElement.addEventListener("click", onClick);
+
       const resize = () => {
         const { clientWidth, clientHeight } = element;
         if (!clientWidth || !clientHeight) return;
@@ -160,6 +198,7 @@ export function ModelPreview({
         setOrientation,
         dispose: () => {
           cancelAnimationFrame(raf);
+          renderer.domElement.removeEventListener("click", onClick);
           observer.disconnect();
           controls.dispose();
           renderer.dispose();
@@ -182,8 +221,17 @@ export function ModelPreview({
   }, [orientation]);
 
   return (
-    <div className="relative h-56 w-full border border-divider bg-paper">
-      <div ref={mount} className="h-full w-full" />
+    <div
+      className={`relative h-56 w-full border bg-paper ${
+        picking ? "border-accent" : "border-divider"
+      }`}
+    >
+      <div ref={mount} className={`h-full w-full ${picking ? "cursor-crosshair" : ""}`} />
+      {picking ? (
+        <span className="kicker absolute inset-x-0 top-2 text-center text-accent">
+          Klicka där paketen {picking === "in" ? "kommer in" : "går ut"}
+        </span>
+      ) : null}
       <span className="kicker absolute left-2 top-2 bg-paper/85 px-1">
         {status || "Pilen visar flödet · lådan är bibliotekets fotavtryck"}
       </span>

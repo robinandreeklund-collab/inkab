@@ -3,6 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
+import { addYaw, flowFromPicks, snapToEdge } from "@/lib/cad/pickFlow";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
 import { Euler, Matrix4, Vector3 } from "three";
 import {
@@ -417,5 +418,82 @@ describe("riktningen är CAD-systemets, inte maskinens", () => {
     // Och flödet, som ligger på glTF:ens Y efter konverteringen, hamnar på X.
     const flow = new Vector3(0, 1, 0).applyMatrix4(m);
     expect(flow.x).toBeCloseTo(1, 5);
+  });
+});
+
+describe("peka ut flödet på modellen", () => {
+  const footprint = { lengthMm: 3000, widthMm: 1600 };
+
+  /** Vridningen som uppritningen faktiskt gör, för att kontrollera tabellen. */
+  const rotatePlan = (p: { x: number; y: number }, yawDeg: 0 | 90 | 180 | 270, f = footprint) => {
+    const e = orientationEuler({ yawDeg });
+    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    // Maskinkoordinater → three.js, kring maskinens mitt: x längs längden,
+    // z tvärs, båda med noll i centrum.
+    const v = new Vector3(p.x - f.lengthMm / 2, 0, p.y - f.widthMm / 2).applyMatrix4(m);
+    const turned = yawDeg === 90 || yawDeg === 270;
+    const width = turned ? f.lengthMm : f.widthMm;
+    const length = turned ? f.widthMm : f.lengthMm;
+    return { x: Math.round(v.x + length / 2), y: Math.round(v.z + width / 2) };
+  };
+
+  it("låter en maskin som redan pekar rätt vara", () => {
+    const pick = flowFromPicks({ x: 0, y: 800 }, { x: 3000, y: 800 }, footprint);
+    expect(pick.yawDelta).toBe(0);
+    expect(pick.swapsFootprint).toBe(false);
+    expect(pick.outPos).toEqual({ x: 3000, y: 800 });
+  });
+
+  it("vänder en bakvänd maskin ett halvt varv", () => {
+    const pick = flowFromPicks({ x: 3000, y: 500 }, { x: 0, y: 500 }, footprint);
+    expect(pick.yawDelta).toBe(180);
+    // Inporten hamnar i den nya framkanten.
+    expect(pick.inPos).toEqual({ x: 0, y: 1100 });
+    expect(pick.outPos).toEqual({ x: 3000, y: 1100 });
+  });
+
+  it("vrider ett kvarts varv när flödet går tvärs, och byter mått", () => {
+    const pick = flowFromPicks({ x: 1500, y: 0 }, { x: 1500, y: 1600 }, footprint);
+    expect(pick.yawDelta).toBe(90);
+    expect(pick.swapsFootprint).toBe(true);
+    expect(pick.footprint).toEqual({ lengthMm: 1600, widthMm: 3000 });
+    expect(pick.inPos.x).toBe(0);
+    expect(pick.outPos.x).toBe(1600);
+  });
+
+  it("vrider åt andra hållet när flödet går motsatt tvärs", () => {
+    const pick = flowFromPicks({ x: 1500, y: 1600 }, { x: 1500, y: 0 }, footprint);
+    expect(pick.yawDelta).toBe(270);
+    expect(pick.inPos.x).toBe(0);
+    expect(pick.outPos.x).toBe(1600);
+  });
+
+  it("stämmer med rotationen uppritningen gör", () => {
+    /*
+     * Tabellen i flowFromPicks är härledd för hand. Testet räknar samma sak
+     * genom den riktiga rotationsmatrisen och kräver att de ger samma svar —
+     * annars är det bara en tabell någon trodde stämde.
+     */
+    for (const [inP, outP] of [
+      [{ x: 3000, y: 500 }, { x: 0, y: 500 }],
+      [{ x: 1500, y: 0 }, { x: 1500, y: 1600 }],
+      [{ x: 1500, y: 1600 }, { x: 1500, y: 0 }],
+    ] as const) {
+      const pick = flowFromPicks(inP, outP, footprint);
+      expect(rotatePlan(inP, pick.yawDelta)).toEqual(pick.inPos);
+      expect(rotatePlan(outP, pick.yawDelta)).toEqual(pick.outPos);
+    }
+  });
+
+  it("räknar vridningen inom ett varv", () => {
+    expect(addYaw(270, 180)).toBe(90);
+    expect(addYaw(undefined, 90)).toBe(90);
+    expect(addYaw(180, 180)).toBe(0);
+  });
+
+  it("drar porten ut till kortsidan", () => {
+    const f = { lengthMm: 1600, widthMm: 3000 };
+    expect(snapToEdge({ x: 700, y: 1400 }, f, "in")).toEqual({ x: 0, y: 1400 });
+    expect(snapToEdge({ x: 700, y: 1400 }, f, "out")).toEqual({ x: 1600, y: 1400 });
   });
 });

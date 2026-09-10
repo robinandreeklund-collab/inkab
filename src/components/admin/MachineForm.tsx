@@ -8,6 +8,7 @@ import { MachinePreview } from "./MachinePreview";
 import { ParameterPanel } from "./ParameterPanel";
 import { ImagePanel } from "./ImagePanel";
 import { ModelPanel } from "./ModelPanel";
+import { DocumentPanel } from "./DocumentPanel";
 import { VariantPanel } from "./VariantPanel";
 import type { ModelOrientation } from "@/lib/cad/orientation";
 import {
@@ -493,6 +494,8 @@ export function MachineForm({
             onModelDefaultsChange={onModelDefaultsChange}
             onChange={onChange}
           />
+
+          <DocumentPanel machineId={machine.id} />
 
           <VariantPanel
             machine={machine}

@@ -4,6 +4,7 @@ import path from "node:path";
 import { BUILTIN_MACHINES } from "@/lib/library";
 import { libraryDocumentSchema, type LibraryDocument } from "@/lib/machineSchema";
 import { normaliseAdjustment, type QuoteAdjustment } from "@/lib/quoteAdjustment";
+import { isDocumentKind, isOrderState, type MachineDocument } from "@/lib/documents";
 import { BUILTIN_PRICE_BOOK } from "./pricebook";
 
 /**
@@ -1218,5 +1219,242 @@ export async function writeSetting<T>(
     degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
     return { persisted: false, reason: degradedReason };
+  }
+}
+
+
+/* ── Maskinernas underlag ──────────────────────────────────────────────── */
+
+/**
+ * Ritningar, STEP-filer, balklistor och skärfiler — per maskin.
+ *
+ * Samma upplägg som modellerna: filen i databasen, metadatan bredvid, och ett
+ * minnesfall när Postgres inte är konfigurerad så att det går att arbeta ändå.
+ * Skillnaden är att det här är verkstadens underlag och inte kundens: det som
+ * ska till legotillverkaren, det som monteras efter, det som beställs.
+ */
+
+const memoryDocuments = new Map<string, { meta: MachineDocument; data: Buffer }>();
+/** Samma tanke som för modellerna: minnet är en reserv, inte ett arkiv. */
+const MEMORY_DOCUMENT_BUDGET = 120_000_000;
+
+function trimMemoryDocuments() {
+  let total = 0;
+  for (const entry of memoryDocuments.values()) total += entry.data.length;
+  for (const [id, entry] of memoryDocuments) {
+    if (total <= MEMORY_DOCUMENT_BUDGET) break;
+    memoryDocuments.delete(id);
+    total -= entry.data.length;
+  }
+}
+
+async function ensureDocumentTable(pool: PgPool) {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS machine_document (
+      id          text PRIMARY KEY,
+      machine_id  text NOT NULL,
+      kind        text NOT NULL DEFAULT 'other',
+      name        text NOT NULL DEFAULT '',
+      title       text NOT NULL DEFAULT '',
+      mime        text NOT NULL DEFAULT 'application/octet-stream',
+      revision    text NOT NULL DEFAULT '',
+      note        text NOT NULL DEFAULT '',
+      order_state text NOT NULL DEFAULT 'none',
+      supplier    text NOT NULL DEFAULT '',
+      uploaded_by text NOT NULL DEFAULT '',
+      data        bytea NOT NULL,
+      created_at  timestamptz NOT NULL DEFAULT now()
+    )
+  `);
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS machine_document_machine ON machine_document (machine_id)",
+  );
+}
+
+type DocumentRow = {
+  id: string;
+  machine_id: string;
+  kind: string;
+  name: string;
+  title: string;
+  mime: string;
+  revision: string;
+  note: string;
+  order_state: string;
+  supplier: string;
+  uploaded_by: string;
+  created_at: Date;
+  bytes: string | number;
+};
+
+const documentMeta = (row: DocumentRow): MachineDocument => ({
+  id: row.id,
+  machineId: row.machine_id,
+  kind: isDocumentKind(row.kind) ? row.kind : "other",
+  name: row.name,
+  title: row.title,
+  mime: row.mime,
+  revision: row.revision,
+  note: row.note,
+  orderState: isOrderState(row.order_state) ? row.order_state : "none",
+  supplier: row.supplier,
+  bytes: Number(row.bytes),
+  uploadedBy: row.uploaded_by,
+  createdAt: row.created_at.toISOString(),
+});
+
+export async function putDocument(document: {
+  meta: Omit<MachineDocument, "bytes" | "createdAt">;
+  data: Uint8Array;
+}): Promise<{ persisted: boolean; reason: string | null; meta: MachineDocument }> {
+  const data = Buffer.from(document.data);
+  const meta: MachineDocument = {
+    ...document.meta,
+    bytes: data.length,
+    createdAt: new Date().toISOString(),
+  };
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDocumentTable(pool);
+      await pool.query(
+        `INSERT INTO machine_document
+           (id, machine_id, kind, name, title, mime, revision, note, order_state, supplier,
+            uploaded_by, data)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+         ON CONFLICT (id) DO UPDATE
+           SET machine_id = $2, kind = $3, name = $4, title = $5, mime = $6, revision = $7,
+               note = $8, order_state = $9, supplier = $10, uploaded_by = $11, data = $12`,
+        [
+          meta.id,
+          meta.machineId,
+          meta.kind,
+          meta.name,
+          meta.title,
+          meta.mime,
+          meta.revision,
+          meta.note,
+          meta.orderState,
+          meta.supplier,
+          meta.uploadedBy,
+          data,
+        ],
+      );
+      degradedReason = null;
+      return { persisted: true, reason: null, meta };
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  memoryDocuments.set(meta.id, { meta, data });
+  trimMemoryDocuments();
+  return {
+    persisted: false,
+    reason: degradedReason ?? "Ingen DATABASE_URL är satt.",
+    meta,
+  };
+}
+
+export async function listDocuments(machineId?: string): Promise<MachineDocument[]> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDocumentTable(pool);
+      const result = machineId
+        ? await pool.query<DocumentRow>(
+            `SELECT id, machine_id, kind, name, title, mime, revision, note, order_state,
+                    supplier, uploaded_by, created_at, octet_length(data) AS bytes
+               FROM machine_document WHERE machine_id = $1 ORDER BY created_at DESC`,
+            [machineId],
+          )
+        : await pool.query<DocumentRow>(
+            `SELECT id, machine_id, kind, name, title, mime, revision, note, order_state,
+                    supplier, uploaded_by, created_at, octet_length(data) AS bytes
+               FROM machine_document ORDER BY created_at DESC LIMIT 500`,
+          );
+      degradedReason = null;
+      return result.rows.map(documentMeta);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return [...memoryDocuments.values()]
+    .map((entry) => entry.meta)
+    .filter((meta) => !machineId || meta.machineId === machineId)
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+export async function readDocumentFile(
+  id: string,
+): Promise<{ meta: MachineDocument; data: Buffer } | null> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDocumentTable(pool);
+      const result = await pool.query<DocumentRow & { data: Buffer }>(
+        `SELECT id, machine_id, kind, name, title, mime, revision, note, order_state, supplier,
+                uploaded_by, created_at, data, octet_length(data) AS bytes
+           FROM machine_document WHERE id = $1`,
+        [id],
+      );
+      degradedReason = null;
+      const row = result.rows[0];
+      if (row) return { meta: documentMeta(row), data: row.data };
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+  return memoryDocuments.get(id) ?? null;
+}
+
+/** Ändrar det som beskriver filen. Innehållet byts genom att ladda upp nytt. */
+export async function updateDocumentMeta(
+  id: string,
+  patch: Partial<Pick<MachineDocument, "kind" | "title" | "revision" | "note" | "orderState" | "supplier">>,
+): Promise<MachineDocument | null> {
+  const current = await readDocumentFile(id);
+  if (!current) return null;
+  const meta: MachineDocument = { ...current.meta, ...patch };
+
+  const inMemory = memoryDocuments.get(id);
+  if (inMemory) memoryDocuments.set(id, { meta, data: inMemory.data });
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureDocumentTable(pool);
+      await pool.query(
+        `UPDATE machine_document
+            SET kind = $2, title = $3, revision = $4, note = $5, order_state = $6, supplier = $7
+          WHERE id = $1`,
+        [id, meta.kind, meta.title, meta.revision, meta.note, meta.orderState, meta.supplier],
+      );
+      degradedReason = null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return meta;
+}
+
+export async function deleteDocument(id: string): Promise<void> {
+  memoryDocuments.delete(id);
+  if (!postgresConfigured()) return;
+  try {
+    const pool = await getPool();
+    await ensureDocumentTable(pool);
+    await pool.query("DELETE FROM machine_document WHERE id = $1", [id]);
+    degradedReason = null;
+  } catch (error) {
+    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    poolPromise = null;
   }
 }

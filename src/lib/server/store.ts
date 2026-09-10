@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { BUILTIN_MACHINES } from "@/lib/library";
 import { libraryDocumentSchema, type LibraryDocument } from "@/lib/machineSchema";
+import { normaliseAdjustment, type QuoteAdjustment } from "@/lib/quoteAdjustment";
 import { BUILTIN_PRICE_BOOK } from "./pricebook";
 
 /**
@@ -558,6 +559,15 @@ export async function deleteModel(id: string): Promise<void> {
  * gör det, precis som allt annat, och vyn säger det.
  */
 
+export type ProposalStatus = "draft" | "sent" | "won" | "lost";
+
+export const PROPOSAL_STATUS_LABEL: Record<ProposalStatus, string> = {
+  draft: "Utkast",
+  sent: "Skickad",
+  won: "Vunnen",
+  lost: "Förlorad",
+};
+
 export type StoredProposal = {
   id: string;
   userId: string;
@@ -567,7 +577,14 @@ export type StoredProposal = {
   config: unknown;
   /** Projektloggen. Ett underlag utan sin historia är bara ett läge. */
   log: unknown[];
+  /** Var i affären offerten står. */
+  status: ProposalStatus;
+  /** Rabatt eller avtalat pris för just den här offerten. */
+  adjustment: QuoteAdjustment;
   updatedAt: string;
+  /** Ägarens namn och e-post, ifyllt i adminlistan. */
+  ownerEmail?: string;
+  ownerName?: string;
 };
 
 const memoryProposals = new Map<string, StoredProposal>();
@@ -581,11 +598,17 @@ async function ensureProposalTable(pool: PgPool) {
       reference  text NOT NULL DEFAULT '',
       config     jsonb NOT NULL,
       log        jsonb NOT NULL DEFAULT '[]'::jsonb,
+      status     text NOT NULL DEFAULT 'draft',
+      adjustment jsonb NOT NULL DEFAULT '{}'::jsonb,
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `);
-  // Tabellen kan vara skapad före loggkolumnen fanns.
+  // Tabellen kan vara skapad före de senare kolumnerna fanns.
   await pool.query("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS log jsonb NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft'");
+  await pool.query(
+    "ALTER TABLE proposal ADD COLUMN IF NOT EXISTS adjustment jsonb NOT NULL DEFAULT '{}'::jsonb",
+  );
   await pool.query("CREATE INDEX IF NOT EXISTS proposal_user ON proposal (user_id)");
 }
 
@@ -596,7 +619,11 @@ type ProposalRow = {
   reference: string;
   config: unknown;
   log: unknown[] | null;
+  status: ProposalStatus | null;
+  adjustment: QuoteAdjustment | null;
   updated_at: Date;
+  owner_email?: string;
+  owner_name?: string;
 };
 
 const fromProposalRow = (row: ProposalRow): StoredProposal => ({
@@ -606,7 +633,11 @@ const fromProposalRow = (row: ProposalRow): StoredProposal => ({
   reference: row.reference,
   config: row.config,
   log: row.log ?? [],
+  status: row.status ?? "draft",
+  adjustment: normaliseAdjustment(row.adjustment),
   updatedAt: row.updated_at.toISOString(),
+  ...(row.owner_email ? { ownerEmail: row.owner_email } : {}),
+  ...(row.owner_name ? { ownerName: row.owner_name } : {}),
 });
 
 export async function saveProposal(proposal: {
@@ -620,6 +651,8 @@ export async function saveProposal(proposal: {
   const stored: StoredProposal = {
     ...proposal,
     log: proposal.log ?? [],
+    status: memoryProposals.get(proposal.id)?.status ?? "draft",
+    adjustment: memoryProposals.get(proposal.id)?.adjustment ?? {},
     updatedAt: new Date().toISOString(),
   };
 
@@ -698,6 +731,114 @@ export async function readProposal(id: string, userId: string): Promise<StoredPr
 
   const found = memoryProposals.get(id);
   return found && found.userId === userId ? found : null;
+}
+
+/**
+ * Alla offerter, oavsett ägare. Bara för admin och säljare.
+ *
+ * INKAB behöver se sina affärer på ett ställe: vem som håller på med vad, vad
+ * det ligger på och var det står. Konfigurationerna följer inte med i listan —
+ * de är stora och säger ingenting man kan sortera efter.
+ */
+export async function listAllProposals(): Promise<StoredProposal[]> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      const result = await pool.query<ProposalRow>(
+        `SELECT p.*, u.email AS owner_email, u.name AS owner_name
+           FROM proposal p
+           LEFT JOIN app_user u ON u.id = p.user_id
+          ORDER BY p.updated_at DESC
+          LIMIT 200`,
+      );
+      degradedReason = null;
+      return result.rows.map(fromProposalRow);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return [...memoryProposals.values()]
+    .map((proposal) => ({
+      ...proposal,
+      ownerEmail: memoryUsers.get(proposal.userId)?.email,
+      ownerName: memoryUsers.get(proposal.userId)?.name,
+    }))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+/** En offert utan ägarkontroll. Anropas bara bakom en admin-spärr. */
+export async function readAnyProposal(id: string): Promise<StoredProposal | null> {
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      const result = await pool.query<ProposalRow>(
+        `SELECT p.*, u.email AS owner_email, u.name AS owner_name
+           FROM proposal p LEFT JOIN app_user u ON u.id = p.user_id
+          WHERE p.id = $1`,
+        [id],
+      );
+      degradedReason = null;
+      if (result.rows[0]) return fromProposalRow(result.rows[0]);
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+  return memoryProposals.get(id) ?? null;
+}
+
+/**
+ * Ändrar det som hör till affären, inte till konfigurationen: namn, läge och
+ * prisjustering. Konfigurationen ändras genom att öppna offerten och spara om
+ * den — då går den genom samma validering som allt annat.
+ */
+export async function updateProposalMeta(
+  id: string,
+  patch: { name?: string; status?: ProposalStatus; adjustment?: QuoteAdjustment },
+): Promise<StoredProposal | null> {
+  const current = await readAnyProposal(id);
+  if (!current) return null;
+
+  const next: StoredProposal = {
+    ...current,
+    name: patch.name?.trim() || current.name,
+    status: patch.status ?? current.status,
+    adjustment: patch.adjustment ? normaliseAdjustment(patch.adjustment) : current.adjustment,
+    updatedAt: new Date().toISOString(),
+  };
+  memoryProposals.set(id, next);
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      await pool.query(
+        `UPDATE proposal
+            SET name = $2, status = $3, adjustment = $4, updated_at = now()
+          WHERE id = $1`,
+        [id, next.name, next.status, JSON.stringify(next.adjustment)],
+      );
+      degradedReason = null;
+    } catch (error) {
+      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+    }
+  }
+
+  return next;
+}
+
+/** Offertens justering, som priset ska räknas med. Aldrig från klienten. */
+export async function proposalAdjustment(id: string): Promise<{
+  adjustment: QuoteAdjustment;
+  userId: string;
+} | null> {
+  const proposal = await readAnyProposal(id);
+  return proposal ? { adjustment: proposal.adjustment, userId: proposal.userId } : null;
 }
 
 export async function deleteProposal(id: string, userId: string): Promise<void> {
@@ -951,6 +1092,21 @@ export async function listDraftJobs(userId: string): Promise<StoredDraftJob[]> {
  * körningarna, och de ligger utspridda på olika konton — och på inget konto
  * alls när kunden inte var inloggad.
  */
+/** Tar bort en offert som admin, oavsett ägare. */
+export async function deleteAnyProposal(id: string): Promise<void> {
+  memoryProposals.delete(id);
+  if (!postgresConfigured()) return;
+  try {
+    const pool = await getPool();
+    await ensureProposalTable(pool);
+    await pool.query("DELETE FROM proposal WHERE id = $1", [id]);
+    degradedReason = null;
+  } catch (error) {
+    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    poolPromise = null;
+  }
+}
+
 export async function listRecentDraftJobs(limit = 20): Promise<StoredDraftJob[]> {
   const rows: StoredDraftJob[] = [];
 

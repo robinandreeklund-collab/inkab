@@ -38,6 +38,7 @@ export function AppShell() {
     selectedId,
     removeItem,
     removeDrawn,
+    proposalId,
   } = useConfigStore();
 
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -81,7 +82,9 @@ export function AppShell() {
       fetch("/api/price", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(config),
+        // Offertens id följer med så att serverns pris blir offertens pris,
+        // rabatten inräknad. Konfigurationen ensam vet inget om affären.
+        body: JSON.stringify({ config, proposalId }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -92,7 +95,7 @@ export function AppShell() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [config, user]);
+  }, [config, user, proposalId]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {

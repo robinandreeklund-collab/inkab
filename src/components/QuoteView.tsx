@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useConfigStore } from "@/store/useConfigStore";
+import { adjustmentLabel } from "@/lib/quoteAdjustment";
 import { meters, mkr, sek, todayISO } from "@/lib/format";
 import { quoteReference, validUntil } from "@/lib/quote";
 import { COMPANY } from "@/lib/company";
@@ -137,7 +138,13 @@ export function QuoteView({
               value={metrics.throughputPerHour > 0 ? `${metrics.throughputPerHour} pkt/h` : "—"}
             />
             <Line
-              label={price?.totals ? "Listpris" : "Prisintervall"}
+              label={
+                price?.adjustment?.fixedTotalSek
+                  ? "Avtalat pris"
+                  : price?.totals
+                    ? "Listpris"
+                    : "Prisintervall"
+              }
               value={
                 price?.totals
                   ? mkr(price.totals.grandTotal)
@@ -223,10 +230,29 @@ export function QuoteView({
               <Total label="Montage" value={price.totals.install} />
               <Total label="El och styr" value={price.totals.control} />
               <Total label="Frakt" value={price.totals.freight} />
+
+              {/* Avdraget står som en egen rad. Ett pris som sänkts utan att
+                  det syns är inte en rabatt utan ett annat pris. */}
+              {price.adjustment ? (
+                <>
+                  <div className="flex justify-between border-t border-divider pt-1">
+                    <span>Listpris</span>
+                    <span className="num">{sek(price.adjustment.listSek)} kr</span>
+                  </div>
+                  <div className="flex justify-between text-accent">
+                    <span>{adjustmentLabel(price.adjustment)}</span>
+                    <span className="num">−{sek(price.adjustment.deltaSek)} kr</span>
+                  </div>
+                </>
+              ) : null}
+
               <div className="flex justify-between border-t border-ink pt-1 font-medium">
                 <span>Summa exkl. moms</span>
                 <span className="num">{sek(price.totals.grandTotal)} kr</span>
               </div>
+              {price.adjustment?.note ? (
+                <p className="text-xs leading-relaxed text-muted">{price.adjustment.note}</p>
+              ) : null}
               <div className="no-print flex justify-between text-xs text-muted">
                 <span>Marginal (visas ej för kund)</span>
                 <span className="num">

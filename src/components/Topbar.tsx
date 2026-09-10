@@ -156,7 +156,12 @@ export function Topbar({
 
       {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
 
-      {proposalsOpen ? <ProposalDialog onClose={() => setProposalsOpen(false)} /> : null}
+      {proposalsOpen ? (
+        <ProposalDialog
+          onClose={() => setProposalsOpen(false)}
+          canAdmin={user?.role === "admin"}
+        />
+      ) : null}
 
       {authOpen ? (
         <AuthDialog

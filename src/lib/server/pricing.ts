@@ -2,6 +2,7 @@ import "server-only";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "@/lib/library";
 import { effectiveMachine } from "@/lib/solver";
 import { BUILTIN_PRICE_BOOK, type PriceBook } from "./pricebook";
+import { applyAdjustment, type AdjustmentResult, type QuoteAdjustment } from "@/lib/quoteAdjustment";
 import type { Configuration } from "@/lib/types";
 
 export type Role = "guest" | "customer" | "sales" | "admin";
@@ -45,6 +46,11 @@ export type PriceResult = {
   } | null;
   /** Alltid tillgängligt: indikativt intervall. */
   indication: { lowSek: number; highSek: number };
+  /**
+   * Offertens egen justering, när den har en. Rabatten står som en egen rad —
+   * ett avdrag som inte syns är inte ett avdrag utan ett annat pris.
+   */
+  adjustment: AdjustmentResult | null;
   note: string;
 };
 
@@ -57,6 +63,8 @@ export function priceConfiguration(
   role: Role,
   library: MachineLibrary = BUILTIN_LIBRARY,
   priceBook: PriceBook = BUILTIN_PRICE_BOOK,
+  /** Offertens justering. Kommer alltid från lagret, aldrig från klienten. */
+  quoteAdjustment?: QuoteAdjustment | null,
 ): PriceResult {
   const showPrices = canSeePrices(role);
   const lines: QuoteLine[] = [];
@@ -156,7 +164,12 @@ export function priceConfiguration(
 
   const control = Math.round(machines * priceBook.controlFactor);
   const freight = machines > 0 ? priceBook.freight : 0;
-  const grandTotal = machines + install + control + freight;
+  const listTotal = machines + install + control + freight;
+
+  // Justeringen läggs sist, på summan. Raderna behåller sina listpriser: det
+  // är dem kunden ska kunna stämma av mot katalogen.
+  const adjusted = applyAdjustment(listTotal, quoteAdjustment);
+  const grandTotal = adjusted.applied ? adjusted.finalSek : listTotal;
   const margin = grandTotal - cost;
 
   return {
@@ -179,9 +192,18 @@ export function priceConfiguration(
         }
       : null,
     indication: {
-      lowSek: Math.round(grandTotal * priceBook.indicationSpread.low),
-      highSek: Math.round(grandTotal * priceBook.indicationSpread.high),
+      // Ett avtalat totalpris är inte en indikation utan ett pris; då snävas
+      // intervallet ihop till det beloppet.
+      lowSek:
+        adjusted.fixedTotalSek !== null
+          ? grandTotal
+          : Math.round(grandTotal * priceBook.indicationSpread.low),
+      highSek:
+        adjusted.fixedTotalSek !== null
+          ? grandTotal
+          : Math.round(grandTotal * priceBook.indicationSpread.high),
     },
+    adjustment: adjusted.applied ? adjusted : null,
     note: showPrices
       ? `Listpris enligt ${priceBook.name}, exkl. moms. Montage och styr ingår som påslag.`
       : "Prisindikation ±20 %, ej bindande offert.",

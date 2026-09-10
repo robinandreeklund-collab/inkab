@@ -22,8 +22,16 @@ type Item = {
   updatedAt: string;
 };
 
-export function ProposalDialog({ onClose }: { onClose: () => void }) {
-  const { config, load, log, setLog, note: writeLog } = useConfigStore();
+export function ProposalDialog({
+  onClose,
+  canAdmin = false,
+}: {
+  onClose: () => void;
+  /** Admin skriver tillbaka till kundens rad i stället för att lägga en kopia. */
+  canAdmin?: boolean;
+}) {
+  const { config, load, log, setLog, note: writeLog, proposalId, setProposalId } =
+    useConfigStore();
   const [items, setItems] = useState<Item[]>([]);
   const [name, setName] = useState(config.projectName);
   const [busy, setBusy] = useState(false);
@@ -54,17 +62,34 @@ export function ProposalDialog({ onClose }: { onClose: () => void }) {
     setError(null);
     setNote(null);
     try {
-      const response = await fetch("/api/proposals", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, config, log }),
-      });
+      /*
+       * En öppnad offert skrivs tillbaka till sin egen rad. Att spara en kopia
+       * bredvid vore att skapa två sanningar om samma affär — och den kund som
+       * äger raden skulle inte se ändringen.
+       */
+      const editingOther = canAdmin && !!proposalId;
+      const response = await fetch(
+        editingOther ? "/api/admin/proposals" : "/api/proposals",
+        {
+          method: editingOther ? "PATCH" : "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            editingOther
+              ? { id: proposalId, name, config, log }
+              : { id: proposalId ?? undefined, name, config, log },
+          ),
+        },
+      );
       const body = await response.json().catch(() => null);
       if (!response.ok || !body?.ok) {
         setError(body?.error ?? `Servern svarade ${response.status}.`);
         return;
       }
-      writeLog("proposal", `Sparade förslaget "${name}"`);
+      if (body.id && !proposalId) setProposalId(body.id);
+      writeLog(
+        "proposal",
+        proposalId ? `Sparade om offerten "${name}"` : `Sparade förslaget "${name}"`,
+      );
       setNote(
         body.persisted
           ? "Sparat."
@@ -89,6 +114,7 @@ export function ProposalDialog({ onClose }: { onClose: () => void }) {
       resetHistory: true,
       note: `Öppnade det sparade förslaget "${body.proposal.name}"`,
     });
+    setProposalId(id);
     // Historiken hör till förslaget: den som öppnar det ska se hur det blev
     // till, inte den förra kundens spår.
     if (Array.isArray(body.proposal.log)) setLog(body.proposal.log);

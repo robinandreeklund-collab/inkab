@@ -67,6 +67,13 @@ type State = {
   /** Vad som hänt i projektet, äldst först. */
   log: LogEntry[];
   /**
+   * Offerten som är öppnad, när en är det.
+   *
+   * Priset räknas på servern med just den offertens rabatt, och att spara
+   * skriver tillbaka till samma rad i stället för att lägga en kopia bredvid.
+   */
+  proposalId: string | null;
+  /**
    * Utgången nästa maskin ska hängas på. Satt när någon tryckt "bygg vidare
    * härifrån" på en ledig utgång; nästa maskin ur katalogen startar då en
    * gren i stället för att läggas sist.
@@ -90,6 +97,7 @@ type Actions = {
   /** Skriver en rad i projektloggen. */
   note: (kind: LogKind, text: string, detail?: string) => void;
   setLog: (entries: LogEntry[]) => void;
+  setProposalId: (id: string | null) => void;
   clearLog: () => void;
   load: (config: Configuration, options?: { resetHistory?: boolean; note?: string }) => void;
   update: (recipe: (draft: Configuration) => void) => void;
@@ -222,6 +230,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     hydrated: false,
     shareNotice: null,
     log: [],
+    proposalId: null,
     branchTarget: null,
 
     setScreen: (screen) => set({ screen }),
@@ -242,6 +251,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
 
     note: (kind, text, detail) => note(logEntry(kind, text, detail)),
+    setProposalId: (proposalId) => set({ proposalId }),
     setLog: (entries) => {
       const log = entries.slice(-LOG_LIMIT);
       set({ log });
@@ -466,6 +476,33 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       set({ log: readLog() });
 
       const params = new URLSearchParams(window.location.search);
+
+      /*
+       * En offert öppnad från adminvyn. Den läses från servern med sitt id, så
+       * att rabatt och historik följer med — och så att den som sparar skriver
+       * tillbaka till samma rad i stället för att lägga en kopia bredvid.
+       */
+      const quoteId = params.get("offert");
+      if (quoteId) {
+        fetch(`/api/admin/proposals?id=${encodeURIComponent(quoteId)}`)
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => {
+            const proposal = data?.proposal;
+            if (!proposal) return;
+            get().load(proposal.config as Configuration, {
+              resetHistory: true,
+              note: `Öppnade offerten "${proposal.name}" från adminvyn`,
+            });
+            if (Array.isArray(proposal.log)) get().setLog(proposal.log);
+            set({ proposalId: proposal.id, screen: "configurator" });
+          })
+          .catch(() => {
+            // Utan svar står utkastet kvar; ingen tyst standardkonfiguration.
+          });
+        window.history.replaceState(null, "", window.location.pathname);
+        return;
+      }
+
       const shared = params.get("c");
       if (shared) {
         // Delningslänken importeras lazy för att hålla första bundlen liten.

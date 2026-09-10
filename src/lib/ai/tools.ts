@@ -349,7 +349,9 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
         "truckzoner och " +
         "no-go-zoner. Väggarna anges som mittlinjer mellan två punkter — verktyget ger " +
         "dem tjocklek, rätar dem till närmaste axel och stänger hörnen där de möts. " +
-        "Portar anges som en punkt med bredd och sätts in i väggen de ligger närmast.\n\n" +
+        "Portar anges som en punkt med bredd och sätts in i väggen de ligger närmast. " +
+        "Allt ritas som markeringar på golvet — streckade linjer som visar var väggen går — " +
+        "inte som byggda murar med höjd.\n\n" +
         "Koordinater i meter från hallens nedre vänstra hörn: X längs hallen, Y tvärs. " +
         "Alla mått är meter.\n\n" +
         "Skalan ska vara belagd: ange scaleSource och scaleNote med det du skalade efter — " +

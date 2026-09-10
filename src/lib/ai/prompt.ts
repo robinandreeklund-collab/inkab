@@ -100,7 +100,7 @@ Bilden kan vara inskannad liggande, upp och ner eller sned. Läs texten oavsett 
 EN RITNING ÖVER LOKALEN → draw_hall
 1. Måtten först, enligt stycket ovan. Fyll i scaleSource och scaleNote med det du skalade efter.
 2. Lägg origo i lokalens nedre vänstra hörn. X längs hallen, Y tvärs. Sätt hallens längd och bredd efter ytterväggarna.
-3. Väggarna som mittlinjer, en linje per rak väggdel. Ett hörn är två linjer som slutar i samma punkt — då sys de ihop automatiskt.
+3. Väggarna som mittlinjer, en linje per rak väggdel. Ett hörn är två linjer som slutar i samma punkt — då sys de ihop automatiskt. Väggarna blir markeringar och inte murar: streckade linjer som visar var väggen går, precis som på kundens ritning. Lova därför inget om väggarnas höjd eller utförande i ditt svar.
 4. Portar som punkt och bredd. De hamnar i väggen de ligger närmast.
 5. Pelare, gropar, upplag och annat som inte får byggas över blir no-go-zoner. Ritade truckgator blir truckzoner.
 6. Berätta efteråt vad du skalade efter, vad du inte kunde läsa och vad kunden bör kontrollmäta. En uppmätt bild är ett utkast, inte ett underlag.

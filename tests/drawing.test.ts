@@ -142,3 +142,34 @@ describe("planToDrawn", () => {
     expect(notes.join(" ")).toContain(String(MAX_DRAWN));
   });
 });
+
+describe("uppläst ritning ger markeringar, inte murar", () => {
+  it("ritar väggar och portar med höjd noll", () => {
+    const { drawn } = planToDrawn(
+      {
+        walls: [{ from: { x: 0, y: 0 }, to: { x: 15000, y: 0 } }],
+        doors: [{ at: { x: 5000, y: 0 }, widthMm: 3000 }],
+      },
+      HALL,
+    );
+
+    // Kunden ritar in var väggen går för att linjen ska hamna rätt i lokalen,
+    // inte för att bygga huset. Höjd noll ritas som streckad linje.
+    expect(drawn).toHaveLength(2);
+    for (const object of drawn) expect(object.h).toBe(0);
+  });
+
+  it("behåller tjockleken så att porten kan sättas in i väggen", () => {
+    const { drawn } = planToDrawn(
+      {
+        walls: [{ from: { x: 0, y: 0 }, to: { x: 15000, y: 0 } }],
+        doors: [{ at: { x: 5000, y: 0 }, widthMm: 3000 }],
+      },
+      HALL,
+    );
+    const wall = drawn.find((d) => d.kind === "wall")!;
+    const door = drawn.find((d) => d.kind === "door")!;
+    expect(wall.w).toBe(WALL_THICKNESS_MM);
+    expect(door.y).toBe(wall.y);
+  });
+});

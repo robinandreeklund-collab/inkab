@@ -24,8 +24,18 @@ export const DOOR_REACH_MM = 2500;
 /** Samma tak som schemat: config.drawn tar 80 objekt. */
 export const MAX_DRAWN = 80;
 
-const WALL_HEIGHT_MM = 3000;
-const DOOR_HEIGHT_MM = 5000;
+/**
+ * En uppläst ritning ger markeringar, inte murar.
+ *
+ * Kunden ritar in var väggarna går för att linjen ska hamna rätt i lokalen —
+ * inte för att bygga huset. Höjd noll betyder just det: en linje på golvet som
+ * säger "här går väggen", ritad som streck i planen och platt i 3D. Den som
+ * vill ha en vägg med höjd sätter höjden själv i inspektorn.
+ *
+ * Regelverket bryr sig inte om skillnaden: en maskin som står i en markerad
+ * vägg står i en vägg, och R-403 säger ifrån lika bestämt.
+ */
+const MARKING_HEIGHT_MM = 0;
 
 export const KIND_LABEL: Record<DrawnKind, string> = {
   wall: "Vägg",
@@ -131,7 +141,7 @@ export function planToDrawn(
       y: round(box.y),
       l: round(box.l),
       w: round(box.w),
-      h: WALL_HEIGHT_MM,
+      h: MARKING_HEIGHT_MM,
     });
   }
 
@@ -181,7 +191,7 @@ export function planToDrawn(
       y: round(box.y),
       l: round(box.l),
       w: round(box.w),
-      h: DOOR_HEIGHT_MM,
+      h: MARKING_HEIGHT_MM,
     });
   }
 

@@ -596,6 +596,23 @@ function Iso3D({
 
       {config.drawn.map((d) => {
         const faces = isoBox({ x: d.x, y: d.y, l: d.l, w: d.w }, d.h || 1);
+
+        // Markering (höjd noll): ligger på golvet i stället för att resa sig.
+        if ((d.kind === "wall" || d.kind === "door") && d.h === 0) {
+          return (
+            <polygon
+              key={d.id}
+              points={faces.top}
+              fill={d.kind === "door" ? "#5980a6" : "#1d1f20"}
+              fillOpacity={d.kind === "door" ? 0.18 : 0.1}
+              stroke={d.kind === "door" ? "#5980a6" : "#1d1f20"}
+              strokeOpacity="0.75"
+              strokeWidth={strokeUnit * 1.4}
+              strokeDasharray={`${strokeUnit * 7} ${strokeUnit * 4}`}
+            />
+          );
+        }
+
         if (d.kind === "wall") {
           return (
             <g key={d.id}>
@@ -756,6 +773,14 @@ function DrawnShape({
   const cy = object.y + object.w / 2;
   const alongX = object.l >= object.w;
 
+  /*
+   * Höjd noll är en markering, inte en byggd vägg: så kommer väggarna ur en
+   * uppläst kundritning. Den ritas som en streckad linje där väggen går, som
+   * på ritningen den kommer ifrån — en fylld mur i planvyn påstår mer om
+   * lokalen än underlaget gör.
+   */
+  const marked = object.kind === "wall" && object.h === 0;
+
   return (
     <g
       style={{ cursor: "pointer" }}
@@ -769,12 +794,24 @@ function DrawnShape({
         y={object.y}
         width={object.l}
         height={object.w}
-        fill={style.fill}
-        stroke={selected ? "#5980a6" : style.stroke}
+        fill={marked ? "#1d1f20" : style.fill}
+        fillOpacity={marked ? 0.05 : undefined}
+        stroke={marked ? "none" : selected ? "#5980a6" : style.stroke}
         strokeOpacity={object.kind === "truck" ? 0.45 : 1}
         strokeWidth={strokeUnit * (selected ? 2.4 : 1.2)}
         strokeDasharray={style.dash}
       />
+
+      {marked ? (
+        <path
+          d={alongX ? `M${object.x} ${cy}h${object.l}` : `M${cx} ${object.y}v${object.w}`}
+          stroke={selected ? "#5980a6" : "#1d1f20"}
+          strokeWidth={strokeUnit * (selected ? 2.6 : 1.8)}
+          strokeDasharray={`${strokeUnit * 9} ${strokeUnit * 5}`}
+          strokeLinecap="round"
+          fill="none"
+        />
+      ) : null}
 
       {/* Porten ritas som en öppning: streckad tröskel tvärs väggen. */}
       {object.kind === "door" ? (

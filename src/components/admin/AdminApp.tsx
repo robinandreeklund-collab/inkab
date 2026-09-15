@@ -143,8 +143,9 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     return map;
   }, [doc]);
 
-  const save = async () => {
-    if (!doc) return;
+  /** Sparar och säger om det gick. Exporten behöver veta. */
+  const save = async (): Promise<boolean> => {
+    if (!doc) return false;
     setSaving(true);
     setIssues([]);
     setMessage(null);
@@ -160,7 +161,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
       requestAnimationFrame(() =>
         issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
       );
-      return;
+      return false;
     }
 
     const response = await fetch("/api/admin/library", {
@@ -176,7 +177,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
       requestAnimationFrame(() =>
         issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
       );
-      return;
+      return false;
     }
 
     setDirty(false);
@@ -186,6 +187,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
         ? "Sparat i databasen."
         : `Sparat för den här serverinstansen. ${data.reason ?? ""} Exportera JSON och committa den för att behålla ändringarna.`,
     );
+    return true;
   };
 
   const exportJson = () => {
@@ -207,13 +209,18 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
    * likadan ut efter varje omstart.
    */
   const exportBundle = async () => {
-    if (dirty) {
-      setMessage("Spara först — paketet byggs ur det som är sparat på servern.");
-      return;
-    }
-
     setBundling(true);
     try {
+      /*
+       * Paketet byggs ur det servern har, inte ur arbetskopian. En nyss
+       * tillagd bild som ingen hunnit spara skulle alltså tyst utebli — och
+       * tystnaden är hela problemet. Att spara åt användaren är svaret.
+       */
+      if (dirty && !(await save())) {
+        setMessage("Ändringarna gick inte att spara, så paketet byggdes inte. Se felen ovan.");
+        return;
+      }
+
       const response = await fetch("/api/admin/bundle");
       if (!response.ok) {
         const data = await response.json().catch(() => ({}));

@@ -354,7 +354,9 @@ Det är den arbetsgången jag rekommenderar för maskindata: granskningsbar i en
 pull request, med full historik.
 
 **Demo-paket.** *Exportera demo-paket* gör samma sak för allt på en gång, och
-tar med de uppladdade 3D-modellerna. Arkivet innehåller `data/library.json` —
+tar med de uppladdade 3D-modellerna. Har du osparade ändringar sparas de först
+— paketet byggs ur det servern har, och en nyss tillagd bild som ingen hunnit
+spara skulle annars tyst utebli. Arkivet innehåller `data/library.json` —
 med maskiner, prisbok och produktbilder — plus varje uppladdad modell som
 `public/models/<maskin>.glb`, och maskinernas GLB-fält är omskrivna från
 `/api/models/…` till `/models/…` så att biblioteket pekar på filerna bredvid

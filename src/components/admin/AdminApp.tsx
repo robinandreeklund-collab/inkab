@@ -80,6 +80,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   /** Felen ligger högst upp i huvudytan; är man nedskrollad syns de inte. */
   const issuesRef = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [bundling, setBundling] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -198,6 +199,61 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     URL.revokeObjectURL(url);
   };
 
+  /**
+   * Demo-paketet: biblioteket och de uppladdade modellerna som repofiler.
+   *
+   * Utan databas dör modellerna med serverprocessen. Paketet är vägen runt
+   * det som inte kostar något: packa upp i reporoten, committa, och demon ser
+   * likadan ut efter varje omstart.
+   */
+  const exportBundle = async () => {
+    if (dirty) {
+      setMessage("Spara först — paketet byggs ur det som är sparat på servern.");
+      return;
+    }
+
+    setBundling(true);
+    try {
+      const response = await fetch("/api/admin/bundle");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.error ?? "Paketet kunde inte byggas.");
+        return;
+      }
+
+      const summary = JSON.parse(
+        decodeURIComponent(response.headers.get("X-Bundle-Summary") ?? "%7B%7D"),
+      ) as { models?: number; missing?: number; images?: number };
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "inkab-demo.zip";
+
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      const models = summary.models ?? 0;
+      const missing = summary.missing ?? 0;
+      const images = summary.images ?? 0;
+      setMessage(
+        `Paketet innehåller biblioteket, ${models} ${models === 1 ? "modell" : "modeller"} och ` +
+          `${images} ${images === 1 ? "produktbild" : "produktbilder"}. ` +
+          "Packa upp det i reporoten, committa data/ och public/models/ och pusha — " +
+          "då överlever demon omstarter utan databas." +
+          (missing > 0
+            ? ` ${missing} modellhänvisning${missing === 1 ? "" : "ar"} pekar på filer som ` +
+              "fallit ur serverns minne; ladda upp dem igen. Se LASMIG.md i arkivet."
+            : ""),
+      );
+    } catch {
+      setMessage("Paketet kunde inte hämtas.");
+    } finally {
+      setBundling(false);
+    }
+  };
+
   const importJson = async (file: File) => {
     setIssues([]);
     try {
@@ -261,6 +317,14 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
           </Button>
           <Button size="sm" onClick={exportJson}>
             Exportera JSON
+          </Button>
+          <Button
+            size="sm"
+            onClick={exportBundle}
+            disabled={bundling}
+            title="Biblioteket och modellerna som filer att committa"
+          >
+            {bundling ? "Packar…" : "Exportera demo-paket"}
           </Button>
           <Button size="sm" variant="ghost" onClick={reset}>
             Återställ
@@ -521,7 +585,7 @@ function StatusBanner({ status }: { status: StoreStatus | null }) {
         <strong>Lagring:</strong>{" "}
         {status.persistent
           ? "Postgres. Ändringar överlever omstart och deploy."
-          : "Endast minne. Ändringar försvinner när servern startar om — exportera JSON och committa den."}
+          : "Endast minne. Ändringar försvinner när servern startar om — exportera demo-paketet och committa det."}
       </span>
       <span className="text-muted">Utgångsläge: {status.seedSource}</span>
       {status.updatedAt ? (

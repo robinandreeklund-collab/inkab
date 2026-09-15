@@ -31,7 +31,7 @@ Vid deployen frågar Render om två miljövariabler:
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. Läggs in i Render under **din tjänst → Environment → Environment Variables**. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
-| `DATABASE_URL` | **I praktiken ja** | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge serverprocessen gör det — och en instans på Renders gratisplan sover in efter en kvarts stillhet, så arbetet är borta när du kommer tillbaka. Admin-vyns lagringsbanner säger vilket läge servern är i, och vyn **Modell** säger till när en modellfil har försvunnit i stället för att tyst rita en låda. **Sätt den innan ni matar in maskindata.** |
+| `DATABASE_URL` | **I praktiken ja** | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge serverprocessen gör det — och en instans på Renders gratisplan sover in efter en kvarts stillhet, så arbetet är borta när du kommer tillbaka. Admin-vyns lagringsbanner säger vilket läge servern är i, och vyn **Modell** säger till när en modellfil har försvunnit i stället för att tyst rita en låda. **Sätt den innan ni matar in maskindata.** Vill ni inte ha databas än: *Admin → Exportera demo-paket* lägger bibliotek, bilder och modeller i repot i stället, se [Demo-paket](#admin-vyn). |
 | `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu`. |
 | `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
 
@@ -191,6 +191,8 @@ src/
 │   ├── templates.ts      Fyra startmallar
 │   ├── schema.ts         Zod-validering av allt som når servern
 │   ├── share.ts          Konfiguration ⇄ URL
+│   ├── demoBundle.ts     Demo-paketet: bibliotek och modeller som repofiler
+│   ├── zip.ts            Minimal ZIP-skrivare för paketet
 │   ├── ai/
 │   │   ├── tools.ts      Verktygsskalet
 │   │   ├── prompt.ts     Systemprompt med cache-brytpunkt
@@ -207,7 +209,7 @@ src/
 └── app/
     ├── page.tsx
     ├── admin/            Admin-vyn
-    └── api/              ai/chat · price · library · models · auth · admin (library, model, users) · health
+    └── api/              ai/chat · price · library · models · auth · admin (library, model, users, bundle) · health
 ```
 
 ---
@@ -350,6 +352,27 @@ som `data/library.json` i repot och committa den — då blir den det
 versionshanterade utgångsläget som gäller vid varje deploy, oavsett databas.
 Det är den arbetsgången jag rekommenderar för maskindata: granskningsbar i en
 pull request, med full historik.
+
+**Demo-paket.** *Exportera demo-paket* gör samma sak för allt på en gång, och
+tar med de uppladdade 3D-modellerna. Arkivet innehåller `data/library.json` —
+med maskiner, prisbok och produktbilder — plus varje uppladdad modell som
+`public/models/<maskin>.glb`, och maskinernas GLB-fält är omskrivna från
+`/api/models/…` till `/models/…` så att biblioteket pekar på filerna bredvid
+sig i stället för på serverns minne. Packa upp i reporoten, `git add data
+public/models`, committa och pusha:
+
+```
+unzip inkab-demo-2026-09-15.zip
+git add data public/models
+git commit -m "Uppdaterat maskinbibliotek och modeller"
+git push
+```
+
+Det är vägen till en demo som ser likadan ut efter varje omstart **utan
+databas** — repot är lagringen. Paketets `LASMIG.md` räknar upp vad som kom
+med och säger till om någon modell hunnit falla ur minnet innan den hämtades.
+Konton, sparade offerter och maskinernas underlag är inte med: de hör inte
+hemma i git, och för dem behövs en riktig databas.
 
 **Lagring.** Med `DATABASE_URL` sparas ändringar i Postgres. Utan den lever de
 i serverns minne tills den startar om — banderollen högst upp säger vilket som

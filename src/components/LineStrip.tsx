@@ -3,7 +3,7 @@
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
 import { segments } from "@/lib/branches";
-import { edgeItemsWithFallback, orderedEdges } from "@/lib/flowGraph";
+import { edgeItemsWithFallback, edgeLabel, orderedEdges } from "@/lib/flowGraph";
 import { MachineThumb } from "./MachineThumb";
 import type { LineItem, Placement } from "@/lib/types";
 
@@ -25,7 +25,6 @@ export function LineStrip() {
    * Att markera en rad är att peka ut var nästa maskin ur katalogen hamnar.
    */
   if (graph && graph.edges.length > 0) {
-    const nodeName = (id: string | null) => graph.nodes.find((n) => n.id === id)?.name ?? "—";
     const runs = new Map(layout.edgeRuns.map((r) => [r.edgeId, r]));
 
     return (
@@ -49,9 +48,9 @@ export function LineStrip() {
                 }`}
                 title="Markera grenen — nästa maskin ur katalogen hamnar här"
               >
-                <span className="kicker block">{edge.name}</span>
+                <span className="kicker block">{edgeLabel(graph, edge)}</span>
                 <span className="kicker block text-muted">
-                  {nodeName(edge.fromNodeId)} → {nodeName(edge.toNodeId)}
+                  {items.length} maskin{items.length === 1 ? "" : "er"}
                 </span>
               </button>
               <div className="flex flex-1 items-center gap-2 overflow-x-auto">

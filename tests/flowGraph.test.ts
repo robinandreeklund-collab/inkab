@@ -4,16 +4,19 @@ import { solveLayout } from "@/lib/solver";
 import {
   edgeItems,
   edgeItemsWithFallback,
+  edgeLabel,
   edgeOrder,
+  edgeRole,
   makeEdge,
   makeNode,
   orderedEdges,
   removeNode,
+  splitEdge,
 } from "@/lib/flowGraph";
 import { BUILTIN_MACHINES, makeLibrary } from "@/lib/library";
 import { configurationSchema } from "@/lib/schema";
 import { defaultConfig } from "@/lib/templates";
-import type { Configuration, FlowGraph, LineItem } from "@/lib/types";
+import type { Configuration, FlowGraph, LineItem, Vec2 } from "@/lib/types";
 
 /**
  * Flödet som kunden ritar.
@@ -77,11 +80,13 @@ function tvågrenatFlöde(): { config: Configuration; graph: FlowGraph } {
 describe("ordningen sträckorna löses i", () => {
   it("matar en korsning innan den byggs vidare från", () => {
     const { graph } = tvågrenatFlöde();
-    const order = orderedEdges(graph).map((e) => e.name);
+    const order = orderedEdges(graph).map((e) => e.id);
+    const id = (n: number) => graph.edges[n].id;
 
-    // Gren A och B matar korsningen; den gemensamma banan kan inte komma först.
-    expect(order.indexOf("Gren C")).toBeGreaterThan(order.indexOf("Gren A"));
-    expect(order.indexOf("Gren D")).toBeGreaterThan(order.indexOf("Gren C"));
+    // De två inmatningarna matar korsningen; den gemensamma banan kan inte
+    // placeras före dem, och utmatningarna inte före den gemensamma.
+    expect(order.indexOf(id(2))).toBeGreaterThan(order.indexOf(id(0)));
+    expect(order.indexOf(id(3))).toBeGreaterThan(order.indexOf(id(2)));
     expect(order).toHaveLength(5);
   });
 
@@ -164,7 +169,7 @@ describe("reglerna för skelettet", () => {
       .find((f) => f?.kind === "fitEdge");
 
     expect(fix).toBeTruthy();
-    expect(fix?.label).toMatch(/^Sträck Gren /);
+    expect(fix?.label).toMatch(/^Sträck Inmatning /);
   });
 
   it("sträcker banan när grenen är satt att nå fram", () => {
@@ -194,7 +199,7 @@ describe("reglerna för skelettet", () => {
     graph.edges.push(tom);
 
     const diagnostics = computeLayout(config, library).diagnostics;
-    expect(diagnostics.some((d) => d.code === "R-704" && d.title.includes(tom.name))).toBe(true);
+    expect(diagnostics.some((d) => d.code === "R-704")).toBe(true);
   });
 
   it("säger till när flödet går i en ring", () => {
@@ -269,5 +274,115 @@ describe("linjen som fanns innan flödet ritades", () => {
     expect(solved.edgeRuns[0].count).toBe(
       solved.placements.filter((p) => !p.aux).length,
     );
+  });
+});
+
+describe("en pil är en gren", () => {
+  /** Samma sak som store-lagret gör när en pil dras, utan React. */
+  function drawArrow(
+    config: Configuration,
+    from: { at: Vec2 } | { instanceId: string; at: Vec2 },
+    to: { at: Vec2 } | { instanceId: string; at: Vec2 },
+  ) {
+    let graph: FlowGraph = JSON.parse(JSON.stringify(config.flowGraph ?? { nodes: [], edges: [] }));
+    let line: LineItem[] = JSON.parse(JSON.stringify(config.line));
+
+    const anchor = (side: typeof from, where: "before" | "after") => {
+      if (!("instanceId" in side)) {
+        const node = makeNode(graph, "junction", side.at);
+        graph.nodes.push(node);
+        return node.id;
+      }
+      const split = splitEdge(graph, line, side.instanceId, side.at, where);
+      if (!split) return null;
+      graph = split.graph;
+      line = split.line;
+      return split.nodeId;
+    };
+
+    const fromId = anchor(from, "after");
+    const toId = anchor(to, "before");
+    if (!fromId || !toId) throw new Error("kunde inte fästa pilen");
+    const edge = makeEdge(graph, fromId, toId);
+    graph.edges.push(edge);
+    return { config: { ...config, flowGraph: graph, line }, edgeId: edge.id };
+  }
+
+  /** En linje med ett skelett: en inmatning, en utmatning, allt på spinen. */
+  function enkelLinje(): Configuration {
+    const graph: FlowGraph = { nodes: [], edges: [] };
+    const start = makeNode(graph, "infeed", { x: 2000, y: 11000 }, "x+");
+    const slut = makeNode(graph, "outfeed", { x: 40000, y: 11000 });
+    graph.nodes.push(start, slut);
+    const spine = makeEdge(graph, start.id, slut.id);
+    graph.edges.push(spine);
+
+    const base = defaultConfig();
+    return {
+      ...base,
+      flowGraph: graph,
+      line: base.line.map((i) => ({ ...i, edgeId: spine.id })),
+    };
+  }
+
+  it("drar man från golvet till en maskin blir det en inmatning dit", () => {
+    const före = enkelLinje();
+    const mitten = före.line[2];
+
+    const { config, edgeId } = drawArrow(
+      före,
+      { at: { x: 6000, y: 22000 } },
+      { instanceId: mitten.instanceId, at: { x: 16000, y: 11000 } },
+    );
+
+    const graph = config.flowGraph!;
+    const ny = graph.edges.find((e) => e.id === edgeId)!;
+
+    // Den nya grenen är en inmatning: inget mynnar i dess startnod.
+    expect(edgeRole(graph, ny)).toBe("infeed");
+    expect(edgeLabel(graph, ny)).toMatch(/^Inmatning/);
+
+    // Linjen klipptes vid maskinen, och maskinerna efter den flyttade med.
+    expect(graph.edges).toHaveLength(3);
+    const efter = config.line.slice(2).map((i) => i.edgeId);
+    expect(new Set(efter).size).toBe(1);
+    expect(efter[0]).not.toBe(config.line[0].edgeId);
+
+    // Och allt går fortfarande att placera.
+    const solved = solveLayout(config, library);
+    expect(solved.unplaced).toEqual([]);
+  });
+
+  it("drar man från en maskin ut på golvet blir det en väg ut därifrån", () => {
+    const före = enkelLinje();
+    const mitten = före.line[2];
+
+    const { config, edgeId } = drawArrow(
+      före,
+      { instanceId: mitten.instanceId, at: { x: 16000, y: 11000 } },
+      { at: { x: 16000, y: 21000 } },
+    );
+
+    const graph = config.flowGraph!;
+    const ny = graph.edges.find((e) => e.id === edgeId)!;
+    expect(edgeRole(graph, ny)).toBe("outfeed");
+    expect(edgeLabel(graph, ny)).toMatch(/^Utmatning/);
+    expect(solveLayout(config, library).unplaced).toEqual([]);
+  });
+
+  it("namnen kommer ur formen, inte ur en räknare", () => {
+    let config = enkelLinje();
+    const mål = config.line[1];
+
+    config = drawArrow(config, { at: { x: 4000, y: 20000 } }, { instanceId: mål.instanceId, at: { x: 9000, y: 11000 } }).config;
+    config = drawArrow(config, { at: { x: 4000, y: 2000 } }, { instanceId: mål.instanceId, at: { x: 9000, y: 11000 } }).config;
+
+    const graph = config.flowGraph!;
+    const inmatningar = graph.edges
+      .filter((e) => edgeRole(graph, e) === "infeed")
+      .map((e) => edgeLabel(graph, e));
+
+    // Tre vägar in: den ursprungliga och de två ritade.
+    expect(inmatningar).toEqual(["Inmatning 1", "Inmatning 2", "Inmatning 3"]);
   });
 });

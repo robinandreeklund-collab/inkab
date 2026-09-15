@@ -7,9 +7,9 @@ import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import { usedOutPorts } from "@/lib/branches";
-import { edgeItemsWithFallback } from "@/lib/flowGraph";
+import { edgeItemsWithFallback, edgeLabel } from "@/lib/flowGraph";
 import type { PriceResult, Role } from "@/lib/server/pricing";
-import type { EdgeRun, FlowEdge, FlowGraph, FlowNode } from "@/lib/types";
+import type { EdgeRun, FlowEdge, FlowGraph } from "@/lib/types";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
   const {
@@ -30,9 +30,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     selectedEdgeId,
     selectEdge,
     updateFlowEdge,
-    updateFlowNode,
     removeFlowEdge,
-    removeFlowNode,
   } = useConfigStore();
 
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
@@ -76,8 +74,6 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             removeFlowEdge(edge.id);
             selectEdge(null);
           }}
-          onNodeChange={updateFlowNode}
-          onNodeRemove={removeFlowNode}
         />
       ) : null}
 
@@ -416,11 +412,12 @@ function dirLabel(dir: string): string {
 
 
 /**
- * Grenen och dess båda noder.
+ * Grenen du markerat.
  *
- * Det som går att ändra här är avsikten: vad sträckan heter, var den börjar
- * och slutar, åt vilket håll paketen går in i den. Måtten står kvar hos
- * maskinerna — panelen visar glappet mellan de två, aldrig något annat.
+ * Det enda som går att ändra är det som är ditt beslut: vad grenen heter om
+ * du vill kalla den något annat än vad formen säger, och om banan ska sträckas
+ * fram till där du ritade slutet. Resten är avläsning — maskinerna bestämmer
+ * måtten, och panelen visar bara var de två inte går ihop.
  */
 function EdgePanel({
   edge,
@@ -430,8 +427,6 @@ function EdgePanel({
   onRename,
   onFit,
   onRemove,
-  onNodeChange,
-  onNodeRemove,
 }: {
   edge: FlowEdge;
   graph: FlowGraph;
@@ -440,11 +435,7 @@ function EdgePanel({
   onRename: (name: string) => void;
   onFit: (fit: boolean) => void;
   onRemove: () => void;
-  onNodeChange: (id: string, patch: Partial<Omit<FlowNode, "id">>) => void;
-  onNodeRemove: (id: string) => void;
 }) {
-  const from = graph.nodes.find((n) => n.id === edge.fromNodeId) ?? null;
-  const to = graph.nodes.find((n) => n.id === edge.toNodeId) ?? null;
   const gap = run?.gapMm ?? null;
 
   return (
@@ -452,27 +443,29 @@ function EdgePanel({
       <div className="kicker">Gren i flödet</div>
       <input
         value={edge.name}
+        placeholder={edgeLabel(graph, edge)}
         onChange={(e) => onRename(e.target.value.slice(0, 40))}
         className="mt-1 w-full border border-divider px-2 py-1 text-sm"
       />
+      <p className="mt-1 text-[11px] text-muted">
+        Namnet är valfritt — utan eget namn heter grenen {edgeLabel(graph, edge)}.
+      </p>
 
       <p className="mt-2 text-[11px] leading-relaxed text-muted">
         {machineCount === 0
-          ? "Ingen maskin står på grenen. Välj ur katalogen till vänster — den hamnar här så länge grenen är markerad."
-          : `${machineCount} maskin${machineCount === 1 ? "" : "er"} står på grenen. Nästa ur katalogen hamnar sist på den.`}
+          ? "Ingen maskin står här. Välj ur katalogen till vänster — den hamnar på grenen så länge den är markerad."
+          : `${machineCount} maskin${machineCount === 1 ? "" : "er"} står här. Nästa ur katalogen hamnar sist på grenen.`}
       </p>
 
-      {to && gap !== null ? (
+      {gap !== null && machineCount > 0 ? (
         <div className="mt-3 border border-divider p-2">
-          <div className="kicker mb-1">Når fram till {to.name}</div>
+          <div className="kicker mb-1">Når fram dit du ritade</div>
           {gap <= 500 ? (
-            <p className="text-[11px] text-accent">
-              Ja — {meters(gap)} m från punkten, inom toleransen.
-            </p>
+            <p className="text-[11px] text-accent">Ja — {meters(gap)} m ifrån, inom toleransen.</p>
           ) : (
             <>
               <p className="text-[11px] text-warn">
-                Nej — maskinerna slutar {meters(gap)} m från punkten.
+                Nej — maskinerna slutar {meters(gap)} m ifrån.
               </p>
               {run?.fittable ? (
                 <label className="mt-1 flex items-center gap-2 text-[11px]">
@@ -482,73 +475,18 @@ function EdgePanel({
                     onChange={(e) => onFit(e.target.checked)}
                     className="accent-accent"
                   />
-                  Sträck banan på grenen så att den når fram
+                  Sträck banan så att den når fram
                 </label>
               ) : (
                 <p className="mt-1 text-[11px] text-muted">
-                  Ingen maskin på grenen går att kapa till längd. Flytta noden, eller lägg in en
-                  rullbana eller kedjetransportör.
+                  Ingen maskin här går att kapa till längd. Dra änden dit maskinerna slutar, eller
+                  lägg in en rullbana eller kedjetransportör.
                 </p>
               )}
             </>
           )}
         </div>
       ) : null}
-
-      {[from, to].map((node, index) =>
-        node ? (
-          <div key={node.id} className="mt-3 border-t border-divider pt-2">
-            <div className="kicker mb-1">{index === 0 ? "Börjar i" : "Slutar i"}</div>
-            <input
-              value={node.name}
-              onChange={(e) => onNodeChange(node.id, { name: e.target.value.slice(0, 40) })}
-              className="w-full border border-divider px-2 py-1 text-sm"
-            />
-            <div className="mt-1 flex gap-1">
-              {(
-                [
-                  ["infeed", "Inport"],
-                  ["junction", "Korsning"],
-                  ["outfeed", "Utport"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => onNodeChange(node.id, { kind: value })}
-                  className={`flex-1 border px-1 py-0.5 text-[11px] ${
-                    node.kind === value
-                      ? "border-accent text-accent"
-                      : "border-divider text-muted hover:text-ink"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            {node.kind === "infeed" ? (
-              <div className="mt-1 flex items-center gap-2">
-                <span className="kicker flex-none">Flödet går</span>
-                <select
-                  value={node.dir}
-                  onChange={(e) => onNodeChange(node.id, { dir: e.target.value as FlowNode["dir"] })}
-                  className="flex-1 border border-divider px-1 py-0.5 text-[11px]"
-                >
-                  <option value="x+">längs hallen, åt höger</option>
-                  <option value="x-">längs hallen, åt vänster</option>
-                  <option value="y+">tvärs hallen, nedåt</option>
-                  <option value="y-">tvärs hallen, uppåt</option>
-                </select>
-              </div>
-            ) : null}
-            <button
-              onClick={() => onNodeRemove(node.id)}
-              className="mt-1 text-[11px] text-muted hover:text-danger"
-            >
-              Ta bort noden och grenarna som hänger i den
-            </button>
-          </div>
-        ) : null,
-      )}
 
       <Button size="sm" variant="ghost" className="mt-3" onClick={onRemove}>
         Ta bort grenen

@@ -5,6 +5,7 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
+import { edgeLabel, orderedEdges } from "@/lib/flowGraph";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
 import { MachineThumb } from "./MachineThumb";
 import type { Machine, MachineCategory, Side } from "@/lib/types";
@@ -33,7 +34,21 @@ export function Sidebar() {
     library,
     layout,
     setFlowPoint,
+    selectedEdgeId,
   } = useConfigStore();
+
+  /** Grenen maskinen hamnar på, när flödet är ritat. */
+  const targetEdge = (() => {
+    const graph = config.flowGraph;
+    if (!graph || graph.edges.length === 0) return null;
+    const chosen =
+      graph.edges.find((e) => e.id === selectedEdgeId) ??
+      graph.edges.find(
+        (e) => e.id === config.line.find((i) => i.instanceId === selectedId)?.edgeId,
+      ) ??
+      orderedEdges(graph)[0];
+    return chosen ? edgeLabel(graph, chosen) : null;
+  })();
 
   const [search, setSearch] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -61,7 +76,12 @@ export function Sidebar() {
           placeholder="Sök maskin…"
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
-        <p className="mb-2 text-[11px] text-muted">Klicka för att lägga sist i linjen.</p>
+        {/* Var maskinen hamnar ska stå där man väljer den, inte upptäckas efteråt. */}
+        <p className="mb-2 text-[11px] text-muted">
+          {targetEdge
+            ? `Klicka för att lägga sist på ${targetEdge}.`
+            : "Klicka för att lägga sist i linjen."}
+        </p>
 
         <div className="space-y-3">
           {Object.entries(grouped).map(([category, machines]) => (

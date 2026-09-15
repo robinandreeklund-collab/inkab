@@ -110,6 +110,44 @@ export function distance(a: Vec2, b: Vec2): number {
   return Math.round(Math.hypot(a.x - b.x, a.y - b.y));
 }
 
+/* ── Vad en sträcka är, av grafens form ────────────────────────────────── */
+
+export type EdgeRole = "line" | "infeed" | "common" | "outfeed" | "spine";
+
+/**
+ * Sträckans roll, läst ur grafen.
+ *
+ * Ingen behöver döpa något. En sträcka som börjar där inget mynnar in är en
+ * inmatning; en som slutar där inget fortsätter är en utmatning; en mellan två
+ * möten är den gemensamma banan. Namnen följer alltså formen, och formen är
+ * det enda kunden faktiskt ritat.
+ */
+export function edgeRole(graph: FlowGraph, edge: FlowEdge): EdgeRole {
+  const fedBy = edgesTo(graph, edge.fromNodeId).length;
+  const continues = edge.toNodeId ? edgesFrom(graph, edge.toNodeId).length > 0 : false;
+
+  if (fedBy === 0) return continues ? "infeed" : "line";
+  // Går flera vägar ihop här är det den gemensamma banan, vad den än leder
+  // till. Det är den maskinerna efter mötet ska klara flödet från allihop.
+  if (fedBy > 1) return "common";
+  return continues ? "spine" : "outfeed";
+}
+
+/** Namnet som visas: kundens eget om hen döpt om, annars ur formen. */
+export function edgeLabel(graph: FlowGraph, edge: FlowEdge): string {
+  if (edge.name) return edge.name;
+
+  const role = edgeRole(graph, edge);
+  if (role === "line") return "Linjen";
+  if (role === "common") return "Gemensam bana";
+  if (role === "spine") return "Fortsättning";
+
+  const stem = role === "infeed" ? "Inmatning" : "Utmatning";
+  const same = graph.edges.filter((e) => !e.name && edgeRole(graph, e) === role);
+  const index = same.findIndex((e) => e.id === edge.id);
+  return same.length > 1 ? `${stem} ${index + 1}` : stem;
+}
+
 let counter = 0;
 const nextId = (prefix: string) => {
   counter += 1;
@@ -123,22 +161,65 @@ export function nextNodeName(graph: FlowGraph, kind: FlowNode["kind"]): string {
   for (let i = 1; ; i++) if (!taken.has(`${stem} ${i}`)) return `${stem} ${i}`;
 }
 
-export function nextEdgeName(graph: FlowGraph): string {
-  const taken = new Set(graph.edges.map((e) => e.name));
-  // A, B, C … och sedan Gren 27 och uppåt när bokstäverna tar slut.
-  for (let i = 0; i < 26; i++) {
-    const name = `Gren ${String.fromCharCode(65 + i)}`;
-    if (!taken.has(name)) return name;
-  }
-  for (let i = 27; ; i++) if (!taken.has(`Gren ${i}`)) return `Gren ${i}`;
-}
-
 export function makeNode(graph: FlowGraph, kind: FlowNode["kind"], at: Vec2, dir: FlowNode["dir"] = "x+"): FlowNode {
   return { id: nextId("nod"), kind, name: nextNodeName(graph, kind), at, dir };
 }
 
 export function makeEdge(graph: FlowGraph, fromNodeId: string, toNodeId: string | null): FlowEdge {
-  return { id: nextId("gren"), name: nextEdgeName(graph), fromNodeId, toNodeId };
+  // Namnlös med flit: edgeLabel läser formen. Fältet finns för den som vill
+  // döpa en gren till "Avströning" i stället för "Inmatning 2".
+  return { id: nextId("gren"), name: "", fromNodeId, toNodeId };
+}
+
+/**
+ * Delar en sträcka vid en maskin, så att något kan mynna in där.
+ *
+ * En andra inmatning som möter linjen mitt i den behöver en punkt att möta
+ * den i. Punkten finns inte förrän någon ritar dit en pil, och då skapas den:
+ * sträckan klipps vid maskinen, och maskinerna efter den flyttas till
+ * fortsättningen. Ingen maskin byter plats i hallen av det — bara vilken
+ * sträcka de står på.
+ */
+export function splitEdge(
+  graph: FlowGraph,
+  line: LineItem[],
+  instanceId: string,
+  at: Vec2,
+  where: "before" | "after",
+): { graph: FlowGraph; line: LineItem[]; nodeId: string } | null {
+  const item = line.find((i) => i.instanceId === instanceId);
+  const edge = item?.edgeId
+    ? graph.edges.find((e) => e.id === item.edgeId)
+    : orderedEdges(graph)[0];
+  if (!edge) return null;
+
+  const onEdge = line.filter((i) => (i.edgeId ?? orderedEdges(graph)[0]?.id) === edge.id);
+  const index = onEdge.findIndex((i) => i.instanceId === instanceId);
+  if (index < 0) return null;
+
+  // Ligger maskinen redan i änden finns punkten: sträckans egen nod.
+  if (where === "before" && index === 0) return { graph, line, nodeId: edge.fromNodeId };
+  if (where === "after" && index === onEdge.length - 1 && edge.toNodeId) {
+    return { graph, line, nodeId: edge.toNodeId };
+  }
+
+  const junction = makeNode(graph, "junction", at);
+  const rest = makeEdge(graph, junction.id, edge.toNodeId);
+  const moved = new Set(
+    onEdge.slice(where === "before" ? index : index + 1).map((i) => i.instanceId),
+  );
+
+  return {
+    graph: {
+      nodes: [...graph.nodes, junction],
+      edges: [
+        ...graph.edges.map((e) => (e.id === edge.id ? { ...e, toNodeId: junction.id } : e)),
+        rest,
+      ],
+    },
+    line: line.map((i) => (moved.has(i.instanceId) ? { ...i, edgeId: rest.id } : i)),
+    nodeId: junction.id,
+  };
 }
 
 export const EMPTY_GRAPH: FlowGraph = { nodes: [], edges: [] };

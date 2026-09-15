@@ -5,7 +5,14 @@ import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
-import { EMPTY_GRAPH, makeEdge, makeNode, orderedEdges, removeNode } from "@/lib/flowGraph";
+import {
+  EMPTY_GRAPH,
+  makeEdge,
+  makeNode,
+  orderedEdges,
+  removeNode,
+  splitEdge,
+} from "@/lib/flowGraph";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
@@ -14,6 +21,7 @@ import type {
   DrawnObject,
   Flow,
   FlowEdge,
+  FlowGraph,
   FlowNode,
   LayoutResult,
   Machine,
@@ -42,6 +50,11 @@ type Screen = "onboarding" | "configurator" | "quote";
  * Vad som hände när sidan öppnades med en delningslänk. Null betyder att
  * ingen länk var med — inte att allt gick bra.
  */
+/** Var en ritad pil fäster: på golvet, eller vid en maskin. */
+export type FlowAnchor =
+  | { kind: "point"; at: Vec2 }
+  | { kind: "machine"; instanceId: string; at: Vec2 };
+
 export type ShareNotice =
   | { kind: "loaded"; reference: string; hadLocalDraft: boolean }
   | { kind: "unreadable" }
@@ -89,8 +102,6 @@ type State = {
    * grenen, som är den maskinerna annars hade legat i.
    */
   selectedEdgeId: string | null;
-  /** Noden ritverktyget drar en sträcka från, medan den dras. */
-  flowFrom: string | null;
 };
 
 type Actions = {
@@ -126,6 +137,12 @@ type Actions = {
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
   /* ── Flödesskelettet ──────────────────────────────────────────────── */
+  /**
+   * Ritar en pil i flödet. Pilens riktning är paketens riktning, och vad den
+   * betyder avgörs av vad den rör: golv → maskin är en inmatning dit, maskin
+   * → golv en väg ut därifrån.
+   */
+  drawFlowArrow: (from: FlowAnchor, to: FlowAnchor) => string | null;
   /** Lägger en nod och returnerar dess id. */
   addFlowNode: (kind: FlowNode["kind"], at: Vec2, dir?: Dir) => string;
   /** Drar en sträcka mellan två noder. */
@@ -136,7 +153,6 @@ type Actions = {
   removeFlowNode: (id: string) => void;
   removeFlowEdge: (id: string) => void;
   selectEdge: (id: string | null) => void;
-  setFlowFrom: (id: string | null) => void;
   /** Rensar hela skelettet och lämnar maskinerna i en vanlig linje. */
   clearFlowGraph: () => void;
 
@@ -260,7 +276,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     proposalId: null,
     branchTarget: null,
     selectedEdgeId: null,
-    flowFrom: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -448,6 +463,62 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     /* ── Flödesskelettet ────────────────────────────────────────────── */
 
+    drawFlowArrow: (from, to) => {
+      const before = get().config;
+      let graph: FlowGraph = before.flowGraph
+        ? clone(before.flowGraph)
+        : { nodes: [], edges: [] };
+      let line = clone(before.line);
+
+      /*
+       * Finns inget skelett sedan tidigare får linjen som redan står i hallen
+       * bli den första sträckan. Annars hade den blivit hemlös i samma stund
+       * som den första pilen ritades.
+       */
+      if (graph.edges.length === 0) {
+        const bounds = get().layout.bounds;
+        const start = makeNode(graph, "infeed", before.flow.startPoint, "x+");
+        const end = makeNode(graph, "outfeed", {
+          // Där linjen faktiskt slutar idag, så att skelettet ligger på den.
+          x: Math.round(bounds.x + bounds.l),
+          y: before.flow.startPoint.y,
+        });
+        graph.nodes.push(start, end);
+        const spine = makeEdge(graph, start.id, end.id);
+        graph.edges.push(spine);
+        line = line.map((i) => (i.edgeId ? i : { ...i, edgeId: spine.id }));
+      }
+
+      /** Punkten en ände fäster i: en ny nod på golvet, eller ett möte vid en maskin. */
+      const anchor = (side: FlowAnchor, where: "before" | "after"): string | null => {
+        if (side.kind === "point") {
+          const node = makeNode(graph, "junction", side.at, "x+");
+          graph.nodes.push(node);
+          return node.id;
+        }
+        const split = splitEdge(graph, line, side.instanceId, side.at, where);
+        if (!split) return null;
+        graph = split.graph;
+        line = split.line;
+        return split.nodeId;
+      };
+
+      // Källan först: en delning sker efter maskinen man drar ifrån.
+      const fromId = anchor(from, "after");
+      const toId = anchor(to, "before");
+      if (!fromId || !toId || fromId === toId) return null;
+
+      const edge = makeEdge(graph, fromId, toId);
+      graph.edges.push(edge);
+
+      get().update((d) => {
+        d.flowGraph = graph;
+        d.line = line;
+      });
+      set({ selectedEdgeId: edge.id, selectedId: null });
+      return edge.id;
+    },
+
     addFlowNode: (kind, at, dir = "x+") => {
       const graph = get().config.flowGraph ?? EMPTY_GRAPH;
       const node = makeNode(graph, kind, at, dir);
@@ -525,14 +596,13 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     },
 
     selectEdge: (id) => set({ selectedEdgeId: id, selectedId: null }),
-    setFlowFrom: (id) => set({ flowFrom: id }),
 
     clearFlowGraph: () => {
       get().update((d) => {
         delete d.flowGraph;
         for (const item of d.line) delete item.edgeId;
       });
-      set({ selectedEdgeId: null, flowFrom: null });
+      set({ selectedEdgeId: null });
     },
 
     addDrawn: (obj) => {

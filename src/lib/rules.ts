@@ -1,9 +1,9 @@
 import { connectedPairs } from "./branches";
-import { edgeOrder } from "./flowGraph";
+import { edgeLabel, edgeOrder } from "./flowGraph";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
-import type { Box, Configuration, Diagnostic, Placement } from "./types";
+import type { Box, Configuration, Diagnostic, FlowEdge, Placement } from "./types";
 
 const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
 
@@ -559,6 +559,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
   const runs = new Map(layout.edgeRuns.map((r) => [r.edgeId, r]));
   const byInstance = new Map(line.map((p) => [p.instanceId, p]));
   const nodeName = (id: string | null) => graph.nodes.find((n) => n.id === id);
+  const label = (edge: FlowEdge) => edgeLabel(graph, edge);
 
   /* ── R-701 Grenen når inte fram till noden ──────────────────────────── */
   for (const edge of graph.edges) {
@@ -570,7 +571,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
     out.push({
       code: "R-701",
       severity: "warning",
-      title: `${edge.name} når inte fram till ${target.name}`,
+      title: `${label(edge)} når inte fram till ${target.name}`,
       detail:
         `Sträckans sista utgång ligger ${m(run.gapMm)} m från den ritade punkten. ` +
         (run.fittable
@@ -581,7 +582,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
       anchor: target.at,
       fix:
         run.fittable && !edge.fit
-          ? { kind: "fitEdge", edgeId: edge.id, label: `Sträck ${edge.name} till ${target.name}` }
+          ? { kind: "fitEdge", edgeId: edge.id, label: `Sträck ${label(edge)} till ${target.name}` }
           : undefined,
     });
   }
@@ -627,7 +628,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
       severity: "error",
       title: `Grenarna möts på olika höjd vid ${node.name}`,
       detail:
-        `${levels.map((l) => `${l.edge.name} lämnar paketet på ${l.level} mm`).join(", ")}. ` +
+        `${levels.map((l) => `${label(l.edge)} lämnar paketet på ${l.level} mm`).join(", ")}. ` +
         "Paket byter inte höjd i luften — lägg in en höj- och sänkbar transportör på den " +
         "gren som ligger fel.",
       instanceIds: [],
@@ -641,7 +642,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
     out.push({
       code: "R-704",
       severity: "info",
-      title: `${edge.name} är tom`,
+      title: `${label(edge)} är tom`,
       detail: "Sträckan är ritad men ingen maskin står på den. Markera den och välj ur katalogen.",
       instanceIds: [],
       anchor: nodeName(edge.fromNodeId)?.at,
@@ -656,7 +657,7 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
       severity: "error",
       title: "Flödet går i en ring",
       detail:
-        `${cyclic.map((e) => e.name).join(", ")} matar varandra i en cirkel, så ingen av dem har ` +
+        `${cyclic.map(label).join(", ")} matar varandra i en cirkel, så ingen av dem har ` +
         "en början att byggas från. Bryt ringen genom att låta en av dem utgå från en inmatning.",
       instanceIds: config.line
         .filter((i) => cyclic.some((e) => e.id === i.edgeId))

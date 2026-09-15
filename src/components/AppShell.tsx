@@ -39,7 +39,6 @@ export function AppShell() {
     removeItem,
     removeDrawn,
     proposalId,
-    setFlowFrom,
   } = useConfigStore();
 
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -154,10 +153,6 @@ export function AppShell() {
         case "i":
           toggleInspector();
           break;
-        case "escape":
-          // Avslutar den påbörjade flödeskedjan utan att lämna verktyget.
-          setFlowFrom(null);
-          break;
         case "delete":
         case "backspace":
           if (!selectedId) break;
@@ -172,8 +167,7 @@ export function AppShell() {
       removeDrawn,
       removeItem,
       selectedId,
-      setFlowFrom,
-      setTool,
+        setTool,
       setView,
       toggleInspector,
       togglePorts,

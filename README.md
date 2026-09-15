@@ -354,19 +354,23 @@ Det är den arbetsgången jag rekommenderar för maskindata: granskningsbar i en
 pull request, med full historik.
 
 **Demo-paket.** *Exportera demo-paket* gör samma sak för allt på en gång, och
-tar med de uppladdade 3D-modellerna. Har du osparade ändringar sparas de först
-— paketet byggs ur det servern har, och en nyss tillagd bild som ingen hunnit
-spara skulle annars tyst utebli. Arkivet innehåller `data/library.json` —
-med maskiner, prisbok och produktbilder — plus varje uppladdad modell som
-`public/models/<maskin>.glb`, och maskinernas GLB-fält är omskrivna från
-`/api/models/…` till `/models/…` så att biblioteket pekar på filerna bredvid
-sig i stället för på serverns minne. Packa upp i reporoten, `git add data
-public/models`, committa och pusha:
+tar med de uppladdade 3D-modellerna och produktbilderna. Arbetskopian sparas
+alltid först: paketet byggs ur det servern har, och utan databas glömmer den
+allt när den startar om eller somnar in — fliken kan alltså se bilder som
+servern inte längre minns. Arkivet innehåller `data/library.json` —
+med maskiner och prisbok — plus varje uppladdad modell som
+`public/models/<maskin>.glb` och varje produktbild som
+`public/bilder/<maskin>-1.webp`. Maskinernas sökvägar skrivs om på vägen, från
+`/api/models/…` till `/models/…` och från bild-id till `/bilder/…`, så att
+biblioteket pekar på filerna bredvid sig i stället för på serverns minne.
+Bilderna ligger alltså som riktiga filer att titta på och granska i en pull
+request, inte som base64 mitt i en JSON-rad. Packa upp i reporoten, committa
+och pusha:
 
 ```
 unzip inkab-demo-2026-09-15.zip
-git add data public/models
-git commit -m "Uppdaterat maskinbibliotek och modeller"
+git add data public/models public/bilder
+git commit -m "Uppdaterat maskinbibliotek, modeller och bilder"
 git push
 ```
 

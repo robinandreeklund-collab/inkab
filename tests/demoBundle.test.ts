@@ -2,6 +2,7 @@ import { inflateRawSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { createZip, crc32 } from "@/lib/zip";
 import {
+  bundleEntries,
   bundleFileName,
   demoBundleReadme,
   planDemoBundle,
@@ -196,17 +197,14 @@ describe("produktbilderna", () => {
 
     const plan = planDemoBundle(doc, new Set(["abc"]));
 
-    expect(plan.assets.count).toBe(1);
-    expect(plan.document.assets[0]).toEqual(doc.assets[0]);
-    expect(plan.document.machines[0].images).toEqual(["tsl-enkel-1"]);
-    expect(demoBundleReadme(plan, new Map(), new Date())).toContain(
-      "Produktbilden (1 kB) ligger inbakad",
-    );
-
-    doc.assets = [doc.assets[0], { ...doc.assets[0], id: "tsl-enkel-2" }];
-    expect(demoBundleReadme(planDemoBundle(doc, new Set(["abc"])), new Map(), new Date())).toContain(
-      "Produktbilderna — 2 stycken",
-    );
+    // Bilden ska ut som en fil, och maskinen ska peka på filen.
+    expect(plan.images).toHaveLength(1);
+    expect(plan.images[0].path).toBe("public/bilder/tsl-enkel-1.webp");
+    expect(plan.images[0].base64).toBe(doc.assets[0].data);
+    expect(plan.document.machines[0].images).toEqual(["/bilder/tsl-enkel-1.webp"]);
+    // Och då ska den inte ligga kvar som base64 i biblioteksfilen också.
+    expect(plan.document.assets).toEqual([]);
+    expect(demoBundleReadme(plan, new Map(), new Date())).toContain("public/bilder/");
   });
 });
 
@@ -259,34 +257,26 @@ describe("paketet från början till slut", () => {
 
     const plan = planDemoBundle(doc, new Set(loaded.keys()));
     const now = new Date("2026-09-15T08:00:00Z");
-    const zip = await createZip(
-      [
-        {
-          path: "LASMIG.md",
-          data: demoBundleReadme(
-            plan,
-            new Map([...loaded].map(([id, data]) => [id, data.length])),
-            now,
-          ),
-        },
-        { path: "data/library.json", data: JSON.stringify(plan.document, null, 2) },
-        ...plan.files.map((file) => ({ path: file.path, data: loaded.get(file.modelId)! })),
-      ],
-      now,
-    );
+    // Samma funktion som rutten bygger arkivet med.
+    const zip = await createZip(bundleEntries(plan, loaded, now), now);
 
     const files = readZip(zip);
     expect([...files.keys()]).toEqual([
       "LASMIG.md",
       "data/library.json",
       "public/models/tsl-enkel.glb",
+      "public/bilder/tsl-enkel-1.webp",
     ]);
 
     const library = JSON.parse(files.get("data/library.json")!.toString("utf-8"));
     expect(library.machines[0].model.glb).toBe("/models/tsl-enkel.glb");
-    // Bilden ska gå igenom arkivet med exakt samma byte som laddades upp.
-    expect(library.assets[0].data).toBe(doc.assets[0].data);
-    expect(library.machines[0].images).toEqual(["tsl-enkel-1"]);
+    // Bilden ska ligga i arkivet som en fil, med exakt samma byte som laddades
+    // upp, och maskinen ska peka på den.
+    expect(library.machines[0].images).toEqual(["/bilder/tsl-enkel-1.webp"]);
+    expect(files.get("public/bilder/tsl-enkel-1.webp")).toEqual(
+      Buffer.from(doc.assets[0].data, "base64"),
+    );
+    expect(library.assets).toEqual([]);
     // Sökvägen i biblioteket ska peka på en fil som faktiskt ligger i arkivet.
     expect(files.has(`public${library.machines[0].model.glb}`)).toBe(true);
     expect(files.get("public/models/tsl-enkel.glb")!.subarray(0, 4).toString("ascii")).toBe("glTF");

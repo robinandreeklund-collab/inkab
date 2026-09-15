@@ -1,3 +1,4 @@
+import { extensionOfMime } from "./imageAsset";
 import type { LibraryDocument } from "./machineSchema";
 import type { Machine } from "./types";
 
@@ -18,6 +19,9 @@ const STORED_MODEL = /^\/api\/models\/([^/?#]+)$/;
 
 export type BundleFile = { path: string; modelId: string };
 
+/** En produktbild på väg ur dokumentet och ut som en fil. */
+export type BundleImage = { path: string; base64: string; bytes: number };
+
 export type BundleMiss = {
   modelId: string;
   machineId: string;
@@ -34,8 +38,10 @@ export type BundlePlan = {
   missing: BundleMiss[];
   /** Hänvisningar som redan pekar på repofiler eller externa adresser. */
   alreadyInRepo: number;
-  /** Produktbilderna, som alltid följer med inbakade i biblioteksfilen. */
-  assets: { count: number; bytes: number };
+  /** Produktbilderna, utpackade som filer under public/bilder. */
+  images: BundleImage[];
+  /** Bilder som ligger kvar inbakade i dokumentet (ingen maskin pekar på dem). */
+  keptAssets: number;
 };
 
 function slug(value: string): string {
@@ -155,16 +161,59 @@ export function planDemoBundle(document: LibraryDocument, available: Set<string>
     }
   }
 
-  // Bilderna behöver ingen omskrivning: de ligger som base64 i dokumentet och
-  // följer med biblioteksfilen av sig själva. Räknas ändå, så att paketet kan
-  // säga att de är med i stället för att lämna frågan öppen.
-  const assets = {
-    count: doc.assets?.length ?? 0,
-    // Base64 är fyra tecken per tre byte.
-    bytes: Math.round((doc.assets ?? []).reduce((sum, a) => sum + a.data.length, 0) * 0.75),
-  };
+  const { images, keptAssets } = unpackImages(doc);
 
-  return { document: doc, files, missing, alreadyInRepo, assets };
+  return { document: doc, files, missing, alreadyInRepo, images, keptAssets };
+}
+
+/**
+ * Gör dokumentets inbakade bilder till filer.
+ *
+ * Bilderna har legat som base64 mitt i biblioteksfilen. De följde med i
+ * paketet — men osynligt, i en JSON-rad på en halv miljon tecken, och den som
+ * öppnade arkivet för att se sin produktbild hittade ingen. Nu packas de ut
+ * som `public/bilder/<maskin>-1.webp` och maskinen pekar på filen, precis som
+ * den pekar på sin modell. Biblioteksfilen blir liten nog att läsa igen, och
+ * ändringar syns i en pull request.
+ */
+function unpackImages(doc: LibraryDocument): { images: BundleImage[]; keptAssets: number } {
+  const images: BundleImage[] = [];
+  const used = new Set<string>();
+  const taken = new Set<string>();
+
+  for (const machine of doc.machines as Machine[]) {
+    if (!machine.images?.length) continue;
+
+    machine.images = machine.images.map((entry, index) => {
+      // Redan en repofil, eller en bild som inte finns i dokumentet.
+      if (entry.startsWith("/")) return entry;
+      const asset = doc.assets?.find((a) => a.id === entry);
+      if (!asset?.data) return entry;
+
+      let path = `public/bilder/${slug(machine.id)}-${index + 1}.${extensionOfMime(asset.mime)}`;
+      let n = 2;
+      while (taken.has(path)) {
+        path = `public/bilder/${slug(machine.id)}-${index + 1}-${n++}.${extensionOfMime(asset.mime)}`;
+      }
+      taken.add(path);
+
+      images.push({ path, base64: asset.data, bytes: byteSizeOf(asset.data) });
+      used.add(asset.id);
+      return path.replace(/^public/, "");
+    });
+  }
+
+  // Bilder ingen maskin pekar på får ligga kvar i dokumentet. De är ingens
+  // att döpa till en fil, och att kasta dem vore att slänga någons arbete.
+  doc.assets = (doc.assets ?? []).filter((a) => !used.has(a.id));
+
+  return { images, keptAssets: doc.assets.length };
+}
+
+/** Base64 är fyra tecken per tre byte, minus utfyllnaden. */
+function byteSizeOf(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
 }
 
 const KB = 1024;
@@ -190,8 +239,8 @@ export function demoBundleReadme(
     "",
     "## Så här lägger du in det",
     "",
-    "1. Packa upp arkivet i reporoten. `data/` och `public/models/` hamnar rätt av sig själva.",
-    "2. `git add data public/models`",
+    "1. Packa upp arkivet i reporoten. `data/`, `public/models/` och `public/bilder/` hamnar rätt av sig själva.",
+    "2. `git add data public/models public/bilder`",
     '3. `git commit -m "Uppdaterat maskinbibliotek och modeller"`',
     "4. `git push` — Render bygger om och läser `data/library.json` vid varje start.",
     "",
@@ -201,12 +250,15 @@ export function demoBundleReadme(
     "",
     "| Fil | Vad |",
     "|---|---|",
-    "| `data/library.json` | Maskiner, prisbok, produktbilder och prisinställningar. Läses som utgångsläge vid varje start. |",
+    "| `data/library.json` | Maskiner, prisbok och prisinställningar. Läses som utgångsläge vid varje start. |",
   ];
 
   for (const file of plan.files) {
     const bytes = sizes.get(file.modelId) ?? 0;
     lines.push(`| \`${file.path}\` | 3D-modell, ${size(bytes)}. |`);
+  }
+  for (const image of plan.images) {
+    lines.push(`| \`${image.path}\` | Produktbild, ${size(image.bytes)}. |`);
   }
 
   lines.push(
@@ -215,14 +267,23 @@ export function demoBundleReadme(
     "biblioteket pekar på filerna ovan i stället för på serverns minne.",
   );
 
-  if (plan.assets.count > 0) {
+  if (plan.images.length > 0) {
+    const bytes = plan.images.reduce((sum, i) => sum + i.bytes, 0);
     lines.push(
       "",
-      plan.assets.count === 1
-        ? `Produktbilden (${size(plan.assets.bytes)}) ligger inbakad i`
-        : `Produktbilderna — ${plan.assets.count} stycken, ${size(plan.assets.bytes)} — ligger inbakade i`,
-      "`data/library.json` och behöver ingen egen fil. De följer med committen",
-      "och finns kvar efter omstart, precis som modellerna.",
+      plan.images.length === 1
+        ? `Produktbilden ligger som en egen fil (${size(bytes)}) under \`public/bilder/\`,`
+        : `Produktbilderna ligger som ${plan.images.length} egna filer (${size(bytes)}) under \`public/bilder/\`,`,
+      "och maskinerna pekar på dem med `/bilder/…` — samma sak som modellerna.",
+      "Committa `public/bilder/` tillsammans med resten.",
+    );
+  }
+
+  if (plan.keptAssets > 0) {
+    lines.push(
+      "",
+      `${plan.keptAssets} bild(er) ligger kvar inbakade i \`data/library.json\` eftersom ingen`,
+      "maskin pekar på dem. De följer med ändå.",
     );
   }
 
@@ -259,6 +320,31 @@ export function demoBundleReadme(
   );
 
   return lines.join("\n");
+}
+
+/**
+ * Arkivets innehåll: instruktionen, biblioteket, modellerna och bilderna.
+ *
+ * Rutten och testet bygger samma arkiv genom den här funktionen. Byggde de
+ * var sitt skulle de glida isär, och testet sluta bevisa det rutten gör.
+ */
+export function bundleEntries(
+  plan: BundlePlan,
+  models: Map<string, Uint8Array>,
+  now: Date,
+): { path: string; data: Uint8Array | string }[] {
+  const sizes = new Map([...models].map(([id, data]) => [id, data.length]));
+
+  return [
+    { path: "LASMIG.md", data: demoBundleReadme(plan, sizes, now) },
+    { path: "data/library.json", data: JSON.stringify(plan.document, null, 2) },
+    ...plan.files.map((file) => ({ path: file.path, data: models.get(file.modelId)! })),
+    // Bilderna har legat som base64 i dokumentet; här blir de filer igen.
+    ...plan.images.map((image) => ({
+      path: image.path,
+      data: Uint8Array.from(atob(image.base64), (c) => c.charCodeAt(0)),
+    })),
+  ];
 }
 
 /** Filnamnet nedladdningen får. */

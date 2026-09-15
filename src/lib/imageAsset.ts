@@ -59,3 +59,22 @@ export function chooseImage(dataUrls: string[]): EncodedImage | null {
 
   return best;
 }
+
+/** Filändelsen för en bildtyp. */
+export function extensionOfMime(mime: string): string {
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  return "webp";
+}
+
+/**
+ * Adressen för en bildhänvisning på en maskin.
+ *
+ * Två sorter, som för modellerna: en sökväg till en fil i repot, eller ett
+ * id på en bild som ligger inbakad i biblioteksdokumentet. Demo-paketet gör
+ * det senare till det förra, så att bilderna syns i arkivet och går att
+ * granska i en pull request i stället för att vara base64 i en JSON-rad.
+ */
+export function imageSrc(image: string): string {
+  return image.startsWith("/") ? image : `/api/library/asset/${encodeURIComponent(image)}`;
+}

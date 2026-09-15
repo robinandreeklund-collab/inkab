@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Button } from "../ui";
 import { Grid, Panel, TextField } from "./fields";
-import { byteSize, chooseImage } from "@/lib/imageAsset";
+import { byteSize, chooseImage, imageSrc } from "@/lib/imageAsset";
 import type { LibraryAsset } from "@/lib/machineSchema";
 import type { Machine } from "@/lib/types";
 
@@ -35,9 +35,23 @@ export function ImagePanel({
   const [note, setNote] = useState<string | null>(null);
 
   const images = machine.images ?? [];
-  const machineAssets = images
-    .map((id) => assets.find((a) => a.id === id))
-    .filter((a): a is LibraryAsset => !!a);
+
+  /*
+   * En bildhänvisning är antingen ett id på en bild i dokumentet eller en
+   * sökväg till en fil i repot — demo-paketet gör det ena till det andra.
+   * Panelen måste visa båda, annars ser en committad bild ut som ingen bild
+   * alls och någon laddar upp den en gång till.
+   */
+  const shown = images.map((entry) => {
+    const asset = assets.find((a) => a.id === entry);
+    return {
+      entry,
+      name: asset?.name ?? entry.split("/").pop() ?? entry,
+      src: asset ? `data:${asset.mime};base64,${asset.data}` : imageSrc(entry),
+      inRepo: !asset && entry.startsWith("/"),
+      missing: !asset && !entry.startsWith("/"),
+    };
+  });
 
   const addFiles = async (files: FileList) => {
     setBusy(true);
@@ -85,9 +99,10 @@ export function ImagePanel({
     setBusy(false);
   };
 
-  const remove = (assetId: string) => {
-    onChange({ ...machine, images: images.filter((id) => id !== assetId) });
-    onAssetsChange(assets.filter((a) => a.id !== assetId));
+  const remove = (entry: string) => {
+    onChange({ ...machine, images: images.filter((id) => id !== entry) });
+    // En bild som ligger som fil i repot har inget att städa i dokumentet.
+    onAssetsChange(assets.filter((a) => a.id !== entry));
   };
 
   return (
@@ -116,20 +131,24 @@ export function ImagePanel({
       {error ? <p className="mb-2 border border-danger px-2 py-1 text-xs text-danger">{error}</p> : null}
       {note ? <p className="mb-2 border border-accent px-2 py-1 text-xs text-accent">{note}</p> : null}
 
-      {machineAssets.length > 0 ? (
+      {shown.length > 0 ? (
         <div className="mb-3 grid grid-cols-4 gap-2">
-          {machineAssets.map((asset) => (
-            <div key={asset.id} className="border border-divider">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={`data:${asset.mime};base64,${asset.data}`}
-                alt={asset.name}
-                className="h-20 w-full object-cover"
-              />
+          {shown.map((image) => (
+            <div key={image.entry} className="border border-divider">
+              {image.missing ? (
+                <div className="flex h-20 items-center justify-center bg-paper px-1 text-center text-[10px] text-warn">
+                  Bilden finns inte kvar på servern
+                </div>
+              ) : (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={image.src} alt={image.name} className="h-20 w-full object-cover" />
+              )}
               <div className="flex items-center gap-1 border-t border-divider px-1 py-0.5">
-                <span className="kicker truncate">{asset.name}</span>
+                <span className="kicker truncate" title={image.entry}>
+                  {image.inRepo ? `${image.name} (i repot)` : image.name}
+                </span>
                 <button
-                  onClick={() => remove(asset.id)}
+                  onClick={() => remove(image.entry)}
                   className="ml-auto text-muted hover:text-danger"
                   aria-label="Ta bort bild"
                 >

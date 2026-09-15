@@ -81,6 +81,9 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   const issuesRef = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [bundling, setBundling] = useState(false);
+  /** Tidsstämpeln servern gav oss när vi sparade sist, för att märka omstarter. */
+  const savedAt = useRef<string | null>(null);
+  const [serverForgot, setServerForgot] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -126,9 +129,11 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
    * inte hämtas från servern förrän man sparat. Läs dem direkt ur dokumentet.
    */
   const localAssetSrc = useCallback(
-    (assetId: string) => {
-      const asset = doc?.assets?.find((a) => a.id === assetId);
-      return asset ? `data:${asset.mime};base64,${asset.data}` : null;
+    (entry: string) => {
+      const asset = doc?.assets?.find((a) => a.id === entry);
+      if (asset) return `data:${asset.mime};base64,${asset.data}`;
+      // Bilder som packats ut som filer i repot pekas ut med sökväg.
+      return entry.startsWith("/") ? entry : null;
     },
     [doc],
   );
@@ -182,6 +187,15 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
 
     setDirty(false);
     setStatus(data.status);
+
+    /*
+     * Hade servern glömt vår förra sparning? Utan databas nollställs den vid
+     * varje omstart och deploy, och då är det arbetskopian i den här fliken
+     * som är den enda som minns. Skrivningen ovan la tillbaka allt — men
+     * användaren ska få veta att det hände.
+     */
+    setServerForgot(!!savedAt.current && data.previousUpdatedAt !== savedAt.current);
+    savedAt.current = data.status?.updatedAt ?? null;
     setMessage(
       data.persisted
         ? "Sparat i databasen."
@@ -212,11 +226,14 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     setBundling(true);
     try {
       /*
-       * Paketet byggs ur det servern har, inte ur arbetskopian. En nyss
-       * tillagd bild som ingen hunnit spara skulle alltså tyst utebli — och
-       * tystnaden är hela problemet. Att spara åt användaren är svaret.
+       * Paketet byggs ur det servern har, inte ur arbetskopian — så vi lägger
+       * dit arbetskopian först. Alltid, inte bara vid osparade ändringar: utan
+       * databas tappar servern allt vid en omstart, och en instans på
+       * gratisplanen somnar in efter en kvarts stillhet. Fliken kan alltså se
+       * bilder som servern har glömt, och då hade paketet blivit utan dem utan
+       * att någon sa något.
        */
-      if (dirty && !(await save())) {
+      if (!(await save())) {
         setMessage("Ändringarna gick inte att spara, så paketet byggdes inte. Se felen ovan.");
         return;
       }
@@ -357,7 +374,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
         </div>
       </header>
 
-      <StatusBanner status={status} />
+      <StatusBanner status={status} serverForgot={serverForgot} />
 
       <div className="flex min-h-0 flex-1">
         <nav className="scroll-thin w-[260px] flex-none overflow-y-auto border-r border-divider bg-white">
@@ -581,7 +598,13 @@ function CadStatus({ machines }: { machines: Machine[] }) {
   );
 }
 
-function StatusBanner({ status }: { status: StoreStatus | null }) {
+function StatusBanner({
+  status,
+  serverForgot,
+}: {
+  status: StoreStatus | null;
+  serverForgot: boolean;
+}) {
   if (!status) return null;
 
   const tone = status.persistent ? "border-accent text-accent" : "border-warn text-warn";
@@ -602,6 +625,12 @@ function StatusBanner({ status }: { status: StoreStatus | null }) {
       ) : null}
       {status.degradedReason ? (
         <span className="text-danger">Databasfel: {status.degradedReason}</span>
+      ) : null}
+      {serverForgot ? (
+        <span className="text-danger">
+          Servern hade startat om och tappat det du sparat tidigare. Den här fliken hade kvar
+          allt, och nu är det sparat igen — exportera demo-paketet och committa det.
+        </span>
       ) : null}
     </div>
   );

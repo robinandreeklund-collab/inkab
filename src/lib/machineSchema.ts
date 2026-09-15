@@ -204,7 +204,8 @@ export const machineSchema = z
     options: z.array(optionSchema).max(20),
 
     parameters: z.array(parameterSchema).max(20).optional(),
-    images: z.array(z.string().max(80)).max(8).optional(),
+    // Ett bild-id, eller en sökväg till en fil i repot (/bilder/…).
+    images: z.array(z.string().max(200)).max(8).optional(),
     variants: z.array(variantSchema).max(12).optional(),
     model: modelSchema.optional(),
     productUrl: z.string().max(400).optional(),

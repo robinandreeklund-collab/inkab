@@ -1,11 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  bundleFileName,
-  demoBundleReadme,
-  planDemoBundle,
-  referencedModelIds,
-} from "@/lib/demoBundle";
-import { createZip, type ZipEntry } from "@/lib/zip";
+import { bundleEntries, bundleFileName, planDemoBundle, referencedModelIds } from "@/lib/demoBundle";
+import { createZip } from "@/lib/zip";
 import { currentRole } from "@/lib/server/session";
 import { readDocument, readModel } from "@/lib/server/store";
 
@@ -38,20 +33,13 @@ export async function GET() {
 
   const plan = planDemoBundle(document, new Set(loaded.keys()));
   const now = new Date();
-  const sizes = new Map([...loaded].map(([id, data]) => [id, data.length]));
 
-  const entries: ZipEntry[] = [
-    { path: "LASMIG.md", data: demoBundleReadme(plan, sizes, now) },
-    { path: "data/library.json", data: JSON.stringify(plan.document, null, 2) },
-    ...plan.files.map((file) => ({ path: file.path, data: loaded.get(file.modelId)! })),
-  ];
-
-  const zip = await createZip(entries, now);
+  const zip = await createZip(bundleEntries(plan, loaded, now), now);
   const summary = {
     models: plan.files.length,
     missing: plan.missing.length,
     machines: plan.document.machines.length,
-    images: plan.assets.count,
+    images: plan.images.length + plan.keptAssets,
     bytes: zip.length,
   };
 

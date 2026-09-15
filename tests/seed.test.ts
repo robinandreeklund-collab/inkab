@@ -33,6 +33,18 @@ describe.runIf(existsSync(SEED))("data/library.json", () => {
     expect(() => computeLayout(templateConfig("strolinje"), library)).not.toThrow();
   });
 
+  it("pekar bara på bildfiler som finns i repot", () => {
+    const paths = (document.machines as Machine[])
+      .flatMap((machine) => machine.images ?? [])
+      .filter((entry) => entry.startsWith("/"));
+
+    for (const url of paths) {
+      const file = path.join(process.cwd(), "public", url);
+      expect(existsSync(file), `${url} saknas i public/`).toBe(true);
+      expect(statSync(file).size).toBeGreaterThan(0);
+    }
+  });
+
   it("pekar bara på modellfiler som finns i repot", () => {
     const models = (document.machines as Machine[]).flatMap((machine) => [
       machine.model,

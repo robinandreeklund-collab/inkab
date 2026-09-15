@@ -107,7 +107,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
-| **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs`. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
+| **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora för webbläsarens minne — se [Stora STEP-filer](#stora-step-filer). `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Utföranden** | Samma maskin i olika längder — en rullbana som 3, 6 och 12 m är en maskin med tre mått, inte tre maskiner. Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Kunden väljer utförande i konfiguratorn; solvern, reglerna, priset och 3D-vyn ser bara en maskin med sina mått. Priset per utförande ligger i prisboken, aldrig i maskindatan. Utföranden slår steglös längd när en maskin har båda. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Ritar modellen i **sin verkliga storlek** — den skalas aldrig för att fylla ut ett mått i biblioteket — och **varnar när måtten inte stämmer** — 3D blir en kontroll av datan, inte bara en bild. Säger också till när en modellfil inte gick att hämta, i stället för att tyst rita en låda. |
 | **Modellens riktning** | En STEP kommer sällan in rättvänd, men konventionen hör till CAD-systemet och inte till maskinen: en rullbana och en lättpress ser inget lika ut och ritas ändå likadant. Riktningen är därför **en inställning för hela biblioteket** (INKAB:s CAD: X tvärs, Y upp, Z i flödet) som varje ny modell tolkas med. Per maskin går den att ändra, med en 3D-förhandsgranskning som visar ändringen direkt — ingen ny konvertering behövs. |
@@ -177,7 +177,7 @@ vänster `−Y`** — den konventionen avgör vad de fyra sidofrågorna betyder.
 ```
 scripts/
 ├── copy-occt-wasm.mjs    Kopierar OpenCascades wasm till public/ före bygget
-└── step-to-glb.mjs       STEP → GLB + katalogkort (CLI runt src/lib/cad/stepConvert.ts)
+└── step-to-glb.mjs       STEP → GLB + katalogkort, en fil eller en hel katalog
 src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
@@ -377,6 +377,45 @@ hemma i git, och för dem behövs en riktig databas.
 **Lagring.** Med `DATABASE_URL` sparas ändringar i Postgres. Utan den lever de
 i serverns minne tills den startar om — banderollen högst upp säger vilket som
 gäller.
+
+---
+
+## Stora STEP-filer
+
+Konverteringen i admin-vyn körs i din webbläsare, och en flik har ett par
+gigabyte att röra sig med. En tung sammanställning på 50–80 MB spränger dem
+mitt i tesselleringen: OpenCascade svarar att den lyckats, men delarna kommer
+tillbaka tomma. Då säger panelen att ingen del fick geometri — och att gränsen
+för smådelar inte har med saken att göra.
+
+Kör den filen lokalt i stället, med datorns minne:
+
+```bash
+git clone https://github.com/robinandreeklund-collab/inkab.git
+cd inkab
+npm ci
+node scripts/step-to-glb.mjs ~/CAD/rullbana.step --id rullbana --proxy
+```
+
+Samma kod som admin-vyn, men i Node och med en heap på 8 GB (`--heap <MB>` om
+du vill ha mer eller mindre). Skriptet skriver `public/models/<id>.glb`, en
+proxy med `--proxy`, och ett `<id>.card.json` med fotavtryck, höjd och
+portförslag ur modellen.
+
+En hel katalog går lika bra — en fil som fallerar stoppar inte de andra:
+
+```bash
+node scripts/step-to-glb.mjs ~/CAD/maskiner --tolerance 5 --min-part 100
+```
+
+Sedan: klistra in sökvägen skriptet skriver ut (`GLB-fältet /models/…`) i
+maskinens **GLB**-fält i admin, kontrollera måtten mot kortet, och committa
+`public/models/` tillsammans med biblioteket.
+
+Hjälper inte heller det är filen för tung även för Node — wasm-bygget av
+OpenCascade har fyra gigabyte adressrymd oavsett dator. Exportera då en STEP
+utan skruv, kablage och inköpta komponenter, eller dela sammanställningen i
+delar och konvertera dem var för sig.
 
 ---
 

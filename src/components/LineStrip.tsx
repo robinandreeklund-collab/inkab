@@ -3,6 +3,7 @@
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
 import { segments } from "@/lib/branches";
+import { edgeItemsWithFallback, orderedEdges } from "@/lib/flowGraph";
 import { MachineThumb } from "./MachineThumb";
 import type { LineItem, Placement } from "@/lib/types";
 
@@ -14,8 +15,79 @@ import type { LineItem, Placement } from "@/lib/types";
  * och att trycka in den i samma rad hade gjort ordningen till en gissning.
  */
 export function LineStrip() {
-  const { config, layout, selectedId, select } = useConfigStore();
+  const { config, layout, selectedId, select, selectedEdgeId, selectEdge } = useConfigStore();
   const placements = new Map(layout.placements.map((p) => [p.instanceId, p]));
+  const graph = config.flowGraph;
+
+  /*
+   * Med ritat flöde är raderna grenarna kunden själv dragit — samma ordning
+   * som solvern placerar dem i, så att remsan och hallen berättar samma sak.
+   * Att markera en rad är att peka ut var nästa maskin ur katalogen hamnar.
+   */
+  if (graph && graph.edges.length > 0) {
+    const nodeName = (id: string | null) => graph.nodes.find((n) => n.id === id)?.name ?? "—";
+    const runs = new Map(layout.edgeRuns.map((r) => [r.edgeId, r]));
+
+    return (
+      <div className="scroll-thin max-h-[190px] flex-none overflow-auto border-t border-divider bg-white">
+        {orderedEdges(graph).map((edge) => {
+          const items = edgeItemsWithFallback(config.line, graph, edge.id);
+          const run = runs.get(edge.id);
+          const active = edge.id === selectedEdgeId;
+
+          return (
+            <div
+              key={edge.id}
+              className={`flex items-center gap-2 border-b border-divider/60 px-3 py-1.5 last:border-0 ${
+                active ? "bg-accent/5" : ""
+              }`}
+            >
+              <button
+                onClick={() => selectEdge(active ? null : edge.id)}
+                className={`w-[124px] flex-none border px-1.5 py-1 text-left leading-tight ${
+                  active ? "border-accent text-accent" : "border-transparent hover:border-divider"
+                }`}
+                title="Markera grenen — nästa maskin ur katalogen hamnar här"
+              >
+                <span className="kicker block">{edge.name}</span>
+                <span className="kicker block text-muted">
+                  {nodeName(edge.fromNodeId)} → {nodeName(edge.toNodeId)}
+                </span>
+              </button>
+              <div className="flex flex-1 items-center gap-2 overflow-x-auto">
+                {items.length === 0 ? (
+                  <span className="text-[11px] text-muted">
+                    Tom gren. Markera den och välj en maskin ur katalogen.
+                  </span>
+                ) : (
+                  items.map((item, i) => {
+                    const placement = placements.get(item.instanceId);
+                    if (!placement) return null;
+                    return (
+                      <Card
+                        key={item.instanceId}
+                        item={item}
+                        placement={placement}
+                        selected={selectedId === item.instanceId}
+                        last={i === items.length - 1}
+                        onSelect={() => select(item.instanceId)}
+                      />
+                    );
+                  })
+                )}
+              </div>
+              {run && run.gapMm !== null && run.gapMm > 500 ? (
+                <span className="kicker flex-none text-warn" title="Avstånd till den ritade noden">
+                  {meters(run.gapMm)} m kvar
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
   const parts = segments(config.line).filter((s) =>
     s.items.some((i) => placements.has(i.instanceId)),
   );

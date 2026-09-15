@@ -106,6 +106,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Arbetstid** | Timmar för tillverkning i verkstad och montage på plats, per maskin. Summeras för anläggningen och står i offertunderlaget och CSV:n. De hålls isär för att de utförs av olika personer och planeras var för sig. |
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
+| **Rita flödet** | Verktyget **Flöde** (F): klicka där paketen kommer in, klicka vidare för vägen genom hallen, klicka på en befintlig nod för att koppla dit. Två inmatningar som möts på en gemensam bana går därför att uttrycka — det gick inte när linjen var ett träd med en rot. Varje gren bär sina egna maskiner: markera grenen i remsan och välj ur katalogen. Skelettet säger riktning, ordning och kopplingar; måtten kommer fortfarande ur maskinerna, och glappet mellan det ritade och det verkliga mäts i stället för att tyst försvinna (R-701). |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
 | **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora för webbläsarens minne — se [Stora STEP-filer](#stora-step-filer). `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Utföranden** | Samma maskin i olika längder — en rullbana som 3, 6 och 12 m är en maskin med tre mått, inte tre maskiner. Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Kunden väljer utförande i konfiguratorn; solvern, reglerna, priset och 3D-vyn ser bara en maskin med sina mått. Priset per utförande ligger i prisboken, aldrig i maskindatan. Utföranden slår steglös längd när en maskin har båda. |
@@ -191,6 +192,7 @@ src/
 │   ├── templates.ts      Fyra startmallar
 │   ├── schema.ts         Zod-validering av allt som når servern
 │   ├── share.ts          Konfiguration ⇄ URL
+│   ├── flowGraph.ts      Flödesskelettet: noder, grenar och ordningen de löses i
 │   ├── demoBundle.ts     Demo-paketet: bibliotek och modeller som repofiler
 │   ├── zip.ts            Minimal ZIP-skrivare för paketet
 │   ├── ai/
@@ -230,6 +232,11 @@ src/
 | R-204 | Trucken måste korsa flödet för att nå magasinet | varning |
 | R-205 | Ingen truckgata eller hämtzon är ritad | varning |
 | R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
+| R-701 | Grenen når inte fram till sin nod i det ritade flödet | varning |
+| R-702 | Sammanslagningen lämnar mer än den mottagande maskinen klarar | varning |
+| R-703 | Grenarna möts på olika höjd | fel |
+| R-704 | Ritad gren utan maskiner | info |
+| R-705 | Flödet går i en ring | fel |
 | R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |

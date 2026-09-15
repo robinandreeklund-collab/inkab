@@ -208,9 +208,72 @@ export type Machine = {
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
 
+/* ── Flödesskelettet ───────────────────────────────────────────────────── */
+
+/**
+ * En punkt i flödet kunden ritar.
+ *
+ *  infeed    — där paket kommer in i anläggningen. En gren börjar här.
+ *  junction  — där grenar möts eller delar sig.
+ *  outfeed   — där paket lämnar anläggningen.
+ */
+export type FlowNodeKind = "infeed" | "junction" | "outfeed";
+
+export type FlowNode = {
+  id: string;
+  kind: FlowNodeKind;
+  name: string;
+  /** Läget i hallen, mm. */
+  at: Vec2;
+  /** Riktningen flödet lämnar noden med. Saknar mening på en utlastningsnod. */
+  dir: Dir;
+};
+
+/**
+ * En sträcka mellan två noder. Maskinerna som står på den ligger kvar i
+ * linjelistan och pekar hit med `edgeId`.
+ */
+export type FlowEdge = {
+  id: string;
+  name: string;
+  fromNodeId: string;
+  /** Null medan sträckan ritas, eller när den slutar fritt i hallen. */
+  toNodeId: string | null;
+  /**
+   * Sträck sträckans kapbara transportör så att den når fram till målnoden.
+   * Avstängd som standard: diagnostiken mäter glappet och erbjuder åtgärden,
+   * på samma sätt som slutpunkten alltid har fungerat.
+   */
+  fit?: boolean;
+};
+
+/**
+ * Flödet som graf.
+ *
+ * Linjen har hittills varit ett träd med en rot: varje maskin har en
+ * föregångare, grenar hänger på utgångar. Två inmatningar som möts på en
+ * gemensam bana går inte att uttrycka så — det finns ingen plats att säga
+ * "här går de ihop".
+ *
+ * Skelettet vänder på ordningen. Kunden ritar flödet först: var paketen
+ * kommer in, var vägarna möts, var de delar sig och var de går ut. Sedan
+ * hänger maskinerna på varje sträcka. Geometrin kommer fortfarande ur
+ * maskinerna — skelettet säger riktning, ordning och kopplingar, aldrig mått.
+ * Går det ritade och det verkliga isär säger diagnostiken det i stället för
+ * att någondera tyst vinner.
+ *
+ * Utan graf är allt precis som förut: linjen är trädet, och `branch` styr.
+ */
+export type FlowGraph = {
+  nodes: FlowNode[];
+  edges: FlowEdge[];
+};
+
 export type LineItem = {
   instanceId: string;
   machineId: string;
+  /** Sträckan i flödesskelettet maskinen står på. Utan graf: utelämnad. */
+  edgeId?: string;
   /** Valt utförande. Utelämnas används maskinens första variant, om någon. */
   variantId?: string;
   /**
@@ -339,6 +402,11 @@ export type Configuration = {
   product: Product;
   line: LineItem[];
   drawn: DrawnObject[];
+  /**
+   * Flödet som graf, när kunden ritat det. Utelämnad betyder att linjen är
+   * ett träd som förut — se FlowGraph.
+   */
+  flowGraph?: FlowGraph;
 };
 
 /* ── Layoutresultat ────────────────────────────────────────────────────── */
@@ -376,7 +444,9 @@ export type Severity = "error" | "warning" | "info";
 export type ConfigPatch =
   | { kind: "flow"; patch: Partial<Flow>; label: string }
   | { kind: "addMachine"; machineId: string; label: string }
-  | { kind: "removeMachine"; instanceId: string; label: string };
+  | { kind: "removeMachine"; instanceId: string; label: string }
+  /** Låter en grens kapbara transportör sträckas fram till sin målnod. */
+  | { kind: "fitEdge"; edgeId: string; label: string };
 
 export type Diagnostic = {
   code: string;
@@ -407,6 +477,29 @@ export type Metrics = {
   endPointGapMm: number | null;
 };
 
+/**
+ * Vad som hände på en ritad sträcka.
+ *
+ * Solvern räknar fram det, reglerna dömer på det och gränssnittet visar det —
+ * samma tal på alla tre ställen. Glappet är det viktiga: avståndet mellan där
+ * maskinerna faktiskt slutar och den punkt kunden ritade.
+ */
+export type EdgeRun = {
+  edgeId: string;
+  /** Sista utportens läge och riktning, eller null när inget kunde placeras. */
+  end: { point: Vec2; dir: Dir } | null;
+  /** Avståndet mellan sträckans slut och den ritade målnoden, mm. */
+  gapMm: number | null;
+  /** Kapbar maskin på sträckan, som kan sträckas för att nå fram. */
+  fittable: { instanceId: string; lengthMm: number; limits?: { minMm: number; maxMm: number } } | null;
+  /** Maskiner som står på sträckan. */
+  count: number;
+  /** Kapaciteten sträckan lämnar ifrån sig, paket/h. */
+  throughput: number;
+  /** Höjden paketet ligger på när det lämnar sträckan, mm. */
+  levelMm: number | null;
+};
+
 export type LayoutResult = {
   placements: Placement[];
   /** Truckgator och hämtzoner. Tomt tills kunden ritat någon. */
@@ -414,4 +507,6 @@ export type LayoutResult = {
   bounds: Box;
   metrics: Metrics;
   diagnostics: Diagnostic[];
+  /** Resultat per ritad sträcka. Tom lista när flödet inte är ritat. */
+  edgeRuns: EdgeRun[];
 };

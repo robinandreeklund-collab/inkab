@@ -6,7 +6,7 @@ import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/proje
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
-import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
+import type { Box, DrawnObject, DrawnKind, FlowGraph, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 
 /** Rutnätets delning i planvyn, mm. */
@@ -15,7 +15,7 @@ const GRID_MM = 1000;
 const SNAP_MM = 250;
 const PAD_MM = 4000;
 
-type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
+type Draft = { kind: Exclude<Tool, "select" | "measure" | "flow">; box: Box } | null;
 
 /** CadView ritar plan och isometri; läget "model" hanteras av ModelView. */
 type PlanarView = Exclude<ViewMode, "model">;
@@ -32,7 +32,7 @@ const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
  * Truckzoner och no-go-zoner ritas som fria rektanglar.
  */
 function draftBox(
-  kind: Exclude<Tool, "select" | "measure">,
+  kind: Exclude<Tool, "select" | "measure" | "flow">,
   from: Vec2,
   to: Vec2,
   walls: DrawnObject[] = [],
@@ -90,6 +90,13 @@ export function CadView() {
     nudge,
     addDrawn,
     setTool,
+    addFlowNode,
+    connectFlow,
+    moveFlowNode,
+    selectEdge,
+    selectedEdgeId,
+    flowFrom,
+    setFlowFrom,
     setFlowPoint,
   } = useConfigStore();
 
@@ -207,6 +214,9 @@ export function CadView() {
       return;
     }
 
+    // Flödet ritas i fångstfasen och kommer aldrig hit; resten ritar rutor.
+    if (tool === "flow") return;
+
     const kind = tool;
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
@@ -239,6 +249,42 @@ export function CadView() {
 
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+  };
+
+  /*
+   * Flödet ritas genom att klicka, och klicket tas i fångstfasen.
+   *
+   * Hallen är full av maskiner, truckgator och zoner som alla har egna
+   * pekarhanterare, och flera av dem stoppar händelsen. Ett klick mitt i
+   * flödet landade därför på det som råkade ligga överst i stället för på
+   * golvet, och noden hamnade aldrig där man pekade. Med ritverktyget i
+   * handen finns det bara en sak klicket kan betyda, så det tas här — före
+   * allt annat — och släpps aldrig vidare.
+   *
+   * Utan påbörjad kedja blir klicket en inmatning: det är där paketen kommer
+   * in. Med en påbörjad kedja blir det en korsning med en sträcka dit, och
+   * kedjan fortsätter därifrån. Klick på en befintlig nod kopplar dit i
+   * stället — det är så två inmatningar möts på samma bana.
+   */
+  const captureFlowClick = (event: React.PointerEvent) => {
+    if (tool !== "flow") return;
+    event.stopPropagation();
+    event.preventDefault();
+
+    const onNode = (event.target as Element).closest?.("[data-flow-node]");
+    if (onNode) {
+      const id = onNode.getAttribute("data-flow-node")!;
+      if (flowFrom && flowFrom !== id) connectFlow(flowFrom, id);
+      setFlowFrom(id);
+      return;
+    }
+
+    const point = toWorld(event);
+    if (!point) return;
+    const at = { x: snap(point.x), y: snap(point.y) };
+    const id = addFlowNode(flowFrom ? "junction" : "infeed", at);
+    if (flowFrom) connectFlow(flowFrom, id);
+    setFlowFrom(id);
   };
 
   const onWheel = (event: React.WheelEvent) => {
@@ -284,6 +330,7 @@ export function CadView() {
         className="h-full w-full touch-none select-none"
         style={{ cursor }}
         onWheel={onWheel}
+        onPointerDownCapture={captureFlowClick}
       >
         <defs>
           <pattern
@@ -349,6 +396,34 @@ export function CadView() {
           />
         )}
 
+        <FlowSkeleton
+          graph={config.flowGraph}
+          view={planarView}
+          strokeUnit={strokeUnit}
+          selectedEdgeId={selectedEdgeId}
+          activeNodeId={flowFrom}
+          onEdgeDown={(id, e) => {
+            e.stopPropagation();
+            selectEdge(id);
+          }}
+          onNodeDown={(id, e) => {
+            // Flödesverktyget tar sina klick i fångstfasen; här handlar det
+            // bara om att flytta en nod med markeringsverktyget.
+            e.stopPropagation();
+            if (tool !== "select") return;
+            const move = (ev: PointerEvent) => {
+              const p = toWorld(ev);
+              if (p) moveFlowNode(id, { x: snap(p.x), y: snap(p.y) });
+            };
+            const up = () => {
+              window.removeEventListener("pointermove", move);
+              window.removeEventListener("pointerup", up);
+            };
+            window.addEventListener("pointermove", move);
+            window.addEventListener("pointerup", up);
+          }}
+        />
+
         {draft ? <DraftShape draft={draft} view={planarView} strokeUnit={strokeUnit} /> : null}
 
         <FlowMarkers
@@ -365,7 +440,11 @@ export function CadView() {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
         <span className="kicker bg-paper/80 px-1">
-          {view === "2d" ? "Planvy" : "Isometrisk vy"} · snapp {SNAP_MM} mm
+          {tool === "flow"
+            ? flowFrom
+              ? "Klicka vidare för vägen · klicka på en nod för att koppla dit · Esc avslutar"
+              : "Klicka där paketen kommer in i hallen"
+            : `${view === "2d" ? "Planvy" : "Isometrisk vy"} · snapp ${SNAP_MM} mm`}
         </span>
         <button
           onClick={fit}
@@ -1031,6 +1110,139 @@ function MeasureLine({
       >
         {meters(distance)} m
       </text>
+    </g>
+  );
+}
+
+/**
+ * Flödesskelettet i planvyn.
+ *
+ * Noderna är punkter kunden satt, sträckorna pilarna mellan dem. Det ritas
+ * ovanpå maskinerna med flit: skelettet är avsikten, och när maskinerna inte
+ * följer den ska det synas att de inte gör det. Pilen pekar åt det håll
+ * paketen går, precis som pilarna på en handritad flödesskiss.
+ */
+function FlowSkeleton({
+  graph,
+  view,
+  strokeUnit,
+  selectedEdgeId,
+  activeNodeId,
+  onEdgeDown,
+  onNodeDown,
+}: {
+  graph: FlowGraph | undefined;
+  view: PlanarView;
+  strokeUnit: number;
+  selectedEdgeId: string | null;
+  activeNodeId: string | null;
+  onEdgeDown: (edgeId: string, event: React.PointerEvent) => void;
+  onNodeDown: (nodeId: string, event: React.PointerEvent) => void;
+}) {
+  if (!graph || graph.nodes.length === 0) return null;
+
+  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
+  const nodeAt = (id: string | null) => graph.nodes.find((n) => n.id === id);
+  const r = strokeUnit * 7;
+
+  return (
+    <g>
+      {graph.edges.map((edge) => {
+        const from = nodeAt(edge.fromNodeId);
+        const to = nodeAt(edge.toNodeId);
+        if (!from || !to) return null;
+
+        const a = project(from.at);
+        const b = project(to.at);
+        const selected = edge.id === selectedEdgeId;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const len = Math.hypot(dx, dy) || 1;
+        // Pilen slutar utanför noden så att spetsen syns bredvid ringen.
+        const ux = dx / len;
+        const uy = dy / len;
+        const tip = { x: b.x - ux * r * 1.6, y: b.y - uy * r * 1.6 };
+        const tail = { x: a.x + ux * r * 1.6, y: a.y + uy * r * 1.6 };
+        const head = strokeUnit * 6;
+
+        return (
+          <g
+            key={edge.id}
+            onPointerDown={(e) => onEdgeDown(edge.id, e)}
+            style={{ cursor: "pointer" }}
+          >
+            {/* Bred osynlig linje så att sträckan går att träffa med musen. */}
+            <line
+              x1={tail.x}
+              y1={tail.y}
+              x2={tip.x}
+              y2={tip.y}
+              stroke="transparent"
+              strokeWidth={strokeUnit * 14}
+            />
+            <line
+              x1={tail.x}
+              y1={tail.y}
+              x2={tip.x}
+              y2={tip.y}
+              stroke={selected ? "#5980a6" : "#c8a020"}
+              strokeWidth={strokeUnit * (selected ? 3.4 : 2.4)}
+              strokeLinecap="round"
+            />
+            <path
+              d={`M ${tip.x} ${tip.y} L ${tip.x - ux * head + -uy * head * 0.5} ${
+                tip.y - uy * head + ux * head * 0.5
+              } L ${tip.x - ux * head + uy * head * 0.5} ${tip.y - uy * head - ux * head * 0.5} Z`}
+              fill={selected ? "#5980a6" : "#c8a020"}
+            />
+            <text
+              x={(tail.x + tip.x) / 2}
+              y={(tail.y + tip.y) / 2 - strokeUnit * 4}
+              textAnchor="middle"
+              fontSize={strokeUnit * 11}
+              fill={selected ? "#5980a6" : "#8a6f16"}
+            >
+              {edge.name}
+            </text>
+          </g>
+        );
+      })}
+
+      {graph.nodes.map((node) => {
+        const p = project(node.at);
+        const active = node.id === activeNodeId;
+        const fill =
+          node.kind === "infeed" ? "#2f7a4f" : node.kind === "outfeed" ? "#9f1239" : "#c8a020";
+
+        return (
+          <g
+            key={node.id}
+            data-flow-node={node.id}
+            onPointerDown={(e) => onNodeDown(node.id, e)}
+            style={{ cursor: "grab" }}
+          >
+            <circle
+              cx={p.x}
+              cy={p.y}
+              r={r}
+              fill={fill}
+              fillOpacity={active ? 0.45 : 0.18}
+              stroke={fill}
+              strokeWidth={strokeUnit * (active ? 2.6 : 1.6)}
+            />
+            <circle cx={p.x} cy={p.y} r={strokeUnit * 2.2} fill={fill} />
+            <text
+              x={p.x}
+              y={p.y - r - strokeUnit * 3}
+              textAnchor="middle"
+              fontSize={strokeUnit * 11}
+              fill={fill}
+            >
+              {node.name}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }

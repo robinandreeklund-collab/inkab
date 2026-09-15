@@ -39,6 +39,7 @@ export function AppShell() {
     removeItem,
     removeDrawn,
     proposalId,
+    setFlowFrom,
   } = useConfigStore();
 
   const [user, setUser] = useState<SessionUser | null>(null);
@@ -148,7 +149,14 @@ export function AppShell() {
           togglePorts();
           break;
         case "f":
+          setTool("flow");
+          break;
+        case "i":
           toggleInspector();
+          break;
+        case "escape":
+          // Avslutar den påbörjade flödeskedjan utan att lämna verktyget.
+          setFlowFrom(null);
           break;
         case "delete":
         case "backspace":
@@ -164,6 +172,7 @@ export function AppShell() {
       removeDrawn,
       removeItem,
       selectedId,
+      setFlowFrom,
       setTool,
       setView,
       toggleInspector,
@@ -271,6 +280,11 @@ function ToolRail() {
           ["truck", "Rita truckgata (T)", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
           ["nogo", "Rita no-go-zon (N)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
           ["measure", "Mät avstånd (M)", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
+          [
+            "flow",
+            "Rita flödet (F) — klicka för inmatning, klicka vidare för vägen",
+            "M4 7h9a3 3 0 0 1 3 3v4m0 0-2.5-2.5M16 14l2.5-2.5M4 17h5",
+          ],
         ] as const
       ).map(([value, title, path]) => (
         <Button

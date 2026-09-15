@@ -4,9 +4,33 @@ import { z } from "zod";
 
 const vec2 = z.object({ x: z.number().finite(), y: z.number().finite() });
 
+const dirSchema = z.enum(["x+", "x-", "y+", "y-"]);
+
+export const flowNodeSchema = z.object({
+  id: z.string().min(1).max(64),
+  kind: z.enum(["infeed", "junction", "outfeed"]),
+  name: z.string().max(80),
+  at: vec2,
+  dir: dirSchema,
+});
+
+export const flowEdgeSchema = z.object({
+  id: z.string().min(1).max(64),
+  name: z.string().max(80),
+  fromNodeId: z.string().min(1).max(64),
+  toNodeId: z.string().min(1).max(64).nullable(),
+  fit: z.boolean().optional(),
+});
+
+export const flowGraphSchema = z.object({
+  nodes: z.array(flowNodeSchema).max(24),
+  edges: z.array(flowEdgeSchema).max(24),
+});
+
 export const lineItemSchema = z.object({
   instanceId: z.string().min(1).max(64),
   machineId: z.string().min(1).max(64),
+  edgeId: z.string().max(64).optional(),
   variantId: z.string().max(64).optional(),
   outPortId: z.string().max(64).optional(),
   branch: z
@@ -75,6 +99,7 @@ export const configurationSchema = z.object({
     }),
   line: z.array(lineItemSchema).max(40),
   drawn: z.array(drawnSchema).max(80),
+  flowGraph: flowGraphSchema.optional(),
 });
 
 export type ValidatedConfiguration = z.infer<typeof configurationSchema>;

@@ -1,4 +1,5 @@
 import { connectedPairs } from "./branches";
+import { edgeOrder } from "./flowGraph";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -16,6 +17,8 @@ const END_POINT_TOLERANCE_MM = 500;
 const MIN_TRUCK_WIDTH_MM = 3500;
 /** Hur nära en port truckgatan ska ligga för att räknas som ansluten, mm. */
 const DOOR_REACH_MM = 1500;
+/** Hur nära sin målnod en gren måste sluta innan det räknas som ett glapp, mm. */
+const NODE_REACH_MM = 500;
 
 function hallBox(config: Configuration): Box {
   return { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
@@ -535,7 +538,133 @@ export function runRules(
     });
   }
 
+  /* ── Reglerna för det ritade flödet ─────────────────────────────────── */
+  out.push(...flowRules(config, layout, line));
+
   return dedupe(out);
+}
+
+/**
+ * Reglerna som bara gäller när kunden ritat flödet.
+ *
+ * Skelettet är en avsikt, maskinerna är verkligheten. Går de isär ska det
+ * sägas — annars är ritningen ett löfte verktyget inte håller. Ingen av de
+ * här reglerna flyttar något: de mäter, och erbjuder åtgärden.
+ */
+function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]): Diagnostic[] {
+  const graph = config.flowGraph;
+  if (!graph || graph.edges.length === 0) return [];
+
+  const out: Diagnostic[] = [];
+  const runs = new Map(layout.edgeRuns.map((r) => [r.edgeId, r]));
+  const byInstance = new Map(line.map((p) => [p.instanceId, p]));
+  const nodeName = (id: string | null) => graph.nodes.find((n) => n.id === id);
+
+  /* ── R-701 Grenen når inte fram till noden ──────────────────────────── */
+  for (const edge of graph.edges) {
+    const run = runs.get(edge.id);
+    const target = nodeName(edge.toNodeId);
+    if (!run || !target || run.gapMm === null || run.count === 0) continue;
+    if (run.gapMm <= NODE_REACH_MM) continue;
+
+    out.push({
+      code: "R-701",
+      severity: "warning",
+      title: `${edge.name} når inte fram till ${target.name}`,
+      detail:
+        `Sträckans sista utgång ligger ${m(run.gapMm)} m från den ritade punkten. ` +
+        (run.fittable
+          ? "Banan kan sträckas dit, eller så flyttar du noden till maskinerna."
+          : "Ingen maskin på sträckan går att kapa till längd — flytta noden, eller lägg in " +
+            "en rullbana eller kedjetransportör som kan ta upp avståndet."),
+      instanceIds: run.fittable ? [run.fittable.instanceId] : [],
+      anchor: target.at,
+      fix:
+        run.fittable && !edge.fit
+          ? { kind: "fitEdge", edgeId: edge.id, label: `Sträck ${edge.name} till ${target.name}` }
+          : undefined,
+    });
+  }
+
+  /* ── R-702 Sammanslagningen överskrider banans kapacitet ────────────── */
+  for (const node of graph.nodes) {
+    const incoming = graph.edges.filter((e) => e.toNodeId === node.id);
+    if (incoming.length < 2) continue;
+
+    const sum = incoming.reduce((total, e) => total + (runs.get(e.id)?.throughput ?? 0), 0);
+    const onward = graph.edges.find((e) => e.fromNodeId === node.id);
+    const first = onward ? config.line.find((i) => i.edgeId === onward.id) : undefined;
+    const receiving = first ? byInstance.get(first.instanceId) : undefined;
+    if (!receiving || receiving.capacity <= 0 || sum <= receiving.capacity) continue;
+
+    out.push({
+      code: "R-702",
+      severity: "warning",
+      title: `${node.name} tar emot mer än vad ${receiving.machine.name} klarar`,
+      detail:
+        `${incoming.length} inmatningar lämnar tillsammans ${sum} paket/h till en maskin som ` +
+        `klarar ${receiving.capacity}. Flaskhalsen sitter i mötet, inte i grenarna var för sig.`,
+      instanceIds: [receiving.instanceId],
+      anchor: node.at,
+    });
+  }
+
+  /* ── R-703 Grenarna möts på olika höjd ──────────────────────────────── */
+  for (const node of graph.nodes) {
+    const incoming = graph.edges.filter((e) => e.toNodeId === node.id);
+    if (incoming.length < 2) continue;
+
+    const levels = incoming
+      .map((e) => ({ edge: e, level: runs.get(e.id)?.levelMm ?? null }))
+      .filter((l): l is { edge: (typeof incoming)[number]; level: number } => l.level !== null);
+    if (levels.length < 2) continue;
+
+    const spread = Math.max(...levels.map((l) => l.level)) - Math.min(...levels.map((l) => l.level));
+    if (spread <= PORT_LEVEL_TOLERANCE_MM) continue;
+
+    out.push({
+      code: "R-703",
+      severity: "error",
+      title: `Grenarna möts på olika höjd vid ${node.name}`,
+      detail:
+        `${levels.map((l) => `${l.edge.name} lämnar paketet på ${l.level} mm`).join(", ")}. ` +
+        "Paket byter inte höjd i luften — lägg in en höj- och sänkbar transportör på den " +
+        "gren som ligger fel.",
+      instanceIds: [],
+      anchor: node.at,
+    });
+  }
+
+  /* ── R-704 Gren utan maskiner ───────────────────────────────────────── */
+  for (const edge of graph.edges) {
+    if (config.line.some((i) => i.edgeId === edge.id)) continue;
+    out.push({
+      code: "R-704",
+      severity: "info",
+      title: `${edge.name} är tom`,
+      detail: "Sträckan är ritad men ingen maskin står på den. Markera den och välj ur katalogen.",
+      instanceIds: [],
+      anchor: nodeName(edge.fromNodeId)?.at,
+    });
+  }
+
+  /* ── R-705 Sträckor som ligger i en ring ────────────────────────────── */
+  const { cyclic } = edgeOrder(graph);
+  if (cyclic.length > 0) {
+    out.push({
+      code: "R-705",
+      severity: "error",
+      title: "Flödet går i en ring",
+      detail:
+        `${cyclic.map((e) => e.name).join(", ")} matar varandra i en cirkel, så ingen av dem har ` +
+        "en början att byggas från. Bryt ringen genom att låta en av dem utgå från en inmatning.",
+      instanceIds: config.line
+        .filter((i) => cyclic.some((e) => e.id === i.edgeId))
+        .map((i) => i.instanceId),
+    });
+  }
+
+  return out;
 }
 
 /** Samma regel på samma maskinpar rapporteras en gång. */

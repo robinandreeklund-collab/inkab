@@ -5,12 +5,16 @@ import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
+import { EMPTY_GRAPH, makeEdge, makeNode, orderedEdges, removeNode } from "@/lib/flowGraph";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
   Configuration,
+  Dir,
   DrawnObject,
   Flow,
+  FlowEdge,
+  FlowNode,
   LayoutResult,
   Machine,
   ParameterValue,
@@ -28,7 +32,7 @@ const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
 
-export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
+export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure" | "flow";
 export type ViewMode = "2d" | "3d" | "model";
 export type Unit = "m" | "mm";
 
@@ -79,6 +83,14 @@ type State = {
    * gren i stället för att läggas sist.
    */
   branchTarget: { instanceId: string; outPortId: string } | null;
+  /**
+   * Grenen nya maskiner hamnar på. Satt genom att markera en sträcka i
+   * ritningen eller i linjeremsan. Utan markering hamnar de på den första
+   * grenen, som är den maskinerna annars hade legat i.
+   */
+  selectedEdgeId: string | null;
+  /** Noden ritverktyget drar en sträcka från, medan den dras. */
+  flowFrom: string | null;
 };
 
 type Actions = {
@@ -113,6 +125,21 @@ type Actions = {
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
+  /* ── Flödesskelettet ──────────────────────────────────────────────── */
+  /** Lägger en nod och returnerar dess id. */
+  addFlowNode: (kind: FlowNode["kind"], at: Vec2, dir?: Dir) => string;
+  /** Drar en sträcka mellan två noder. */
+  connectFlow: (fromNodeId: string, toNodeId: string | null) => string | null;
+  moveFlowNode: (id: string, at: Vec2) => void;
+  updateFlowNode: (id: string, patch: Partial<Omit<FlowNode, "id">>) => void;
+  updateFlowEdge: (id: string, patch: Partial<Omit<FlowEdge, "id">>) => void;
+  removeFlowNode: (id: string) => void;
+  removeFlowEdge: (id: string) => void;
+  selectEdge: (id: string | null) => void;
+  setFlowFrom: (id: string | null) => void;
+  /** Rensar hela skelettet och lämnar maskinerna i en vanlig linje. */
+  clearFlowGraph: () => void;
+
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
   removeDrawn: (id: string) => void;
@@ -232,6 +259,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     log: [],
     proposalId: null,
     branchTarget: null,
+    selectedEdgeId: null,
+    flowFrom: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -324,6 +353,21 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        */
       const target = get().branchTarget;
       if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
+
+      /*
+       * Är flödet ritat hör maskinen till en gren, inte till en position i
+       * listan. Den markerade grenen gäller; utan markering den första, som
+       * är den maskinerna annars hade hamnat i.
+       */
+      const graph = get().config.flowGraph;
+      if (graph && graph.edges.length > 0) {
+        // Markerad gren först, annars grenen den markerade maskinen står på,
+        // annars den första — den som är huvudlinjen i det ritade flödet.
+        const beside = get().config.line.find((i) => i.instanceId === get().selectedId);
+        item.edgeId =
+          get().selectedEdgeId ?? beside?.edgeId ?? orderedEdges(graph)[0]?.id ?? graph.edges[0].id;
+      }
+
       const fallback = target
         ? segmentEndIndex(get().config.line, target.instanceId)
         : segmentEndIndex(get().config.line, get().selectedId);
@@ -402,6 +446,95 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (item) delete item.manualOffset;
       }),
 
+    /* ── Flödesskelettet ────────────────────────────────────────────── */
+
+    addFlowNode: (kind, at, dir = "x+") => {
+      const graph = get().config.flowGraph ?? EMPTY_GRAPH;
+      const node = makeNode(graph, kind, at, dir);
+      get().update((d) => {
+        d.flowGraph = d.flowGraph ?? { nodes: [], edges: [] };
+        d.flowGraph.nodes.push(node);
+      });
+      return node.id;
+    },
+
+    connectFlow: (fromNodeId, toNodeId) => {
+      const graph = get().config.flowGraph ?? EMPTY_GRAPH;
+      if (fromNodeId === toNodeId) return null;
+      // Samma sträcka två gånger är ingen ny väg, bara en dubbelritad.
+      if (graph.edges.some((e) => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId)) {
+        return null;
+      }
+      const edge = makeEdge(graph, fromNodeId, toNodeId);
+      const first = graph.edges.length === 0;
+      get().update((d) => {
+        d.flowGraph = d.flowGraph ?? { nodes: [], edges: [] };
+        d.flowGraph.edges.push(edge);
+        /*
+         * Första sträckan ärver linjen som redan står i hallen. Maskinerna
+         * byggdes innan flödet ritades och hör till den vägen — att låta dem
+         * hänga utan gren vore att göra dem osynliga i remsan medan de står
+         * kvar i ritningen.
+         */
+        if (first) for (const item of d.line) if (!item.edgeId) item.edgeId = edge.id;
+      });
+      set({ selectedEdgeId: edge.id });
+      return edge.id;
+    },
+
+    moveFlowNode: (id, at) =>
+      get().update((d) => {
+        const node = d.flowGraph?.nodes.find((n) => n.id === id);
+        if (node) node.at = at;
+      }),
+
+    updateFlowNode: (id, patch) =>
+      get().update((d) => {
+        const node = d.flowGraph?.nodes.find((n) => n.id === id);
+        if (node) Object.assign(node, patch);
+      }),
+
+    updateFlowEdge: (id, patch) =>
+      get().update((d) => {
+        const edge = d.flowGraph?.edges.find((e) => e.id === id);
+        if (edge) Object.assign(edge, patch);
+      }),
+
+    removeFlowNode: (id) => {
+      const doomed = (get().config.flowGraph?.edges ?? [])
+        .filter((e) => e.fromNodeId === id || e.toNodeId === id)
+        .map((e) => e.id);
+      get().update((d) => {
+        if (!d.flowGraph) return;
+        d.flowGraph = removeNode(d.flowGraph, id);
+        // Maskinerna på en borttagen sträcka blir kvar i listan, utan gren.
+        // De syns i linjeremsan och kan flyttas till en annan — att kasta
+        // dem vore att kasta någons arbete för att en punkt togs bort.
+        for (const item of d.line) if (item.edgeId && doomed.includes(item.edgeId)) delete item.edgeId;
+      });
+      if (doomed.includes(get().selectedEdgeId ?? "")) set({ selectedEdgeId: null });
+    },
+
+    removeFlowEdge: (id) => {
+      get().update((d) => {
+        if (!d.flowGraph) return;
+        d.flowGraph.edges = d.flowGraph.edges.filter((e) => e.id !== id);
+        for (const item of d.line) if (item.edgeId === id) delete item.edgeId;
+      });
+      if (get().selectedEdgeId === id) set({ selectedEdgeId: null });
+    },
+
+    selectEdge: (id) => set({ selectedEdgeId: id, selectedId: null }),
+    setFlowFrom: (id) => set({ flowFrom: id }),
+
+    clearFlowGraph: () => {
+      get().update((d) => {
+        delete d.flowGraph;
+        for (const item of d.line) delete item.edgeId;
+      });
+      set({ selectedEdgeId: null, flowFrom: null });
+    },
+
     addDrawn: (obj) => {
       get().update((d) => {
         d.drawn.push(obj);
@@ -434,6 +567,9 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           break;
         case "addMachine":
           get().addMachine(patch.machineId);
+          break;
+        case "fitEdge":
+          get().updateFlowEdge(patch.edgeId, { fit: true });
           break;
         case "removeMachine":
           get().removeItem(patch.instanceId);

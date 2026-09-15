@@ -441,9 +441,9 @@
       "summary": "Höj- och sänkbar transportör genom underslagsläggaren. Hydraulik eller 100 % el.",
       "aiDescription": "En transportörsenhet med rullbana och brutna kedjekanaler som ansluts till underslagsläggaren. Den transporterar virkespaket, med eller utan truckströ under paketet, genom underslagsläggaren.\nDet avgörande är att transportören är höj- och sänkbar: den anpassas efter truckströnas tjocklek. De brutna kedjekanalerna gör att enheten kan anslutas till kundens befintliga kedjetransportör för paket ut.\nFinns i två utföranden. Hydraulisk version med hydraulaggregat, eller helt eldriven version (100 % el) med elektriska ställdon, SEW kuggväxlar och givare — ingen hydraulik alls. Valet styrs av kundens inställning till hydraulik i anläggningen.\nDen här enheten hör ihop med underslagsläggaren och väljs normalt tillsammans med den.",
       "footprint": {
-        "lengthMm": 6000,
-        "widthMm": 3000,
-        "heightMm": 1400
+        "lengthMm": 8141,
+        "widthMm": 3603,
+        "heightMm": 689
       },
       "ports": [
         {
@@ -451,7 +451,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1500
+            "y": 766
           },
           "dir": "x+",
           "levelMm": 900,
@@ -465,8 +465,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 6000,
-            "y": 1500
+            "x": 8141,
+            "y": 720
           },
           "dir": "x+",
           "levelMm": 900,
@@ -475,6 +475,22 @@
             1600
           ],
           "allowsDirectionChange": false
+        },
+        {
+          "id": "out2",
+          "name": "Ut på långsidan",
+          "role": "out",
+          "pos": {
+            "x": 6000,
+            "y": 2000
+          },
+          "dir": "y+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            2400
+          ],
+          "allowsDirectionChange": true
         }
       ],
       "mirrorable": true,
@@ -484,9 +500,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1000,
-            "l": 6000,
-            "w": 1000
+            "y": -1201,
+            "l": 8141,
+            "w": 1201
           },
           "label": "Service transportör"
         }
@@ -555,9 +571,9 @@
       "summary": "Lyfter paket med 4 gafflar. Fast monterad i betong- eller balkfundament.",
       "aiDescription": "En paketlyft med fast stativ och fyra lyftgafflar, byggd kring ett kraftigt balkstativ monterat direkt i betong- eller balkfundament. En 70 mm axel bär lyftkedjorna och drivningen sker via en SEW kuggväxel med broms.\nDe fyra lyftkedjorna har individuella höjdjusteringar, vilket ger kontrollerad lyftning även när paketet är ojämnt. Gafflarna är testade och godkända för två hela paket i längd 5,4 meter.\nDen är fast monterad — kan alltså inte flyttas i sidled. Behöver kunden köra gafflarna in och ut ur rullbanan ska Paketlyft monterad på vagn väljas i stället.\nKräver fundament och därför besked om golvets bärighet tidigt i projektet.",
       "footprint": {
-        "lengthMm": 2600,
-        "widthMm": 6200,
-        "heightMm": 5200
+        "lengthMm": 2584,
+        "widthMm": 3650,
+        "heightMm": 3131
       },
       "ports": [
         {
@@ -565,7 +581,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 3100
+            "y": 1825
           },
           "dir": "x+",
           "levelMm": 900,
@@ -579,8 +595,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 2600,
-            "y": 3100
+            "x": 2584,
+            "y": 1825
           },
           "dir": "x+",
           "levelMm": 900,
@@ -599,8 +615,8 @@
           "box": {
             "x": -800,
             "y": -800,
-            "l": 4200,
-            "w": 7800
+            "l": 4184,
+            "w": 5250
           },
           "label": "Skyddszon lyft"
         },
@@ -609,8 +625,8 @@
           "box": {
             "x": 0,
             "y": 0,
-            "l": 2600,
-            "w": 6200
+            "l": 2584,
+            "w": 3650
           },
           "label": "Fundament"
         }
@@ -661,7 +677,12 @@
           "step": 100,
           "defaultNumber": 2500
         }
-      ]
+      ],
+      "model": {
+        "glb": "/models/paketlyft-fast.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "paketlyft-vagn",
@@ -1083,9 +1104,9 @@
       "summary": "Pneumatisk sidopress med två vertikala pressbalkar.",
       "aiDescription": "En paketpress med två vertikala pressbalkar för sidopress av virkespaket, driven av pneumatik. Den monteras före eller efter bandramen.\nStativet är i HEB100-balk och pressbalkarna i KKR-rör. Två vagnar med lagrade, justerbara stålhjul bär balkarna. Två cylindrar med diameter 100 mm ger slaglängd 2 × 350 mm och en presskraft på cirka 600 kg vid 8 bar. Levereras klar för inkoppling med luftventil och givare.\nDen pressar bara från sidorna — inte ovanifrån. Behöver kunden press även ovanifrån, eller mycket högre presskraft, är det den hydrauliska paketpressen som gäller. Lättpressen är snabbare, enklare och kräver ingen hydraulik i anläggningen.",
       "footprint": {
-        "lengthMm": 2600,
-        "widthMm": 4000,
-        "heightMm": 3000
+        "lengthMm": 180,
+        "widthMm": 2440,
+        "heightMm": 1832
       },
       "ports": [
         {
@@ -1093,7 +1114,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 2000
+            "y": 1220
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1107,8 +1128,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 2600,
-            "y": 2000
+            "x": 180,
+            "y": 1220
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1126,9 +1147,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1200,
-            "l": 2600,
-            "w": 1200
+            "y": -732,
+            "l": 180,
+            "w": 732
           },
           "label": "Service lättpress"
         }
@@ -1183,7 +1204,12 @@
           "step": 1,
           "defaultNumber": 8
         }
-      ]
+      ],
+      "model": {
+        "glb": "/models/lattpress.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "emballageutlaggare",
@@ -1193,9 +1219,9 @@
       "summary": "Rullar ut och kapar täckplast. Två utmatningsrullar och två knivar.",
       "aiDescription": "En maskin som matar ut och kapar täckplast över virkespaket. Plasten matas ut via belagda utmatningsrullar drivna av SEW kuggväxlar; gummihjul pressar plasten mot rullarna för stabil utmatning, och en pneumatiskt styrd kniv klipper av den.\nTvå utmatningsrullar och två knivar gör att maskinen hanterar två olika plastbredder utan omställning. Det finns plats för 2 + 2 plastrullar — två rullar per hållare, en hållare över varje utmatningsrulle. Max längd på plastrullen i standardutförande är 2600 mm.\nStativet kan sänkas ner hydrauliskt vid laddning av rullar och vid service, vilket kräver fritt utrymme ovanför och framför maskinen.\nPlaceras sist i linjen, efter bandning, när paketen ska levereras väderskyddade.",
       "footprint": {
-        "lengthMm": 2200,
-        "widthMm": 3800,
-        "heightMm": 3400
+        "lengthMm": 1448,
+        "widthMm": 4579,
+        "heightMm": 2887
       },
       "ports": [
         {
@@ -1203,7 +1229,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1900
+            "y": 2373
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1217,8 +1243,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 2200,
-            "y": 1900
+            "x": 1448,
+            "y": 2300
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1236,9 +1262,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1500,
-            "l": 2200,
-            "w": 1500
+            "y": -572,
+            "l": 4579,
+            "w": 572
           },
           "label": "Laddning av plastrullar"
         }
@@ -1290,7 +1316,12 @@
           "step": 100,
           "defaultNumber": 2600
         }
-      ]
+      ],
+      "model": {
+        "glb": "/models/emballageutlaggare.glb",
+        "upAxis": "y",
+        "yawDeg": 180
+      }
     },
     {
       "id": "rullbana",
@@ -1663,9 +1694,9 @@
       "summary": "Matar och för om bandet vid bandning. Fromms E101, bandram i HD 1000.",
       "aiDescription": "En station för bandomföring med en Fromms E101-motor för bandmatning och en bandram i plast HD 1000 med fjädrande vingar i rostfri plåt.\nBandmaskinen hängs upp i en arm kopplad till ett balansblock, vilket gör den lätt att hantera och positionera. Operatören manövrerar bandmatningen via en knappdosa med nödstopp medan motorn sköter matningen genom bandramen.\nElskåpet innehåller huvudbrytare, nätaggregat 24 VDC, reläer och plintar. Elritningar levereras i Elprocad tillsammans med serviceunderlag, bruksanvisning och reservdelslista.\nBandavrullare samt anslutning av luft och el tillkommer.\nDet här är den manuellt manövrerade varianten. Ska bandomföringen ske automatiskt är det varianten med pneumatiskt spjut som gäller.",
       "footprint": {
-        "lengthMm": 1600,
-        "widthMm": 3400,
-        "heightMm": 3000
+        "lengthMm": 600,
+        "widthMm": 2175,
+        "heightMm": 2427
       },
       "ports": [
         {
@@ -1673,7 +1704,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1700
+            "y": 1216
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1687,8 +1718,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 1600,
-            "y": 1700
+            "x": 600,
+            "y": 1168
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1706,9 +1737,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1400,
-            "l": 1600,
-            "w": 1400
+            "y": -247,
+            "l": 2175,
+            "w": 247
           },
           "label": "Operatörsplats bandning"
         }
@@ -1762,7 +1793,12 @@
           "step": 1,
           "defaultNumber": 2
         }
-      ]
+      ],
+      "model": {
+        "glb": "/models/bandomforing.glb",
+        "upAxis": "y",
+        "yawDeg": 0
+      }
     },
     {
       "id": "bandomforing-spjut",
@@ -2128,6 +2164,6 @@
     }
   },
   "assets": [],
-  "updatedAt": "2026-09-15T06:35:41.372Z",
+  "updatedAt": "2026-09-15T07:47:28.559Z",
   "updatedBy": "admin"
 }

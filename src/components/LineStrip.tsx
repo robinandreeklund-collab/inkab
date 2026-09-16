@@ -47,6 +47,7 @@ export function LineStrip() {
               }`}
             >
               <button
+                data-edge={edge.id}
                 onClick={() => selectEdge(active ? null : edge.id)}
                 className={`w-[124px] flex-none border px-1.5 py-1 text-left leading-tight ${
                   active ? "border-accent text-accent" : "border-transparent hover:border-divider"

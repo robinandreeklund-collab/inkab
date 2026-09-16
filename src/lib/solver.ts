@@ -961,7 +961,16 @@ function walkGraph(
      * stycket är rakt, så en omkörning räcker.
      */
     const fit = fittableOf(entries);
-    if (edge.fit && target && fit && run.placements.length > 0) {
+    /*
+     * Banan kapas till det som ritats, när det finns en bana som går att kapa.
+     *
+     * En rullbana byggs i sektioner och en kedjetransportör kapas till längd —
+     * längden är kundens val, inte maskinens egenskap. Då är den ritade
+     * sträckan svaret på den frågan, och att låta en tolvmetersbana skjuta ut
+     * tretton meter förbi punkten man siktat på vore att strunta i ritningen.
+     * Maskiner med bestämt mått rör vi inte; där mäts glappet i stället.
+     */
+    if ((edge.fit ?? true) && target && fit && run.placements.length > 0) {
       const v = DIR_VEC[run.cursor.dir];
       const delta = (target.at.x - run.cursor.point.x) * v.x + (target.at.y - run.cursor.point.y) * v.y;
       const limits = fit.machine.parametricLength;

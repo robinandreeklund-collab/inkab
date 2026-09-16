@@ -583,8 +583,8 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
       instanceIds: run.fittable ? [run.fittable.instanceId] : [],
       anchor: target.at,
       fix:
-        run.fittable && !edge.fit
-          ? { kind: "fitEdge", edgeId: edge.id, label: `Sträck ${label(edge)} till ${target.name}` }
+        run.fittable && edge.fit === false
+          ? { kind: "fitEdge", edgeId: edge.id, label: `Kapa ${label(edge)} till ritningen` }
           : undefined,
     });
   }

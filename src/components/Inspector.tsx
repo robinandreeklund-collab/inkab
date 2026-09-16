@@ -471,11 +471,11 @@ function EdgePanel({
                 <label className="mt-1 flex items-center gap-2 text-[11px]">
                   <input
                     type="checkbox"
-                    checked={!!edge.fit}
+                    checked={edge.fit ?? true}
                     onChange={(e) => onFit(e.target.checked)}
                     className="accent-accent"
                   />
-                  Sträck banan så att den når fram
+                  Kapa banan till det du ritat
                 </label>
               ) : (
                 <p className="mt-1 text-[11px] text-muted">

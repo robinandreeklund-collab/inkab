@@ -131,12 +131,18 @@ describe("två inmatningar mot en gemensam bana", () => {
     }
   });
 
-  it("lägger inte två inmatningar på varandra när de möter linjen på olika ställen", () => {
-    // Så ser en riktig anläggning ut: vägarna går ihop på var sitt ställe
-    // längs den gemensamma banan, inte i exakt samma punkt.
+  it("lägger inte två inmatningar på varandra när den andra kommer uppifrån", () => {
+    /*
+     * Så ser skissen ut: den andra vägen in kommer ned genom kedjekanaler och
+     * möter banan i rät vinkel, en bit längre fram. Två vägar som båda ritats
+     * längs samma riktning mot samma punkt hamnar däremot på varandra — och
+     * ska göra det, för det är vad de betyder.
+     */
     const { config: eget, graph } = tvågrenatFlöde();
+    const in2 = graph.nodes.find((n) => n.name === "Inport 2")!;
     const andraMötet = makeNode(graph, "junction", { x: 26000, y: 6000 });
     graph.nodes.push(andraMötet);
+    in2.at = { x: 26000, y: 17000 };
     graph.edges[1] = { ...graph.edges[1], toNodeId: andraMötet.id };
     graph.edges.push(makeEdge(graph, andraMötet.id, graph.edges[2].toNodeId));
 
@@ -186,18 +192,28 @@ describe("reglerna för skelettet", () => {
     expect(glapp[0].detail).toMatch(/m från den ritade punkten/);
   });
 
-  it("erbjuder att sträcka banan när en fortsättning inte når fram", () => {
+  it("erbjuder att kapa banan till ritningen när någon stängt av det", () => {
     const { config, graph } = tvågrenatFlöde();
-    // Den gemensamma banan fortsätter efter mötet och är alltså fastkopplad i
-    // sin början — den kan inte flyttas i efterhand, bara sträckas.
+    // Den gemensamma banan fortsätter efter mötet och är fastkopplad i sin
+    // början — den kan bara kapas, inte flyttas. Med kapningen avstängd ska
+    // glappet rapporteras med åtgärden att slå på den igen.
     graph.nodes.find((n) => n.name === "Korsning 2")!.at = { x: 44000, y: 6000 };
+    graph.edges[2] = { ...graph.edges[2], fit: false };
 
     const fix = computeLayout(config, library)
       .diagnostics.filter((d) => d.code === "R-701")
       .map((d) => d.fix)
       .find((f) => f?.kind === "fitEdge");
 
-    expect(fix?.label).toMatch(/^Sträck /);
+    expect(fix?.label).toMatch(/^Kapa /);
+  });
+
+  it("kapar banan till den ritade sträckan utan att någon ber om det", () => {
+    const { config, graph } = tvågrenatFlöde();
+    graph.nodes.find((n) => n.name === "Korsning 2")!.at = { x: 30000, y: 6000 };
+
+    const run = solveLayout(config, library).edgeRuns.find((r) => r.edgeId === graph.edges[2].id)!;
+    expect(run.gapMm).toBeLessThanOrEqual(1);
   });
 
   it("sträcker banan när grenen är satt att nå fram", () => {

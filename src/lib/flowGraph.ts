@@ -157,6 +157,79 @@ export function isSharedNode(graph: FlowGraph, nodeId: string): boolean {
   return edgesTo(graph, nodeId).length + edgesFrom(graph, nodeId).length > 1;
 }
 
+/** Hur nära en sträcka en pil får släppas för att fästa i den, mm. */
+export const SNAP_TO_EDGE_MM = 1800;
+
+/** Närmaste punkt på en sträcka mellan a och b, och avståndet dit. */
+function projectOnSegment(p: Vec2, a: Vec2, b: Vec2): { at: Vec2; away: number } {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const len2 = vx * vx + vy * vy;
+  const t = len2 === 0 ? 0 : Math.max(0, Math.min(1, ((p.x - a.x) * vx + (p.y - a.y) * vy) / len2));
+  const at = { x: Math.round(a.x + vx * t), y: Math.round(a.y + vy * t) };
+  return { at, away: Math.hypot(p.x - at.x, p.y - at.y) };
+}
+
+/**
+ * Sträckan en pil släpptes på, om den släpptes på en.
+ *
+ * Inportarna på en verklig skiss möts inte i banans ände — de går in mitt på
+ * den. Utan det här fastnade en pil bara i en ändpunkt, och en pil dragen mot
+ * mitten av banan blev en egen frikopplad linje bredvid.
+ */
+export function edgeNear(
+  graph: FlowGraph,
+  at: Vec2,
+  within = SNAP_TO_EDGE_MM,
+): { edge: FlowEdge; at: Vec2 } | null {
+  let best: { edge: FlowEdge; at: Vec2; away: number } | null = null;
+
+  for (const edge of graph.edges) {
+    const from = nodeById(graph, edge.fromNodeId);
+    const to = nodeById(graph, edge.toNodeId);
+    if (!from || !to) continue;
+
+    const hit = projectOnSegment(at, from.at, to.at);
+    if (hit.away <= within && (!best || hit.away < best.away)) {
+      best = { edge, at: hit.at, away: hit.away };
+    }
+  }
+
+  return best ? { edge: best.edge, at: best.at } : null;
+}
+
+/**
+ * Klipper en sträcka i en punkt på den, och flyttar maskinerna bortom punkten
+ * till fortsättningen. Samma sak som att klippa vid en maskin, men för den som
+ * siktar på banan i stället för på något som står på den.
+ */
+export function splitEdgeAt(
+  graph: FlowGraph,
+  line: LineItem[],
+  edgeId: string,
+  at: Vec2,
+  movingIds: string[],
+): { graph: FlowGraph; line: LineItem[]; nodeId: string } | null {
+  const edge = graph.edges.find((e) => e.id === edgeId);
+  if (!edge) return null;
+
+  const junction = makeNode(graph, "junction", at);
+  const rest = makeEdge(graph, junction.id, edge.toNodeId);
+  const moved = new Set(movingIds);
+
+  return {
+    graph: {
+      nodes: [...graph.nodes, junction],
+      edges: [
+        ...graph.edges.map((e) => (e.id === edge.id ? { ...e, toNodeId: junction.id } : e)),
+        rest,
+      ],
+    },
+    line: line.map((i) => (moved.has(i.instanceId) ? { ...i, edgeId: rest.id } : i)),
+    nodeId: junction.id,
+  };
+}
+
 export function distance(a: Vec2, b: Vec2): number {
   return Math.round(Math.hypot(a.x - b.x, a.y - b.y));
 }

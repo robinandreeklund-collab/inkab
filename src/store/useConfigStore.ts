@@ -7,12 +7,15 @@ import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
 import {
   EMPTY_GRAPH,
+  edgeDirection,
+  edgeNear,
   makeEdge,
   makeNode,
   nodeNear,
   orderedEdges,
   removeNode,
   splitEdge,
+  splitEdgeAt,
 } from "@/lib/flowGraph";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
@@ -506,6 +509,35 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           // Släpps pilen på en punkt som redan finns är det den som menas.
           const near = nodeNear(graph, side.at);
           if (near) return near.id;
+
+          /*
+           * Släpps den på en bana går den ihop med banan där. En inport möts
+           * sällan i banans ände; den går in mitt på den, och då ska banan
+           * klippas i just den punkten.
+           */
+          const onEdge = edgeNear(graph, side.at);
+          if (onEdge) {
+            const dir = edgeDirection(graph, onEdge.edge);
+            const along = (p: Vec2) =>
+              dir === "x+" ? p.x : dir === "x-" ? -p.x : dir === "y+" ? p.y : -p.y;
+            const gräns = along(onEdge.at);
+            const placements = get().layout.placements;
+            const moving = line
+              .filter((i) => i.edgeId === onEdge.edge.id)
+              .filter((i) => {
+                const placement = placements.find((p) => p.instanceId === i.instanceId);
+                return placement ? along(placement.origin) >= gräns : false;
+              })
+              .map((i) => i.instanceId);
+
+            const split = splitEdgeAt(graph, line, onEdge.edge.id, onEdge.at, moving);
+            if (split) {
+              graph = split.graph;
+              line = split.line;
+              return split.nodeId;
+            }
+          }
+
           const node = makeNode(graph, "junction", side.at, "x+");
           graph.nodes.push(node);
           return node.id;

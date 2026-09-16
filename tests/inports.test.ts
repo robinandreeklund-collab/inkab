@@ -3,7 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { computeLayout } from "@/lib/layout";
 import { pickInPort, solveLayout } from "@/lib/solver";
-import { inPortOf, usedInPorts } from "@/lib/branches";
+import { feedInPorts, inPortOf, usedInPorts } from "@/lib/branches";
 import { BUILTIN_MACHINES, makeLibrary } from "@/lib/library";
 import { defaultConfig } from "@/lib/templates";
 import type { Configuration, LineItem, Machine } from "@/lib/types";
@@ -209,5 +209,54 @@ describe("dubbelbokad ingång", () => {
       line: [item("rullbana"), item("kedjetransportor"), item("bandomforing")],
     };
     expect(koden(config)).toHaveLength(0);
+  });
+});
+
+/**
+ * feedInPorts.
+ *
+ * Låg först som en filter/map inne i inspektorn, med `i.feeds!.inPortId`.
+ * Utan markerad maskin blev jämförelsen `undefined === undefined` sann för
+ * varje post utan matarlinje, och då sprack `!`-et på nästa rad. Utropstecknet
+ * var det som dolde felet för typkontrollen — därför ligger den här nu, där
+ * den går att prova.
+ */
+describe("feedInPorts", () => {
+  it("ger tom mängd för en linje utan matarlinjer", () => {
+    const line = [item("rullbana"), item("kedjetransportor")];
+    expect(feedInPorts(line, line[0].instanceId).size).toBe(0);
+  });
+
+  it("kraschar inte på poster som saknar matarlinje", () => {
+    const bana = item("bana-2in");
+    const line = [
+      item("rullbana"),
+      bana,
+      item("rullbana", { feeds: { toInstanceId: bana.instanceId, inPortId: "in2" } }),
+    ];
+    expect(() => feedInPorts(line, bana.instanceId)).not.toThrow();
+    expect([...feedInPorts(line, bana.instanceId)]).toEqual(["in2"]);
+  });
+
+  it("svarar tomt för en maskin som inte matas", () => {
+    const bana = item("bana-2in");
+    const annan = item("rullbana");
+    const line = [
+      annan,
+      bana,
+      item("rullbana", { feeds: { toInstanceId: bana.instanceId, inPortId: "in2" } }),
+    ];
+    expect(feedInPorts(line, annan.instanceId).size).toBe(0);
+  });
+
+  it("tar inte med matarlinjer som går till en annan maskin", () => {
+    const a = item("bana-2in");
+    const b = item("bana-2in");
+    const line = [
+      a,
+      b,
+      item("rullbana", { feeds: { toInstanceId: a.instanceId, inPortId: "in2" } }),
+    ];
+    expect(feedInPorts(line, b.instanceId).size).toBe(0);
   });
 });

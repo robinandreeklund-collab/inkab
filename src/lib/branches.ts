@@ -137,6 +137,20 @@ export function usedInPorts(line: LineItem[], instanceId: string, machine: Machi
   return used;
 }
 
+/**
+ * Ingångar som en matarlinje redan mynnar i.
+ *
+ * De kan inte också ta emot huvudflödet — två linjer i samma ingång är inte
+ * en sammanslagning utan två maskiner på samma punkt.
+ */
+export function feedInPorts(line: LineItem[], instanceId: string): Set<string> {
+  const out = new Set<string>();
+  for (const item of line) {
+    if (item.feeds && item.feeds.toInstanceId === instanceId) out.add(item.feeds.inPortId);
+  }
+  return out;
+}
+
 /** Ingången posten tar emot flödet i. Utan val gäller maskinens första. */
 export function inPortOf(item: LineItem | undefined, machine: Machine): string {
   const ins = machine.ports.filter((p) => p.role === "in");

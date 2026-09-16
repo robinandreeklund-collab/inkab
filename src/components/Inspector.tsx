@@ -6,7 +6,7 @@ import { meters, parseMeters } from "@/lib/format";
 import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
-import { usedInPorts, usedOutPorts } from "@/lib/branches";
+import { feedInPorts, usedInPorts, usedOutPorts } from "@/lib/branches";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
@@ -43,16 +43,8 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     item && placement
       ? usedInPorts(config.line, item.instanceId, placement.machine)
       : new Set<string>();
-  /*
-   * Ingångar som en matarlinje redan mynnar i. De går inte att också ta emot
-   * huvudflödet i — två linjer i samma ingång är inte en sammanslagning utan
-   * två maskiner på samma punkt.
-   */
-  const fedIn = new Set(
-    config.line
-      .filter((i) => i.feeds?.toInstanceId === item?.instanceId)
-      .map((i) => i.feeds!.inPortId),
-  );
+  /** Ingångar som en matarlinje redan mynnar i, se feedInPorts. */
+  const fedIn = item ? feedInPorts(config.line, item.instanceId) : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (

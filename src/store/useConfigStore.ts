@@ -5,28 +5,12 @@ import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
-import {
-  EMPTY_GRAPH,
-  edgeDirection,
-  edgeNear,
-  makeEdge,
-  makeNode,
-  nodeNear,
-  orderedEdges,
-  removeNode,
-  splitEdge,
-  splitEdgeAt,
-} from "@/lib/flowGraph";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
   Configuration,
-  Dir,
   DrawnObject,
   Flow,
-  FlowEdge,
-  FlowGraph,
-  FlowNode,
   LayoutResult,
   Machine,
   ParameterValue,
@@ -44,7 +28,7 @@ const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
 
-export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure" | "flow";
+export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 export type ViewMode = "2d" | "3d" | "model";
 export type Unit = "m" | "mm";
 
@@ -54,11 +38,6 @@ type Screen = "onboarding" | "configurator" | "quote";
  * Vad som hände när sidan öppnades med en delningslänk. Null betyder att
  * ingen länk var med — inte att allt gick bra.
  */
-/** Var en ritad pil fäster: på golvet, eller vid en maskin. */
-export type FlowAnchor =
-  | { kind: "point"; at: Vec2 }
-  | { kind: "machine"; instanceId: string; at: Vec2 };
-
 export type ShareNotice =
   | { kind: "loaded"; reference: string; hadLocalDraft: boolean }
   | { kind: "unreadable" }
@@ -100,12 +79,6 @@ type State = {
    * gren i stället för att läggas sist.
    */
   branchTarget: { instanceId: string; outPortId: string } | null;
-  /**
-   * Grenen nya maskiner hamnar på. Satt genom att markera en sträcka i
-   * ritningen eller i linjeremsan. Utan markering hamnar de på den första
-   * grenen, som är den maskinerna annars hade legat i.
-   */
-  selectedEdgeId: string | null;
 };
 
 type Actions = {
@@ -140,26 +113,6 @@ type Actions = {
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
-  /* ── Flödesskelettet ──────────────────────────────────────────────── */
-  /**
-   * Ritar en pil i flödet. Pilens riktning är paketens riktning, och vad den
-   * betyder avgörs av vad den rör: golv → maskin är en inmatning dit, maskin
-   * → golv en väg ut därifrån.
-   */
-  drawFlowArrow: (from: FlowAnchor, to: FlowAnchor) => string | null;
-  /** Lägger en nod och returnerar dess id. */
-  addFlowNode: (kind: FlowNode["kind"], at: Vec2, dir?: Dir) => string;
-  /** Drar en sträcka mellan två noder. */
-  connectFlow: (fromNodeId: string, toNodeId: string | null) => string | null;
-  moveFlowNode: (id: string, at: Vec2) => void;
-  updateFlowNode: (id: string, patch: Partial<Omit<FlowNode, "id">>) => void;
-  updateFlowEdge: (id: string, patch: Partial<Omit<FlowEdge, "id">>) => void;
-  removeFlowNode: (id: string) => void;
-  removeFlowEdge: (id: string) => void;
-  selectEdge: (id: string | null) => void;
-  /** Rensar hela skelettet och lämnar maskinerna i en vanlig linje. */
-  clearFlowGraph: () => void;
-
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
   removeDrawn: (id: string) => void;
@@ -279,7 +232,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     log: [],
     proposalId: null,
     branchTarget: null,
-    selectedEdgeId: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -372,21 +324,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        */
       const target = get().branchTarget;
       if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
-
-      /*
-       * Är flödet ritat hör maskinen till en gren, inte till en position i
-       * listan. Den markerade grenen gäller; utan markering den första, som
-       * är den maskinerna annars hade hamnat i.
-       */
-      const graph = get().config.flowGraph;
-      if (graph && graph.edges.length > 0) {
-        // Markerad gren först, annars grenen den markerade maskinen står på,
-        // annars den första — den som är huvudlinjen i det ritade flödet.
-        const beside = get().config.line.find((i) => i.instanceId === get().selectedId);
-        item.edgeId =
-          get().selectedEdgeId ?? beside?.edgeId ?? orderedEdges(graph)[0]?.id ?? graph.edges[0].id;
-      }
-
       const fallback = target
         ? segmentEndIndex(get().config.line, target.instanceId)
         : segmentEndIndex(get().config.line, get().selectedId);
@@ -465,204 +402,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (item) delete item.manualOffset;
       }),
 
-    /* ── Flödesskelettet ────────────────────────────────────────────── */
-
-    drawFlowArrow: (from, to) => {
-      const before = get().config;
-      let graph: FlowGraph = before.flowGraph
-        ? clone(before.flowGraph)
-        : { nodes: [], edges: [] };
-      let line = clone(before.line);
-
-      /*
-       * Första pilen är linjen.
-       *
-       * Förr la den här koden till en osynlig sträcka från flödets startpunkt
-       * tvärs hallen, så att maskinerna hade någonstans att bo. Resultatet var
-       * att den som ritade sitt flöde fick en gren till som hen aldrig ritat —
-       * och maskinerna stod kvar på den, långt från pilarna. Nu blir pilen
-       * linjen, och maskinerna följer med dit.
-       *
-       * Undantaget är när pilen fäster i en maskin. Då finns linjen redan och
-       * ska klippas, så den behöver en sträcka att klippas ur.
-       */
-      const startingFresh = graph.edges.length === 0;
-      const touchesMachine = from.kind === "machine" || to.kind === "machine";
-
-      if (startingFresh && touchesMachine && line.length > 0) {
-        const bounds = get().layout.bounds;
-        const start = makeNode(graph, "infeed", before.flow.startPoint, "x+");
-        const end = makeNode(graph, "outfeed", {
-          // Där linjen faktiskt slutar idag, så att skelettet ligger på den.
-          x: Math.round(bounds.x + bounds.l),
-          y: before.flow.startPoint.y,
-        });
-        graph.nodes.push(start, end);
-        const spine = makeEdge(graph, start.id, end.id);
-        graph.edges.push(spine);
-        line = line.map((i) => (i.edgeId ? i : { ...i, edgeId: spine.id }));
-      }
-
-      /** Punkten en ände fäster i: en befintlig nod, en ny på golvet, eller en maskin. */
-      const anchor = (side: FlowAnchor, where: "before" | "after"): string | null => {
-        if (side.kind === "point") {
-          // Släpps pilen på en punkt som redan finns är det den som menas.
-          const near = nodeNear(graph, side.at);
-          if (near) return near.id;
-
-          /*
-           * Släpps den på en bana går den ihop med banan där. En inport möts
-           * sällan i banans ände; den går in mitt på den, och då ska banan
-           * klippas i just den punkten.
-           */
-          const onEdge = edgeNear(graph, side.at);
-          if (onEdge) {
-            const dir = edgeDirection(graph, onEdge.edge);
-            const along = (p: Vec2) =>
-              dir === "x+" ? p.x : dir === "x-" ? -p.x : dir === "y+" ? p.y : -p.y;
-            const gräns = along(onEdge.at);
-            const placements = get().layout.placements;
-            const moving = line
-              .filter((i) => i.edgeId === onEdge.edge.id)
-              .filter((i) => {
-                const placement = placements.find((p) => p.instanceId === i.instanceId);
-                return placement ? along(placement.origin) >= gräns : false;
-              })
-              .map((i) => i.instanceId);
-
-            const split = splitEdgeAt(graph, line, onEdge.edge.id, onEdge.at, moving);
-            if (split) {
-              graph = split.graph;
-              line = split.line;
-              return split.nodeId;
-            }
-          }
-
-          const node = makeNode(graph, "junction", side.at, "x+");
-          graph.nodes.push(node);
-          return node.id;
-        }
-        /*
-         * Mötet läggs på maskinens port, inte där pekaren råkade släppas.
-         * Det är porten paketen faktiskt kommer in i eller lämnar ur, och en
-         * gren som slutar en meter bredvid den ser fel ut i ritningen.
-         */
-        const placement = get().layout.placements.find((p) => p.instanceId === side.instanceId);
-        const port = placement?.ports.find((p) => p.role === (where === "before" ? "in" : "out"));
-        const split = splitEdge(graph, line, side.instanceId, port?.pos ?? side.at, where);
-        if (!split) return null;
-        graph = split.graph;
-        line = split.line;
-        return split.nodeId;
-      };
-
-      // Källan först: en delning sker efter maskinen man drar ifrån.
-      const fromId = anchor(from, "after");
-      const toId = anchor(to, "before");
-      if (!fromId || !toId || fromId === toId) return null;
-
-      const edge = makeEdge(graph, fromId, toId);
-      graph.edges.push(edge);
-
-      // Den allra första pilen tar med sig linjen som redan står i hallen.
-      if (startingFresh && !touchesMachine) {
-        line = line.map((i) => (i.edgeId ? i : { ...i, edgeId: edge.id }));
-      }
-
-      get().update((d) => {
-        d.flowGraph = graph;
-        d.line = line;
-      });
-      set({ selectedEdgeId: edge.id, selectedId: null });
-      return edge.id;
-    },
-
-    addFlowNode: (kind, at, dir = "x+") => {
-      const graph = get().config.flowGraph ?? EMPTY_GRAPH;
-      const node = makeNode(graph, kind, at, dir);
-      get().update((d) => {
-        d.flowGraph = d.flowGraph ?? { nodes: [], edges: [] };
-        d.flowGraph.nodes.push(node);
-      });
-      return node.id;
-    },
-
-    connectFlow: (fromNodeId, toNodeId) => {
-      const graph = get().config.flowGraph ?? EMPTY_GRAPH;
-      if (fromNodeId === toNodeId) return null;
-      // Samma sträcka två gånger är ingen ny väg, bara en dubbelritad.
-      if (graph.edges.some((e) => e.fromNodeId === fromNodeId && e.toNodeId === toNodeId)) {
-        return null;
-      }
-      const edge = makeEdge(graph, fromNodeId, toNodeId);
-      const first = graph.edges.length === 0;
-      get().update((d) => {
-        d.flowGraph = d.flowGraph ?? { nodes: [], edges: [] };
-        d.flowGraph.edges.push(edge);
-        /*
-         * Första sträckan ärver linjen som redan står i hallen. Maskinerna
-         * byggdes innan flödet ritades och hör till den vägen — att låta dem
-         * hänga utan gren vore att göra dem osynliga i remsan medan de står
-         * kvar i ritningen.
-         */
-        if (first) for (const item of d.line) if (!item.edgeId) item.edgeId = edge.id;
-      });
-      set({ selectedEdgeId: edge.id });
-      return edge.id;
-    },
-
-    moveFlowNode: (id, at) =>
-      get().update((d) => {
-        const node = d.flowGraph?.nodes.find((n) => n.id === id);
-        if (node) node.at = at;
-      }),
-
-    updateFlowNode: (id, patch) =>
-      get().update((d) => {
-        const node = d.flowGraph?.nodes.find((n) => n.id === id);
-        if (node) Object.assign(node, patch);
-      }),
-
-    updateFlowEdge: (id, patch) =>
-      get().update((d) => {
-        const edge = d.flowGraph?.edges.find((e) => e.id === id);
-        if (edge) Object.assign(edge, patch);
-      }),
-
-    removeFlowNode: (id) => {
-      const doomed = (get().config.flowGraph?.edges ?? [])
-        .filter((e) => e.fromNodeId === id || e.toNodeId === id)
-        .map((e) => e.id);
-      get().update((d) => {
-        if (!d.flowGraph) return;
-        d.flowGraph = removeNode(d.flowGraph, id);
-        // Maskinerna på en borttagen sträcka blir kvar i listan, utan gren.
-        // De syns i linjeremsan och kan flyttas till en annan — att kasta
-        // dem vore att kasta någons arbete för att en punkt togs bort.
-        for (const item of d.line) if (item.edgeId && doomed.includes(item.edgeId)) delete item.edgeId;
-      });
-      if (doomed.includes(get().selectedEdgeId ?? "")) set({ selectedEdgeId: null });
-    },
-
-    removeFlowEdge: (id) => {
-      get().update((d) => {
-        if (!d.flowGraph) return;
-        d.flowGraph.edges = d.flowGraph.edges.filter((e) => e.id !== id);
-        for (const item of d.line) if (item.edgeId === id) delete item.edgeId;
-      });
-      if (get().selectedEdgeId === id) set({ selectedEdgeId: null });
-    },
-
-    selectEdge: (id) => set({ selectedEdgeId: id, selectedId: null }),
-
-    clearFlowGraph: () => {
-      get().update((d) => {
-        delete d.flowGraph;
-        for (const item of d.line) delete item.edgeId;
-      });
-      set({ selectedEdgeId: null });
-    },
-
     addDrawn: (obj) => {
       get().update((d) => {
         d.drawn.push(obj);
@@ -695,9 +434,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           break;
         case "addMachine":
           get().addMachine(patch.machineId);
-          break;
-        case "fitEdge":
-          get().updateFlowEdge(patch.edgeId, { fit: true });
           break;
         case "removeMachine":
           get().removeItem(patch.instanceId);

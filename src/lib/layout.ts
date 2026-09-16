@@ -19,7 +19,6 @@ export function computeLayout(
     bounds: solved.bounds,
     metrics: solved.metrics,
     diagnostics,
-    edgeRuns: solved.edgeRuns,
   };
 }
 

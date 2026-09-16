@@ -1,13 +1,3 @@
-import { segments } from "./branches";
-import {
-  EMPTY_GRAPH,
-  edgeDirection,
-  hasFlowGraph,
-  isSharedNode,
-  nodeById,
-  orderedEdges,
-  primaryIncoming,
-} from "./flowGraph";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "./library";
 import {
   DIR_VEC,
@@ -23,7 +13,6 @@ import {
 } from "./geometry";
 import type {
   Aisle,
-  EdgeRun,
   Box,
   Zone,
   Configuration,
@@ -637,8 +626,6 @@ export type SolveOutput = Omit<LayoutResult, "diagnostics"> & {
   lineEnd: Vec2 | null;
   /** Längden som sista parametriska maskinen fick, efter eventuell anpassning. */
   finalConveyorLengthMm: number;
-  /** Resultat per ritad sträcka. Tom lista när flödet inte är ritat. */
-  edgeRuns: EdgeRun[];
 };
 
 /**
@@ -664,63 +651,66 @@ type ChainResult = {
  * som redan är placerad. Alla grenar delar samma hinderlista, så en gren
  * lägger sig fritt från huvudlinjen i stället för rakt igenom den.
  */
-type PlacedShape = { instanceId: string; bbox: Box; clear: Box; ports: PlacedPort[] };
-
-type RunEntry = { item: LineItem; machine: Machine; pos: number };
-
-type RunContext = {
-  preferMirrored: boolean;
-  /** Maskiner som redan står i hallen. Delas av alla sträckor. */
-  placed: PlacedShape[];
-  /** Kapbara maskiner som fått en bestämd längd, per instans. */
-  lengths: Map<string, number>;
-};
-
-type RunResult = {
-  placements: Placement[];
-  unplaced: SolveOutput["unplaced"];
-  cursor: Cursor;
-  /** Sant om körningen någon gång pekade längs hallen. */
-  turnedToMainAxis: boolean;
-};
-
-/**
- * Placerar en följd maskiner från en markör.
- *
- * Det här är den enda platsen där en maskin hamnar någonstans. Trädet kör den
- * en gång per gren, skelettet en gång per sträcka — samma frigång, samma
- * portmatchning, samma ordning. Två kopior hade glidit isär vid första
- * buggen, och den ena hade varit den som kunden ser.
- */
-function placeRun(
-  entries: RunEntry[],
-  start: Cursor,
-  connectedToStart: string | null,
-  ctx: RunContext,
-): RunResult {
+function walkChain(
+  config: Configuration,
+  lineItems: { item: LineItem; machine: Machine }[],
+  parametricIndex: number,
+  finalLengthMm: number,
+  preferMirrored: boolean,
+): ChainResult {
   const placements: Placement[] = [];
   const unplaced: SolveOutput["unplaced"] = [];
-  let cursor = start;
-  let connectedTo = connectedToStart;
-  let turnedToMainAxis = cursor.dir === "x+";
+  /** Placerad geometri, delad av alla grenar. */
+  const placed: { instanceId: string; bbox: Box; clear: Box; ports: PlacedPort[] }[] = [];
 
-  for (const { item, machine, pos } of entries) {
+  let cursor = startCursor(config);
+  let turnedToMainAxis = cursor.dir === "x+";
+  /** Maskinen nästa post kopplas till, port mot port. */
+  let connectedTo: string | null = null;
+  /** Markören där huvudlinjen slutade, som är den slutpunkten gäller. */
+  let mainCursor: Cursor | null = null;
+  let inMain = true;
+
+  lineItems.forEach(({ item, machine }, index) => {
+    if (item.branch) {
+      // Grenrot: hoppa till den utpekade utgången på en redan placerad maskin.
+      if (inMain) mainCursor = cursor;
+      inMain = false;
+
+      const parent = placed.find((p) => p.instanceId === item.branch!.fromInstanceId);
+      const port = parent?.ports.find(
+        (p) => p.role === "out" && p.id === item.branch!.outPortId,
+      );
+      if (!parent || !port) {
+        unplaced.push({
+          instanceId: item.instanceId,
+          machineId: machine.id,
+          reason: parent
+            ? `Utgången "${item.branch.outPortId}" finns inte på maskinen grenen utgår från.`
+            : "Maskinen grenen utgår från ligger inte före den i linjen.",
+        });
+        return;
+      }
+      cursor = { point: port.pos, dir: port.dir };
+      connectedTo = parent.instanceId;
+    }
+
     const eff = effectiveMachine(
       machine,
       item.selectedOptions,
-      ctx.lengths.get(item.instanceId),
+      index === parametricIndex ? finalLengthMm : undefined,
       item.parameters,
       item.variantId,
     );
 
-    let result = placeOne(item, eff, pos, cursor, ctx.preferMirrored);
+    let result = placeOne(item, eff, index + 1, cursor, preferMirrored);
     if (!result) {
       unplaced.push({
         instanceId: item.instanceId,
         machineId: machine.id,
         reason: "Ingen port matchar det inkommande flödet.",
       });
-      continue;
+      return;
     }
 
     /*
@@ -728,7 +718,7 @@ function placeRun(
      * med sin maskinzon — utom den den kopplas till, som är inkopplad port mot
      * port och därför med rätta står i frigången framåt.
      */
-    const blockers = ctx.placed.map((p) => (p.instanceId === connectedTo ? p.bbox : p.clear));
+    const blockers = placed.map((p) => (p.instanceId === connectedTo ? p.bbox : p.clear));
     for (let attempt = 0; attempt < MAX_CLEARANCE_ATTEMPTS; attempt++) {
       const shift = clearanceShift(result.idealBbox, blockers, cursor.dir, TURN_CLEARANCE_MM);
       if (shift <= 0) break;
@@ -740,13 +730,13 @@ function placeRun(
           y: Math.round(cursor.point.y + v.y * shift),
         },
       };
-      const retry = placeOne(item, eff, pos, cursor, ctx.preferMirrored);
+      const retry = placeOne(item, eff, index + 1, cursor, preferMirrored);
       if (!retry) break;
       result = retry;
     }
 
     placements.push(result.placement);
-    ctx.placed.push({
+    placed.push({
       instanceId: item.instanceId,
       bbox: result.idealBbox,
       clear: result.idealClearBox,
@@ -754,98 +744,8 @@ function placeRun(
     });
     cursor = result.next;
     connectedTo = item.instanceId;
-    if (cursor.dir === "x+") turnedToMainAxis = true;
-  }
-
-  return { placements, unplaced, cursor, turnedToMainAxis };
-}
-
-/**
- * Bygger linjen — som är ett träd, inte en kedja.
- *
- * En maskin kan ha flera utgångar, och på var och en kan det hänga en gren.
- * Listan är platt och behåller sin ordning; grenarna ligger i länkarna. En
- * post med `branch` startar en gren på en tidigare maskins utgång, och allt
- * som följer i listan hör till samma gren tills nästa grenrot.
- *
- * Grenarna löses i listans ordning, så en gren kan alltid utgå från en maskin
- * som redan är placerad. Alla grenar delar samma hinderlista, så en gren
- * lägger sig fritt från huvudlinjen i stället för rakt igenom den.
- */
-function walkChain(
-  config: Configuration,
-  lineItems: { item: LineItem; machine: Machine }[],
-  parametricIndex: number,
-  finalLengthMm: number,
-  preferMirrored: boolean,
-): ChainResult {
-  const ctx: RunContext = {
-    preferMirrored,
-    placed: [],
-    lengths: new Map(
-      parametricIndex >= 0 && lineItems[parametricIndex]
-        ? [[lineItems[parametricIndex].item.instanceId, finalLengthMm]]
-        : [],
-    ),
-  };
-
-  const placements: Placement[] = [];
-  const unplaced: SolveOutput["unplaced"] = [];
-
-  let cursor = startCursor(config);
-  let turnedToMainAxis = cursor.dir === "x+";
-  let connectedTo: string | null = null;
-  /** Markören där huvudlinjen slutade, som är den slutpunkten gäller. */
-  let mainCursor: Cursor | null = null;
-  let inMain = true;
-
-  /*
-   * Listan delas i huvudlinje och grenar, och varje del körs som en följd.
-   * Grenroten flyttar markören till den utpekade utgången; resten av grenen
-   * fortsätter därifrån.
-   */
-  for (const segment of segments(lineItems.map((r) => r.item))) {
-    const entries: RunEntry[] = segment.indices.map((index) => ({
-      item: lineItems[index].item,
-      machine: lineItems[index].machine,
-      pos: index + 1,
-    }));
-
-    if (segment.branch) {
-      if (inMain) mainCursor = cursor;
-      inMain = false;
-
-      const parent = ctx.placed.find((p) => p.instanceId === segment.branch!.fromInstanceId);
-      const port = parent?.ports.find(
-        (p) => p.role === "out" && p.id === segment.branch!.outPortId,
-      );
-      if (!parent || !port) {
-        const root = entries[0];
-        unplaced.push({
-          instanceId: root.item.instanceId,
-          machineId: root.machine.id,
-          reason: parent
-            ? `Utgången "${segment.branch.outPortId}" finns inte på maskinen grenen utgår från.`
-            : "Maskinen grenen utgår från ligger inte före den i linjen.",
-        });
-        // Roten går inte att fästa, men resten av grenen har fortfarande en
-        // markör att bygga vidare från — precis som förut.
-        entries.shift();
-      } else {
-        cursor = { point: port.pos, dir: port.dir };
-        connectedTo = parent.instanceId;
-      }
-    }
-
-    const run = placeRun(entries, cursor, connectedTo, ctx);
-    placements.push(...run.placements);
-    unplaced.push(...run.unplaced);
-    cursor = run.cursor;
-    if (run.placements.length > 0) {
-      connectedTo = run.placements[run.placements.length - 1].instanceId;
-    }
-    if (inMain && run.turnedToMainAxis) turnedToMainAxis = true;
-  }
+    if (inMain && cursor.dir === "x+") turnedToMainAxis = true;
+  });
 
   return {
     placements,
@@ -853,236 +753,6 @@ function walkChain(
     // Slutpunkten gäller huvudlinjen; en gren slutar där den slutar.
     cursor: mainCursor ?? cursor,
     turnedToMainAxis,
-  };
-}
-
-/** Flyttar en färdig placering i sidled, utan att röra dess form. */
-function shiftPlacement(placement: Placement, dx: number, dy: number): Placement {
-  const box = (b: Box): Box => ({ ...b, x: b.x + dx, y: b.y + dy });
-  return {
-    ...placement,
-    origin: { x: placement.origin.x + dx, y: placement.origin.y + dy },
-    bbox: box(placement.bbox),
-    ports: placement.ports.map((port) => ({
-      ...port,
-      pos: { x: port.pos.x + dx, y: port.pos.y + dy },
-    })),
-    zones: placement.zones.map((zone) => ({ ...zone, box: box(zone.box) })),
-  };
-}
-
-/** Kapbar maskin på en sträcka: parametrisk längd, ingen modell, inga utföranden. */
-function fittableOf(entries: RunEntry[]): RunEntry | null {
-  for (let i = entries.length - 1; i >= 0; i--) {
-    const m = entries[i].machine;
-    if (m.parametricLength && !m.model && !(m.variants?.length ?? 0)) return entries[i];
-  }
-  return null;
-}
-
-/**
- * Bygger anläggningen ur det ritade flödet.
- *
- * Skelettet säger var paketen kommer in, var vägarna möts och var de går ut.
- * Varje sträcka placeras från sin startnod, i en ordning där den som matar en
- * korsning kommer före den som utgår från den.
- *
- * Två saker hålls isär med flit. Den ritade noden är kundens avsikt; kedjan
- * är fysik. Där flera vägar möts kan bara en vara inkopplad port mot port, så
- * fortsättningen utgår från den — och de andra får sitt glapp mätt i stället
- * för att tyst dras dit de inte når. Det är samma sak som slutpunkten alltid
- * gjort, fast per gren.
- */
-function walkGraph(
-  config: Configuration,
-  lineItems: { item: LineItem; machine: Machine }[],
-  preferMirrored: boolean,
-): ChainResult & { edgeRuns: EdgeRun[] } {
-  const graph = config.flowGraph ?? EMPTY_GRAPH;
-  const ctx: RunContext = { preferMirrored, placed: [], lengths: new Map() };
-
-  const placements: Placement[] = [];
-  const unplaced: SolveOutput["unplaced"] = [];
-  const edgeRuns: EdgeRun[] = [];
-  /** Var varje sträcka slutade, för den som utgår därifrån. */
-  const ends = new Map<string, { cursor: Cursor; lastInstanceId: string | null }>();
-
-  const order = orderedEdges(graph);
-  const firstEdgeId = order[0]?.id;
-
-  // Poster utan gren hör till den första — annars vore de osynliga i hallen.
-  const entryFor = (item: LineItem) => item.edgeId ?? firstEdgeId;
-
-  let turnedToMainAxis = false;
-  let mainCursor: Cursor | null = null;
-
-  for (const edge of order) {
-    const entries: RunEntry[] = lineItems
-      .map((r, index) => ({ ...r, pos: index + 1 }))
-      .filter((r) => entryFor(r.item) === edge.id);
-
-    const from = nodeById(graph, edge.fromNodeId);
-    const feeder = primaryIncoming(graph, edge.fromNodeId);
-    const fed = feeder ? ends.get(feeder.id) : undefined;
-
-    if (!from && !fed) {
-      for (const e of entries) {
-        unplaced.push({
-          instanceId: e.item.instanceId,
-          machineId: e.machine.id,
-          reason: `Sträckan "${edge.name}" saknar startnod.`,
-        });
-      }
-      continue;
-    }
-
-    /*
-     * Var sträckan börjar, och åt vilket håll.
-     *
-     * Punkten följer fysiken: fortsätter sträckan efter en annan börjar den
-     * där den slutade, port mot port. Riktningen följer ritningen: pilen är
-     * paketens väg, och drog kunden den nedåt ska maskinerna gå nedåt. Går de
-     * två isär — en pil som svänger där maskinen inte kan svänga — är det
-     * reglernas sak att säga det, inte solverns att tyst räta ut den.
-     */
-    const drawn = edgeDirection(graph, edge);
-    const start: Cursor = {
-      point: fed?.cursor.point ?? from!.at,
-      dir: drawn ?? fed?.cursor.dir ?? from!.dir,
-    };
-    const connectedTo = fed?.lastInstanceId ?? null;
-
-    let run = placeRun(entries, start, connectedTo, ctx);
-    const target = nodeById(graph, edge.toNodeId);
-
-    /*
-     * Sträck den kapbara maskinen så att sträckan når fram till sin målnod.
-     * Samma korrigering som slutpunkten gör, och av samma skäl: det sista
-     * stycket är rakt, så en omkörning räcker.
-     */
-    const fit = fittableOf(entries);
-    /*
-     * Banan kapas till det som ritats, när det finns en bana som går att kapa.
-     *
-     * En rullbana byggs i sektioner och en kedjetransportör kapas till längd —
-     * längden är kundens val, inte maskinens egenskap. Då är den ritade
-     * sträckan svaret på den frågan, och att låta en tolvmetersbana skjuta ut
-     * tretton meter förbi punkten man siktat på vore att strunta i ritningen.
-     * Maskiner med bestämt mått rör vi inte; där mäts glappet i stället.
-     */
-    if ((edge.fit ?? true) && target && fit && run.placements.length > 0) {
-      const v = DIR_VEC[run.cursor.dir];
-      const delta = (target.at.x - run.cursor.point.x) * v.x + (target.at.y - run.cursor.point.y) * v.y;
-      const limits = fit.machine.parametricLength;
-      const current = ctx.lengths.get(fit.item.instanceId) ?? fit.machine.footprint.lengthMm;
-      const wanted = Math.round(current + delta);
-      const clamped = limits
-        ? Math.min(limits.maxMm, Math.max(limits.minMm, wanted))
-        : Math.max(500, wanted);
-
-      if (clamped !== current) {
-        // Kör om sträckan med den nya längden, på en ren hinderlista.
-        ctx.placed = ctx.placed.filter(
-          (pl) => !entries.some((e) => e.item.instanceId === pl.instanceId),
-        );
-        ctx.lengths.set(fit.item.instanceId, clamped);
-        run = placeRun(entries, start, connectedTo, ctx);
-      }
-    }
-
-    /*
-     * En inmatning ska sluta i mötet, inte börja där pilen släpptes.
-     *
-     * Drar man in en andra inmatning i linjen är det sista maskinen på den
-     * som ska möta linjen — resten står bakom den, åt det håll pilen pekar.
-     * Sträckan placeras därför framåt som alla andra och flyttas sedan i sin
-     * helhet så att sista utporten hamnar i mötespunkten. Formen är stel, så
-     * en förskjutning räcker: inget behöver räknas om.
-     *
-     * Bara sträckor som inte redan är fastkopplade i sin början flyttas. Den
-     * som fortsätter efter en annan sitter port mot port, och då är början
-     * given.
-     */
-    if (!fed && target && isSharedNode(graph, target.id) && run.placements.length > 0) {
-      const dx = target.at.x - run.cursor.point.x;
-      const dy = target.at.y - run.cursor.point.y;
-      if (dx !== 0 || dy !== 0) {
-        run = {
-          ...run,
-          placements: run.placements.map((p) => shiftPlacement(p, dx, dy)),
-          cursor: {
-            dir: run.cursor.dir,
-            point: { x: run.cursor.point.x + dx, y: run.cursor.point.y + dy },
-          },
-        };
-        // Hinderlistan delas av alla sträckor och måste följa med.
-        for (const shape of ctx.placed) {
-          if (!entries.some((e) => e.item.instanceId === shape.instanceId)) continue;
-          shape.bbox = { ...shape.bbox, x: shape.bbox.x + dx, y: shape.bbox.y + dy };
-          shape.clear = { ...shape.clear, x: shape.clear.x + dx, y: shape.clear.y + dy };
-          shape.ports = shape.ports.map((port) => ({
-            ...port,
-            pos: { x: port.pos.x + dx, y: port.pos.y + dy },
-          }));
-        }
-      }
-    }
-
-    placements.push(...run.placements);
-    unplaced.push(...run.unplaced);
-
-    const last = run.placements[run.placements.length - 1] ?? null;
-    ends.set(edge.id, { cursor: run.cursor, lastInstanceId: last?.instanceId ?? null });
-
-    const end = run.placements.length > 0 ? run.cursor : null;
-    const outPort = last
-      ? pickOutPort(
-          last.ports,
-          entries.find((e) => e.item.instanceId === last.instanceId)?.item.outPortId,
-        )
-      : undefined;
-
-    edgeRuns.push({
-      edgeId: edge.id,
-      end,
-      gapMm: target && end ? Math.round(Math.hypot(target.at.x - end.point.x, target.at.y - end.point.y)) : null,
-      fittable: fit
-        ? {
-            instanceId: fit.item.instanceId,
-            lengthMm: ctx.lengths.get(fit.item.instanceId) ?? fit.machine.footprint.lengthMm,
-            limits: fit.machine.parametricLength,
-          }
-        : null,
-      count: run.placements.length,
-      throughput: run.placements.filter((p) => p.capacity > 0).length
-        ? Math.min(...run.placements.filter((p) => p.capacity > 0).map((p) => p.capacity))
-        : 0,
-      levelMm: outPort?.levelMm ?? null,
-    });
-
-    if (run.turnedToMainAxis) turnedToMainAxis = true;
-    // Huvudlinjen är den första sträckan: det är den slutpunkten gäller.
-    if (edge.id === firstEdgeId) mainCursor = run.cursor;
-  }
-
-  // Poster vars gren inte finns kvar ska sägas till om, inte tappas bort.
-  for (const { item, machine } of lineItems) {
-    const id = entryFor(item);
-    if (!id || !graph.edges.some((e) => e.id === id)) {
-      unplaced.push({
-        instanceId: item.instanceId,
-        machineId: machine.id,
-        reason: "Maskinen står inte på någon gren i flödet.",
-      });
-    }
-  }
-
-  return {
-    placements,
-    unplaced,
-    cursor: mainCursor ?? (order.length ? (ends.get(order[order.length - 1].id)?.cursor ?? startCursor(config)) : startCursor(config)),
-    turnedToMainAxis,
-    edgeRuns,
   };
 }
 
@@ -1117,45 +787,28 @@ export function solveLayout(
   })();
 
   let finalLengthMm = config.flow.finalConveyorLengthMm;
-  let edgeRuns: EdgeRun[] = [];
-  let chain: ChainResult;
+  let chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
 
   /*
-   * Två sätt att bygga samma anläggning.
-   *
-   * Har kunden ritat flödet är skelettet sanningen: varje sträcka placeras
-   * från sin nod, och sammanslagningar blir möjliga. Har kunden inte ritat
-   * något är linjen ett träd som förut. Båda går genom samma placeRun, så en
-   * maskin hamnar på samma ställe av samma skäl oavsett vägen dit.
+   * Ska linjen sluta i en angiven punkt sätts den parametriska maskinens längd
+   * så att sista utporten hamnar där. Slutsegmentet är rakt, så en enda
+   * korrigering räcker — men vi kör om kedjan för att få exakt geometri.
    */
-  if (hasFlowGraph(config)) {
-    const walked = walkGraph(config, lineItems, preferMirrored);
-    chain = walked;
-    edgeRuns = walked.edgeRuns;
-  } else {
-    chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
+  if (config.flow.fitToEndPoint && config.flow.endPoint && parametricIndex >= 0) {
+    const limits = lineItems[parametricIndex].machine.parametricLength;
+    const v = DIR_VEC[chain.cursor.dir];
+    const delta =
+      (config.flow.endPoint.x - chain.cursor.point.x) * v.x +
+      (config.flow.endPoint.y - chain.cursor.point.y) * v.y;
 
-    /*
-     * Ska linjen sluta i en angiven punkt sätts den parametriska maskinens
-     * längd så att sista utporten hamnar där. Slutsegmentet är rakt, så en
-     * enda korrigering räcker — men vi kör om kedjan för exakt geometri.
-     */
-    if (config.flow.fitToEndPoint && config.flow.endPoint && parametricIndex >= 0) {
-      const limits = lineItems[parametricIndex].machine.parametricLength;
-      const v = DIR_VEC[chain.cursor.dir];
-      const delta =
-        (config.flow.endPoint.x - chain.cursor.point.x) * v.x +
-        (config.flow.endPoint.y - chain.cursor.point.y) * v.y;
+    const wanted = Math.round(finalLengthMm + delta);
+    const clamped = limits
+      ? Math.min(limits.maxMm, Math.max(limits.minMm, wanted))
+      : Math.max(500, wanted);
 
-      const wanted = Math.round(finalLengthMm + delta);
-      const clamped = limits
-        ? Math.min(limits.maxMm, Math.max(limits.minMm, wanted))
-        : Math.max(500, wanted);
-
-      if (clamped !== finalLengthMm) {
-        finalLengthMm = clamped;
-        chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
-      }
+    if (clamped !== finalLengthMm) {
+      finalLengthMm = clamped;
+      chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
     }
   }
 
@@ -1233,7 +886,6 @@ export function solveLayout(
     outDir,
     neverTurnedToMainAxis: !chain.turnedToMainAxis,
     lineEnd,
-    edgeRuns,
     finalConveyorLengthMm: finalLengthMm,
   };
 }

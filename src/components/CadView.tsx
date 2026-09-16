@@ -6,17 +6,7 @@ import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/proje
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
-import { edgeLabel, edgesFrom, edgesTo } from "@/lib/flowGraph";
-import type {
-  Box,
-  DrawnObject,
-  DrawnKind,
-  EdgeRun,
-  FlowGraph,
-  Placement,
-  Vec2,
-} from "@/lib/types";
-import type { FlowAnchor } from "@/store/useConfigStore";
+import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 
 /** Rutnätets delning i planvyn, mm. */
@@ -25,7 +15,7 @@ const GRID_MM = 1000;
 const SNAP_MM = 250;
 const PAD_MM = 4000;
 
-type Draft = { kind: Exclude<Tool, "select" | "measure" | "flow">; box: Box } | null;
+type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 
 /** CadView ritar plan och isometri; läget "model" hanteras av ModelView. */
 type PlanarView = Exclude<ViewMode, "model">;
@@ -42,7 +32,7 @@ const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
  * Truckzoner och no-go-zoner ritas som fria rektanglar.
  */
 function draftBox(
-  kind: Exclude<Tool, "select" | "measure" | "flow">,
+  kind: Exclude<Tool, "select" | "measure">,
   from: Vec2,
   to: Vec2,
   walls: DrawnObject[] = [],
@@ -100,10 +90,6 @@ export function CadView() {
     nudge,
     addDrawn,
     setTool,
-    drawFlowArrow,
-    moveFlowNode,
-    selectEdge,
-    selectedEdgeId,
     setFlowPoint,
   } = useConfigStore();
 
@@ -149,13 +135,6 @@ export function CadView() {
     },
     [planarView],
   );
-
-  /** Pilen medan den dras. */
-  const [arrow, setArrow] = useState<{
-    from: Vec2;
-    to: Vec2;
-    overMachine: string | null;
-  } | null>(null);
 
   const strokeUnit = viewBox.l / 900;
   /** Befintliga väggar, som nya väggar och portar fäster mot. */
@@ -228,9 +207,6 @@ export function CadView() {
       return;
     }
 
-    // Flödet ritas i fångstfasen och kommer aldrig hit; resten ritar rutor.
-    if (tool === "flow") return;
-
     const kind = tool;
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
@@ -259,78 +235,6 @@ export function CadView() {
       });
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-    };
-
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  /*
-   * Flödet ritas med en pil, och pilen är hela gränssnittet.
-   *
-   * Dra från golvet till en maskin: här kommer paket in, och de möter linjen
-   * vid den maskinen. Dra från en maskin ut till golvet: härifrån går en väg.
-   * Riktningen du drar är paketens riktning — samma sak som pilarna på en
-   * handritad flödesskiss betyder. Inga noder att sätta, inga namn att hitta
-   * på, inget läge att avsluta: ett drag är en gren, och den är markerad när
-   * du släpper, så nästa maskin ur katalogen hamnar på den.
-   *
-   * Draget tas i fångstfasen eftersom hallen är full av maskiner, truckgator
-   * och zoner med egna pekarhanterare. Med pennan i handen finns det bara en
-   * sak ett drag kan betyda.
-   */
-  /**
-   * Maskinen under pekaren.
-   *
-   * Alla element på punkten, inte bara det översta: skelettets egna pilar
-   * ligger ovanpå maskinerna och har breda osynliga träffytor, och de skulle
-   * annars skymma maskinen man siktar på. Pilen ska fästa i det som faktiskt
-   * står i hallen.
-   */
-  const machineUnder = (clientX: number, clientY: number): string | null => {
-    for (const element of document.elementsFromPoint(clientX, clientY)) {
-      const machine = element.closest("[data-machine]")?.getAttribute("data-machine");
-      if (machine) return machine;
-    }
-    return null;
-  };
-
-  const captureFlowDrag = (event: React.PointerEvent) => {
-    if (tool !== "flow") return;
-    event.stopPropagation();
-    event.preventDefault();
-
-    const startPoint = toWorld(event);
-    if (!startPoint) return;
-    const startMachine = machineUnder(event.clientX, event.clientY);
-    const from: FlowAnchor = startMachine
-      ? { kind: "machine", instanceId: startMachine, at: startPoint }
-      : { kind: "point", at: { x: snap(startPoint.x), y: snap(startPoint.y) } };
-
-    setArrow({ from: startPoint, to: startPoint, overMachine: startMachine });
-
-    const move = (e: PointerEvent) => {
-      const now = toWorld(e);
-      if (!now) return;
-      setArrow({ from: startPoint, to: now, overMachine: machineUnder(e.clientX, e.clientY) });
-    };
-
-    const up = (e: PointerEvent) => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      setArrow(null);
-
-      const endPoint = toWorld(e);
-      if (!endPoint) return;
-      // Ett kort drag är ett klick, och ett klick ritar ingen väg.
-      if (Math.hypot(endPoint.x - startPoint.x, endPoint.y - startPoint.y) < 1500) return;
-
-      const endMachine = machineUnder(e.clientX, e.clientY);
-      const to: FlowAnchor = endMachine
-        ? { kind: "machine", instanceId: endMachine, at: endPoint }
-        : { kind: "point", at: { x: snap(endPoint.x), y: snap(endPoint.y) } };
-
-      drawFlowArrow(from, to);
     };
 
     window.addEventListener("pointermove", move);
@@ -380,7 +284,6 @@ export function CadView() {
         className="h-full w-full touch-none select-none"
         style={{ cursor }}
         onWheel={onWheel}
-        onPointerDownCapture={captureFlowDrag}
       >
         <defs>
           <pattern
@@ -446,36 +349,6 @@ export function CadView() {
           />
         )}
 
-        <FlowSkeleton
-          graph={config.flowGraph}
-          runs={layout.edgeRuns}
-          view={planarView}
-          strokeUnit={strokeUnit}
-          selectedEdgeId={selectedEdgeId}
-          onEdgeDown={(id, e) => {
-            e.stopPropagation();
-            selectEdge(id);
-          }}
-          onNodeDown={(id, e) => {
-            // Flödesverktyget tar sina klick i fångstfasen; här handlar det
-            // bara om att flytta en nod med markeringsverktyget.
-            e.stopPropagation();
-            if (tool !== "select") return;
-            const move = (ev: PointerEvent) => {
-              const p = toWorld(ev);
-              if (p) moveFlowNode(id, { x: snap(p.x), y: snap(p.y) });
-            };
-            const up = () => {
-              window.removeEventListener("pointermove", move);
-              window.removeEventListener("pointerup", up);
-            };
-            window.addEventListener("pointermove", move);
-            window.addEventListener("pointerup", up);
-          }}
-        />
-
-        {arrow ? <DragArrow arrow={arrow} view={planarView} strokeUnit={strokeUnit} /> : null}
-
         {draft ? <DraftShape draft={draft} view={planarView} strokeUnit={strokeUnit} /> : null}
 
         <FlowMarkers
@@ -492,9 +365,7 @@ export function CadView() {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
         <span className="kicker bg-paper/80 px-1">
-          {tool === "flow"
-            ? "Dra en pil åt det håll paketen går · från golvet till en maskin = ny inmatning · från en maskin ut = ny väg ut"
-            : `${view === "2d" ? "Planvy" : "Isometrisk vy"} · snapp ${SNAP_MM} mm`}
+          {view === "2d" ? "Planvy" : "Isometrisk vy"} · snapp {SNAP_MM} mm
         </span>
         <button
           onClick={fit}
@@ -594,12 +465,7 @@ function Plan2D({
         : null}
 
       {layout.placements.map((p) => (
-        <g
-          key={p.instanceId}
-          data-machine={p.instanceId}
-          onPointerDown={(e) => onMachineDown(p, e)}
-          style={{ cursor: "grab" }}
-        >
+        <g key={p.instanceId} onPointerDown={(e) => onMachineDown(p, e)} style={{ cursor: "grab" }}>
           <rect
             x={p.bbox.x}
             y={p.bbox.y}
@@ -782,12 +648,7 @@ function Iso3D({
         const faces = isoBox(p.bbox, p.size.heightMm);
         const stroke = strokeFor(p);
         return (
-          <g
-          key={p.instanceId}
-          data-machine={p.instanceId}
-          onPointerDown={(e) => onMachineDown(p, e)}
-          style={{ cursor: "grab" }}
-        >
+          <g key={p.instanceId} onPointerDown={(e) => onMachineDown(p, e)} style={{ cursor: "grab" }}>
             <polygon
               points={faces.right}
               fill={p.aux ? "#e7e7ea" : "#d9d9dd"}
@@ -1170,219 +1031,6 @@ function MeasureLine({
       >
         {meters(distance)} m
       </text>
-    </g>
-  );
-}
-
-/**
- * Flödesskelettet i planvyn.
- *
- * Noderna är punkter kunden satt, sträckorna pilarna mellan dem. Det ritas
- * ovanpå maskinerna med flit: skelettet är avsikten, och när maskinerna inte
- * följer den ska det synas att de inte gör det. Pilen pekar åt det håll
- * paketen går, precis som pilarna på en handritad flödesskiss.
- */
-function FlowSkeleton({
-  graph,
-  runs,
-  view,
-  strokeUnit,
-  selectedEdgeId,
-  onEdgeDown,
-  onNodeDown,
-}: {
-  graph: FlowGraph | undefined;
-  runs: EdgeRun[];
-  view: PlanarView;
-  strokeUnit: number;
-  selectedEdgeId: string | null;
-  onEdgeDown: (edgeId: string, event: React.PointerEvent) => void;
-  onNodeDown: (nodeId: string, event: React.PointerEvent) => void;
-}) {
-  if (!graph || graph.nodes.length === 0) return null;
-
-  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
-  const nodeAt = (id: string | null) => graph.nodes.find((n) => n.id === id);
-  const r = strokeUnit * 7;
-  const runFor = new Map(runs.map((run) => [run.edgeId, run]));
-
-  /**
-   * Var en ände faktiskt ligger.
-   *
-   * Du ritar riktningen; maskinerna bestämmer längden. En fri ände följer
-   * därför med dit maskinerna slutar, i stället för att stå kvar där pilen
-   * råkade släppas och påstå att det fattas trettio meter. En ände som något
-   * annat hänger i står kvar — där är punkten en överenskommelse mellan två
-   * grenar, och då är glappet något att säga till om.
-   */
-  const free = (nodeId: string) =>
-    edgesTo(graph, nodeId).length + edgesFrom(graph, nodeId).length <= 1;
-
-  const positionOf = (nodeId: string): Vec2 => {
-    const node = nodeAt(nodeId)!;
-    if (!free(nodeId)) return node.at;
-    const incoming = edgesTo(graph, nodeId)[0];
-    const run = incoming ? runFor.get(incoming.id) : undefined;
-    return run?.end?.point ?? node.at;
-  };
-
-  return (
-    <g>
-      {graph.edges.map((edge) => {
-        const from = nodeAt(edge.fromNodeId);
-        const to = nodeAt(edge.toNodeId);
-        if (!from || !to) return null;
-
-        const a = project(positionOf(from.id));
-        const b = project(positionOf(to.id));
-        const selected = edge.id === selectedEdgeId;
-        const dx = b.x - a.x;
-        const dy = b.y - a.y;
-        const len = Math.hypot(dx, dy) || 1;
-        // Pilen slutar utanför noden så att spetsen syns bredvid ringen.
-        const ux = dx / len;
-        const uy = dy / len;
-        const tip = { x: b.x - ux * r * 1.6, y: b.y - uy * r * 1.6 };
-        const tail = { x: a.x + ux * r * 1.6, y: a.y + uy * r * 1.6 };
-        const head = strokeUnit * 6;
-
-        return (
-          <g
-            key={edge.id}
-            onPointerDown={(e) => onEdgeDown(edge.id, e)}
-            style={{ cursor: "pointer" }}
-          >
-            {/* Bred osynlig linje så att sträckan går att träffa med musen. */}
-            <line
-              x1={tail.x}
-              y1={tail.y}
-              x2={tip.x}
-              y2={tip.y}
-              stroke="transparent"
-              strokeWidth={strokeUnit * 14}
-            />
-            <line
-              x1={tail.x}
-              y1={tail.y}
-              x2={tip.x}
-              y2={tip.y}
-              stroke={selected ? "#5980a6" : "#c8a020"}
-              strokeWidth={strokeUnit * (selected ? 3.4 : 2.4)}
-              strokeLinecap="round"
-            />
-            <path
-              d={`M ${tip.x} ${tip.y} L ${tip.x - ux * head + -uy * head * 0.5} ${
-                tip.y - uy * head + ux * head * 0.5
-              } L ${tip.x - ux * head + uy * head * 0.5} ${tip.y - uy * head - ux * head * 0.5} Z`}
-              fill={selected ? "#5980a6" : "#c8a020"}
-            />
-            <text
-              x={(tail.x + tip.x) / 2}
-              y={(tail.y + tip.y) / 2 - strokeUnit * 4}
-              textAnchor="middle"
-              fontSize={strokeUnit * 11}
-              fill={selected ? "#5980a6" : "#8a6f16"}
-            >
-              {edgeLabel(graph, edge)}
-            </text>
-          </g>
-        );
-      })}
-
-      {graph.nodes.map((node) => {
-        const p = project(positionOf(node.id));
-        // Var flödet börjar och slutar är värt en ring med namn. Ett möte mitt
-        // i linjen är bara en punkt — den behöver inte döpas för att förstås.
-        const ends = edgesTo(graph, node.id).length === 0 || edgesFrom(graph, node.id).length === 0;
-        const infeed = edgesTo(graph, node.id).length === 0;
-        const fill = infeed ? "#2f7a4f" : ends ? "#9f1239" : "#c8a020";
-
-        return (
-          <g
-            key={node.id}
-            data-flow-node={node.id}
-            onPointerDown={(e) => onNodeDown(node.id, e)}
-            style={{ cursor: "grab" }}
-          >
-            {ends ? (
-              <>
-                <circle
-                  cx={p.x}
-                  cy={p.y}
-                  r={r}
-                  fill={fill}
-                  fillOpacity={0.18}
-                  stroke={fill}
-                  strokeWidth={strokeUnit * 1.6}
-                />
-                <text
-                  x={p.x}
-                  y={p.y - r - strokeUnit * 3}
-                  textAnchor="middle"
-                  fontSize={strokeUnit * 11}
-                  fill={fill}
-                >
-                  {infeed ? "Paket in" : "Paket ut"}
-                </text>
-              </>
-            ) : (
-              <rect
-                x={p.x - strokeUnit * 3}
-                y={p.y - strokeUnit * 3}
-                width={strokeUnit * 6}
-                height={strokeUnit * 6}
-                transform={`rotate(45 ${p.x} ${p.y})`}
-                fill={fill}
-              />
-            )}
-          </g>
-        );
-      })}
-    </g>
-  );
-}
-
-
-/** Pilen medan den dras — samma gula som skelettet, och en spets som pekar. */
-function DragArrow({
-  arrow,
-  view,
-  strokeUnit,
-}: {
-  arrow: { from: Vec2; to: Vec2; overMachine: string | null };
-  view: PlanarView;
-  strokeUnit: number;
-}) {
-  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
-  const a = project(arrow.from);
-  const b = project(arrow.to);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len = Math.hypot(dx, dy) || 1;
-  const ux = dx / len;
-  const uy = dy / len;
-  const head = strokeUnit * 7;
-  const colour = arrow.overMachine ? "#5980a6" : "#c8a020";
-
-  return (
-    <g pointerEvents="none">
-      <line
-        x1={a.x}
-        y1={a.y}
-        x2={b.x}
-        y2={b.y}
-        stroke={colour}
-        strokeWidth={strokeUnit * 3}
-        strokeLinecap="round"
-        strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
-      />
-      <path
-        d={`M ${b.x} ${b.y} L ${b.x - ux * head - uy * head * 0.5} ${
-          b.y - uy * head + ux * head * 0.5
-        } L ${b.x - ux * head + uy * head * 0.5} ${b.y - uy * head - ux * head * 0.5} Z`}
-        fill={colour}
-      />
-      <circle cx={a.x} cy={a.y} r={strokeUnit * 2.5} fill={colour} />
     </g>
   );
 }

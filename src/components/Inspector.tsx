@@ -7,9 +7,7 @@ import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import { usedOutPorts } from "@/lib/branches";
-import { edgeItemsWithFallback, edgeLabel, isSharedNode } from "@/lib/flowGraph";
 import type { PriceResult, Role } from "@/lib/server/pricing";
-import type { EdgeRun, FlowEdge, FlowGraph } from "@/lib/types";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
   const {
@@ -27,10 +25,6 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     updateDrawn,
     resetOffset,
     nudge,
-    selectedEdgeId,
-    selectEdge,
-    updateFlowEdge,
-    removeFlowEdge,
   } = useConfigStore();
 
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
@@ -43,10 +37,6 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
       : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
-  const graph = config.flowGraph;
-  const edge = graph?.edges.find((e) => e.id === selectedEdgeId) ?? null;
-  const run = layout.edgeRuns.find((r) => r.edgeId === selectedEdgeId) ?? null;
-
   return (
     <aside className="scroll-thin flex h-full w-[300px] flex-none flex-col overflow-y-auto border-l border-divider bg-white p-3">
       <div className="mb-3 flex items-center justify-between">
@@ -56,25 +46,10 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
         </Button>
       </div>
 
-      {!placement && !drawn && !edge ? (
+      {!placement && !drawn ? (
         <p className="border border-dashed border-divider px-3 py-6 text-xs text-muted">
           Inget markerat. Klicka på ett objekt i vyn eller i linjelistan.
         </p>
-      ) : null}
-
-      {edge && graph && !placement && !drawn ? (
-        <EdgePanel
-          edge={edge}
-          graph={graph}
-          run={run}
-          machineCount={edgeItemsWithFallback(config.line, graph, edge.id).length}
-          onRename={(name) => updateFlowEdge(edge.id, { name })}
-          onFit={(fit) => updateFlowEdge(edge.id, { fit })}
-          onRemove={() => {
-            removeFlowEdge(edge.id);
-            selectEdge(null);
-          }}
-        />
       ) : null}
 
       {drawn ? (
@@ -407,90 +382,5 @@ function formatSek(amount: number): string {
 function dirLabel(dir: string): string {
   return (
     { "x+": "rakt fram", "x-": "bakåt", "y+": "åt höger", "y-": "åt vänster" }[dir] ?? dir
-  );
-}
-
-
-/**
- * Grenen du markerat.
- *
- * Det enda som går att ändra är det som är ditt beslut: vad grenen heter om
- * du vill kalla den något annat än vad formen säger, och om banan ska sträckas
- * fram till där du ritade slutet. Resten är avläsning — maskinerna bestämmer
- * måtten, och panelen visar bara var de två inte går ihop.
- */
-function EdgePanel({
-  edge,
-  graph,
-  run,
-  machineCount,
-  onRename,
-  onFit,
-  onRemove,
-}: {
-  edge: FlowEdge;
-  graph: FlowGraph;
-  run: EdgeRun | null;
-  machineCount: number;
-  onRename: (name: string) => void;
-  onFit: (fit: boolean) => void;
-  onRemove: () => void;
-}) {
-  const gap = run?.gapMm ?? null;
-
-  return (
-    <div>
-      <div className="kicker">Gren i flödet</div>
-      <input
-        value={edge.name}
-        placeholder={edgeLabel(graph, edge)}
-        onChange={(e) => onRename(e.target.value.slice(0, 40))}
-        className="mt-1 w-full border border-divider px-2 py-1 text-sm"
-      />
-      <p className="mt-1 text-[11px] text-muted">
-        Namnet är valfritt — utan eget namn heter grenen {edgeLabel(graph, edge)}.
-      </p>
-
-      <p className="mt-2 text-[11px] leading-relaxed text-muted">
-        {machineCount === 0
-          ? "Ingen maskin står här. Välj ur katalogen till vänster — den hamnar på grenen så länge den är markerad."
-          : `${machineCount} maskin${machineCount === 1 ? "" : "er"} står här. Nästa ur katalogen hamnar sist på grenen.`}
-      </p>
-
-      {gap !== null && machineCount > 0 && edge.toNodeId && isSharedNode(graph, edge.toNodeId) ? (
-        <div className="mt-3 border border-divider p-2">
-          <div className="kicker mb-1">Når fram dit du ritade</div>
-          {gap <= 500 ? (
-            <p className="text-[11px] text-accent">Ja — {meters(gap)} m ifrån, inom toleransen.</p>
-          ) : (
-            <>
-              <p className="text-[11px] text-warn">
-                Nej — maskinerna slutar {meters(gap)} m ifrån.
-              </p>
-              {run?.fittable ? (
-                <label className="mt-1 flex items-center gap-2 text-[11px]">
-                  <input
-                    type="checkbox"
-                    checked={edge.fit ?? true}
-                    onChange={(e) => onFit(e.target.checked)}
-                    className="accent-accent"
-                  />
-                  Kapa banan till det du ritat
-                </label>
-              ) : (
-                <p className="mt-1 text-[11px] text-muted">
-                  Ingen maskin här går att kapa till längd. Dra änden dit maskinerna slutar, eller
-                  lägg in en rullbana eller kedjetransportör.
-                </p>
-              )}
-            </>
-          )}
-        </div>
-      ) : null}
-
-      <Button size="sm" variant="ghost" className="mt-3" onClick={onRemove}>
-        Ta bort grenen
-      </Button>
-    </div>
   );
 }

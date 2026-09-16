@@ -6,7 +6,7 @@ import { meters, parseMeters } from "@/lib/format";
 import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
-import { usedOutPorts } from "@/lib/branches";
+import { usedInPorts, usedOutPorts } from "@/lib/branches";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
@@ -20,6 +20,8 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     setOutPort,
     setBranchTarget,
     branchTarget,
+    setFeedTarget,
+    feedTarget,
     removeItem,
     removeDrawn,
     updateDrawn,
@@ -34,6 +36,11 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
   const used =
     item && placement
       ? usedOutPorts(config.line, item.instanceId, placement.machine)
+      : new Set<string>();
+  /** Ingångar som redan har något kopplat till sig. */
+  const usedIn =
+    item && placement
+      ? usedInPorts(config.line, item.instanceId, placement.machine)
       : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
@@ -198,6 +205,56 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                   </label>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {item && placement.machine.ports.filter((p) => p.role === "in").length > 1 ? (
+            <div className="mt-4">
+              <div className="kicker mb-2">Ingångar</div>
+              <p className="mb-2 text-[11px] leading-relaxed text-muted">
+                Maskinen tar emot flöde från flera håll. På en ledig ingång kan du bygga en egen
+                linje som slutar där — så möts två inmatningar på samma bana.
+              </p>
+              <div className="space-y-1">
+                {placement.machine.ports
+                  .filter((p) => p.role === "in")
+                  .map((port) => {
+                    const taken = usedIn.has(port.id);
+                    const targeted =
+                      feedTarget?.instanceId === item.instanceId &&
+                      feedTarget.inPortId === port.id;
+                    return (
+                      <div key={port.id} className="flex items-center gap-2 text-[13px]">
+                        <span className="flex-1">{port.name || port.id}</span>
+                        <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
+                        {taken ? (
+                          <Tag>kopplad</Tag>
+                        ) : (
+                          <button
+                            className={
+                              targeted
+                                ? "border border-accent px-1 text-[11px] text-accent"
+                                : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
+                            }
+                            onClick={() =>
+                              setFeedTarget(
+                                targeted ? null : { instanceId: item.instanceId, inPortId: port.id },
+                              )
+                            }
+                          >
+                            {targeted ? "Avbryt" : "Mata in hit"}
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+              </div>
+              {feedTarget?.instanceId === item.instanceId ? (
+                <p className="mt-2 border border-accent px-2 py-1 text-[11px] leading-relaxed text-accent">
+                  Välj maskiner i katalogen till vänster. De bildar en linje som slutar i den
+                  ingången — först den paketen kommer in i, sist den som möter maskinen.
+                </p>
+              ) : null}
             </div>
           ) : null}
 

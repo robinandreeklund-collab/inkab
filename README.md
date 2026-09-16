@@ -96,6 +96,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. Varje maskins fullständiga beskrivning ur katalogen ligger i systemprompten, så assistenten vet vad maskinerna faktiskt gör. |
 | **Admin-vy** | `/admin` — maskinbibliotek, prisbok och konton. Per maskin: identitet, AI-beskrivning, geometri, maskinzon, portar med live-förhandsgranskning, zoner, kapacitet, media, beroenden, kundens inställningar, bilder, optioner och pris. Provkoppling testar att portarna går att koppla in. Export och import av hela biblioteket som JSON. |
 | **Grenar** | Linjen är ett träd: en maskin med flera utgångar kan bära en egen gren på var och en. Markera maskinen, tryck **Bygg vidare** på en ledig utgång och välj nästa maskin — grenen får en egen rad i linjeremsan med sitt fäste utskrivet. Grenar delar hinderlista med huvudlinjen så de lägger sig fritt, och tas roten bort följer grenen med. Lagras platt: listan behåller ordningen för offert och ångra, trädet ligger i länkarna. |
+| **Matarlinjer** | Spegelbilden av en gren: två inmatningar som möts i en gemensam bana. En gren utgår från en utgång och byggs framåt; en matarlinje slutar i en **ingång** och byggs bakåt. Markera maskinen som tar emot, och panelen **Ingångar** listar dess lediga ingångar — tryck **Mata in hit** på en av dem och bygg linjen som vanligt. Solvern lägger den sista maskinen precis i ingången och resten uppströms därifrån, så linjen mynnar där den ska oavsett från vilket håll den kommer. Kräver att maskinen har mer än en ingång i katalogen: en sammanslagning är en maskin, inte en punkt i luften. |
 | **Flera utgångar** | En maskin kan ha flera utportar — en rullbana lämnar paketet rakt fram eller ut på kortsidan. Vilken linjen fortsätter ur väljs per maskin i konfiguratorn, inte i biblioteket: samma rullbana kan gå rakt i ett flöde och vinkla i ett annat. De andra utgångarna finns kvar och ritas ut. |
 | **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
 | **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
@@ -231,6 +232,7 @@ src/
 | R-205 | Ingen truckgata eller hämtzon är ritad | varning |
 | R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
 | R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
+| R-208 | Linjerna som möts i en maskin lämnar mer än den klarar | varning |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |
 | R-303 | Paketet är för tungt | fel |

@@ -33,12 +33,29 @@ export function Sidebar() {
     library,
     layout,
     setFlowPoint,
+    branchTarget,
+    feedTarget,
   } = useConfigStore();
 
   const [search, setSearch] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const hasStickerStacker = config.line.some((i) => i.machineId === "ts4");
+
+  /*
+   * Katalogen är där man klickar härnäst, så den ska säga vad klicket gör.
+   * Med en gren eller en matarlinje riggad hamnar maskinen inte sist i
+   * linjen, och att låta hjälptexten påstå det gör läget osynligt.
+   */
+  const nameOf = (instanceId: string) => {
+    const item = config.line.find((i) => i.instanceId === instanceId);
+    return item ? library.machines.find((m) => m.id === item.machineId)?.name ?? "maskinen" : "maskinen";
+  };
+  const hint = feedTarget
+    ? `Klicka för att bygga linjen som matar in i ${nameOf(feedTarget.instanceId)}.`
+    : branchTarget
+      ? `Klicka för att bygga grenen från ${nameOf(branchTarget.instanceId)}.`
+      : "Klicka för att lägga sist i linjen.";
 
   const grouped = library.machines
     .filter((m) => {
@@ -61,7 +78,15 @@ export function Sidebar() {
           placeholder="Sök maskin…"
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
-        <p className="mb-2 text-[11px] text-muted">Klicka för att lägga sist i linjen.</p>
+        <p
+          className={
+            branchTarget || feedTarget
+              ? "mb-2 border border-accent px-2 py-1 text-[11px] text-accent"
+              : "mb-2 text-[11px] text-muted"
+          }
+        >
+          {hint}
+        </p>
 
         <div className="space-y-3">
           {Object.entries(grouped).map(([category, machines]) => (

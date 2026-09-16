@@ -1381,6 +1381,22 @@
           "allowsDirectionChange": false
         },
         {
+          "id": "in2",
+          "name": "Sidoingång på långsidan",
+          "role": "in",
+          "pos": {
+            "x": 1500,
+            "y": 1567
+          },
+          "dir": "y-",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            1600
+          ],
+          "allowsDirectionChange": true
+        },
+        {
           "id": "out",
           "role": "out",
           "pos": {

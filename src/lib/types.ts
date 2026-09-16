@@ -227,6 +227,18 @@ export type LineItem = {
    * ordningen för offert, ångra och numrering; grenarna ligger i länkarna.
    */
   branch?: { fromInstanceId: string; outPortId: string };
+  /**
+   * Matarrot: posten inleder en linje som MYNNAR i en annan maskins ingång.
+   *
+   * Spegelbilden av `branch`. En gren utgår från en utgång och byggs framåt;
+   * en matarlinje slutar i en ingång och byggs bakåt. Posterna står i
+   * flödesordning som alla andra — först den maskin paketen kommer in i,
+   * sist den som möter maskinen linjen matar.
+   *
+   * Det är så två inmatningar möts på en gemensam bana: banan har två
+   * ingångar, och en matarlinje slutar i var sin.
+   */
+  feeds?: { toInstanceId: string; inPortId: string };
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;

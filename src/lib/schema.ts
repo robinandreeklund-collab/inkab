@@ -12,6 +12,9 @@ export const lineItemSchema = z.object({
   branch: z
     .object({ fromInstanceId: z.string().min(1).max(64), outPortId: z.string().min(1).max(64) })
     .optional(),
+  feeds: z
+    .object({ toInstanceId: z.string().min(1).max(64), inPortId: z.string().min(1).max(64) })
+    .optional(),
   selectedOptions: z.array(z.string().max(64)).max(12),
   parameters: z
     .record(z.string().max(64), z.union([z.string().max(200), z.number().finite(), z.boolean()]))

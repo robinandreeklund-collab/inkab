@@ -35,7 +35,14 @@ export function LineStrip() {
       {parts.map((segment, index) => (
         <div key={index} className="flex items-center gap-2 border-b border-divider/60 px-3 py-1.5 last:border-0">
           <span className="kicker w-[104px] flex-none leading-tight">
-            {segment.branch ? (
+            {segment.feeds ? (
+              <>
+                Matar in i {nameOf(segment.feeds.toInstanceId)}
+                <span className="block text-muted">
+                  {portNameOf(segment.feeds.toInstanceId, segment.feeds.inPortId)}
+                </span>
+              </>
+            ) : segment.branch ? (
               <>
                 Gren från {nameOf(segment.branch.fromInstanceId)}
                 <span className="block text-muted">
@@ -57,6 +64,7 @@ export function LineStrip() {
                   placement={placement}
                   selected={selectedId === item.instanceId}
                   last={i === segment.items.length - 1}
+                  intoTarget={!!segment.feeds && i === segment.items.length - 1}
                   onSelect={() => select(item.instanceId)}
                 />
               );
@@ -73,12 +81,15 @@ function Card({
   placement,
   selected,
   last,
+  intoTarget,
   onSelect,
 }: {
   item: LineItem;
   placement: Placement;
   selected: boolean;
   last: boolean;
+  /** Sista maskinen i en matarlinje går över i den maskin linjen matar. */
+  intoTarget?: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -98,7 +109,15 @@ function Card({
           {item.variantId ? ` · ${item.variantId}` : ""}
         </div>
       </button>
-      {last ? null : <span className="flex-none text-muted">→</span>}
+      {last ? (
+        intoTarget ? (
+          <span className="flex-none text-accent" title="Går över i maskinen linjen matar">
+            ⇥
+          </span>
+        ) : null
+      ) : (
+        <span className="flex-none text-muted">→</span>
+      )}
     </div>
   );
 }

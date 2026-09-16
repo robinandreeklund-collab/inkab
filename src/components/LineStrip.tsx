@@ -3,7 +3,12 @@
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters } from "@/lib/format";
 import { segments } from "@/lib/branches";
-import { edgeItemsWithFallback, edgeLabel, orderedEdges } from "@/lib/flowGraph";
+import {
+  edgeItemsWithFallback,
+  edgeLabel,
+  isSharedNode,
+  orderedEdges,
+} from "@/lib/flowGraph";
 import { MachineThumb } from "./MachineThumb";
 import type { LineItem, Placement } from "@/lib/types";
 
@@ -75,7 +80,11 @@ export function LineStrip() {
                   })
                 )}
               </div>
-              {run && run.gapMm !== null && run.gapMm > 500 ? (
+              {run &&
+              run.gapMm !== null &&
+              run.gapMm > 500 &&
+              edge.toNodeId &&
+              isSharedNode(graph, edge.toNodeId) ? (
                 <span className="kicker flex-none text-warn" title="Avstånd till den ritade noden">
                   {meters(run.gapMm)} m kvar
                 </span>

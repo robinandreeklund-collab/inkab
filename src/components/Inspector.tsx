@@ -7,7 +7,7 @@ import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import { usedOutPorts } from "@/lib/branches";
-import { edgeItemsWithFallback, edgeLabel } from "@/lib/flowGraph";
+import { edgeItemsWithFallback, edgeLabel, isSharedNode } from "@/lib/flowGraph";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 import type { EdgeRun, FlowEdge, FlowGraph } from "@/lib/types";
 
@@ -457,7 +457,7 @@ function EdgePanel({
           : `${machineCount} maskin${machineCount === 1 ? "" : "er"} står här. Nästa ur katalogen hamnar sist på grenen.`}
       </p>
 
-      {gap !== null && machineCount > 0 ? (
+      {gap !== null && machineCount > 0 && edge.toNodeId && isSharedNode(graph, edge.toNodeId) ? (
         <div className="mt-3 border border-divider p-2">
           <div className="kicker mb-1">Når fram dit du ritade</div>
           {gap <= 500 ? (

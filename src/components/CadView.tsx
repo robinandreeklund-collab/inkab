@@ -7,7 +7,15 @@ import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
 import { edgeLabel, edgesFrom, edgesTo } from "@/lib/flowGraph";
-import type { Box, DrawnObject, DrawnKind, FlowGraph, Placement, Vec2 } from "@/lib/types";
+import type {
+  Box,
+  DrawnObject,
+  DrawnKind,
+  EdgeRun,
+  FlowGraph,
+  Placement,
+  Vec2,
+} from "@/lib/types";
 import type { FlowAnchor } from "@/store/useConfigStore";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 
@@ -440,10 +448,10 @@ export function CadView() {
 
         <FlowSkeleton
           graph={config.flowGraph}
+          runs={layout.edgeRuns}
           view={planarView}
           strokeUnit={strokeUnit}
           selectedEdgeId={selectedEdgeId}
-          activeNodeId={null}
           onEdgeDown={(id, e) => {
             e.stopPropagation();
             selectEdge(id);
@@ -1176,19 +1184,18 @@ function MeasureLine({
  */
 function FlowSkeleton({
   graph,
+  runs,
   view,
   strokeUnit,
   selectedEdgeId,
-  activeNodeId,
   onEdgeDown,
   onNodeDown,
 }: {
   graph: FlowGraph | undefined;
+  runs: EdgeRun[];
   view: PlanarView;
   strokeUnit: number;
   selectedEdgeId: string | null;
-  activeNodeId: string | null;
-
   onEdgeDown: (edgeId: string, event: React.PointerEvent) => void;
   onNodeDown: (nodeId: string, event: React.PointerEvent) => void;
 }) {
@@ -1197,6 +1204,27 @@ function FlowSkeleton({
   const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
   const nodeAt = (id: string | null) => graph.nodes.find((n) => n.id === id);
   const r = strokeUnit * 7;
+  const runFor = new Map(runs.map((run) => [run.edgeId, run]));
+
+  /**
+   * Var en ände faktiskt ligger.
+   *
+   * Du ritar riktningen; maskinerna bestämmer längden. En fri ände följer
+   * därför med dit maskinerna slutar, i stället för att stå kvar där pilen
+   * råkade släppas och påstå att det fattas trettio meter. En ände som något
+   * annat hänger i står kvar — där är punkten en överenskommelse mellan två
+   * grenar, och då är glappet något att säga till om.
+   */
+  const free = (nodeId: string) =>
+    edgesTo(graph, nodeId).length + edgesFrom(graph, nodeId).length <= 1;
+
+  const positionOf = (nodeId: string): Vec2 => {
+    const node = nodeAt(nodeId)!;
+    if (!free(nodeId)) return node.at;
+    const incoming = edgesTo(graph, nodeId)[0];
+    const run = incoming ? runFor.get(incoming.id) : undefined;
+    return run?.end?.point ?? node.at;
+  };
 
   return (
     <g>
@@ -1205,8 +1233,8 @@ function FlowSkeleton({
         const to = nodeAt(edge.toNodeId);
         if (!from || !to) return null;
 
-        const a = project(from.at);
-        const b = project(to.at);
+        const a = project(positionOf(from.id));
+        const b = project(positionOf(to.id));
         const selected = edge.id === selectedEdgeId;
         const dx = b.x - a.x;
         const dy = b.y - a.y;
@@ -1262,7 +1290,7 @@ function FlowSkeleton({
       })}
 
       {graph.nodes.map((node) => {
-        const p = project(node.at);
+        const p = project(positionOf(node.id));
         // Var flödet börjar och slutar är värt en ring med namn. Ett möte mitt
         // i linjen är bara en punkt — den behöver inte döpas för att förstås.
         const ends = edgesTo(graph, node.id).length === 0 || edgesFrom(graph, node.id).length === 0;

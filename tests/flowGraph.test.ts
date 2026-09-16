@@ -4,11 +4,13 @@ import { solveLayout } from "@/lib/solver";
 import {
   edgeItems,
   edgeItemsWithFallback,
+  edgeDirection,
   edgeLabel,
   edgeOrder,
   edgeRole,
   makeEdge,
   makeNode,
+  nodeNear,
   orderedEdges,
   removeNode,
   splitEdge,
@@ -39,15 +41,19 @@ const item = (machineId: string, edgeId: string): LineItem => {
 function tvågrenatFlöde(): { config: Configuration; graph: FlowGraph } {
   const graph: FlowGraph = { nodes: [], edges: [] };
 
-  const in1 = makeNode(graph, "infeed", { x: 2000, y: 6000 }, "x+");
-  const in2 = makeNode(graph, "infeed", { x: 2000, y: 16000 }, "x+");
-  graph.nodes.push(in1, in2);
+  // En i taget, som i gränssnittet: namnen numreras mot grafen som den ser ut.
+  const nod = (kind: "infeed" | "junction" | "outfeed", at: Vec2, dir: "x+" | "y+" = "x+") => {
+    const node = makeNode(graph, kind, at, dir);
+    graph.nodes.push(node);
+    return node;
+  };
 
-  const möte = makeNode(graph, "junction", { x: 20000, y: 6000 }, "x+");
-  const delning = makeNode(graph, "junction", { x: 34000, y: 6000 }, "x+");
-  const ut1 = makeNode(graph, "outfeed", { x: 42000, y: 6000 }, "x+");
-  const ut2 = makeNode(graph, "outfeed", { x: 34000, y: 16000 }, "y+");
-  graph.nodes.push(möte, delning, ut1, ut2);
+  const in1 = nod("infeed", { x: 2000, y: 6000 });
+  const in2 = nod("infeed", { x: 2000, y: 16000 });
+  const möte = nod("junction", { x: 20000, y: 6000 });
+  const delning = nod("junction", { x: 34000, y: 6000 });
+  const ut1 = nod("outfeed", { x: 42000, y: 6000 });
+  const ut2 = nod("outfeed", { x: 34000, y: 16000 }, "y+");
 
   // En i taget, som i gränssnittet: namnet kommer ur grafen som den ser ut nu.
   const add = (from: string, to: string) => {
@@ -112,10 +118,31 @@ describe("två inmatningar mot en gemensam bana", () => {
     expect(solved.placements.filter((p) => !p.aux)).toHaveLength(6);
   });
 
-  it("låter de två inmatningarna börja där de ritades", () => {
-    const [första, andra] = solved.placements;
-    // Grenarna utgår från var sin nod, alltså på olika höjd i hallen.
-    expect(Math.abs(första.bbox.y - andra.bbox.y)).toBeGreaterThan(5000);
+  it("låter båda inmatningarna sluta i mötet de ritades mot", () => {
+    const graph = config.flowGraph!;
+    const möte = graph.nodes.find((n) => n.name === "Korsning 1")!;
+
+    // En inmatning ska nå fram till mötespunkten, inte börja i den och
+    // fortsätta förbi: sista utporten är den som ska ligga där.
+    for (const edge of graph.edges.filter((e) => e.toNodeId === möte.id)) {
+      const run = solved.edgeRuns.find((r) => r.edgeId === edge.id)!;
+      expect(run.end).not.toBeNull();
+      expect(run.gapMm).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("lägger inte två inmatningar på varandra när de möter linjen på olika ställen", () => {
+    // Så ser en riktig anläggning ut: vägarna går ihop på var sitt ställe
+    // längs den gemensamma banan, inte i exakt samma punkt.
+    const { config: eget, graph } = tvågrenatFlöde();
+    const andraMötet = makeNode(graph, "junction", { x: 26000, y: 6000 });
+    graph.nodes.push(andraMötet);
+    graph.edges[1] = { ...graph.edges[1], toNodeId: andraMötet.id };
+    graph.edges.push(makeEdge(graph, andraMötet.id, graph.edges[2].toNodeId));
+
+    const lösning = solveLayout(eget, library);
+    const [a, b] = lösning.placements;
+    expect(Math.abs(a.bbox.x - b.bbox.x) + Math.abs(a.bbox.y - b.bbox.y)).toBeGreaterThan(3000);
   });
 
   it("mäter glappet mellan varje sträcka och den ritade noden", () => {
@@ -159,17 +186,18 @@ describe("reglerna för skelettet", () => {
     expect(glapp[0].detail).toMatch(/m från den ritade punkten/);
   });
 
-  it("erbjuder att sträcka banan när det finns en kapbar maskin", () => {
+  it("erbjuder att sträcka banan när en fortsättning inte når fram", () => {
     const { config, graph } = tvågrenatFlöde();
-    graph.nodes.find((n) => n.kind === "junction")!.at = { x: 40000, y: 6000 };
+    // Den gemensamma banan fortsätter efter mötet och är alltså fastkopplad i
+    // sin början — den kan inte flyttas i efterhand, bara sträckas.
+    graph.nodes.find((n) => n.name === "Korsning 2")!.at = { x: 44000, y: 6000 };
 
     const fix = computeLayout(config, library)
       .diagnostics.filter((d) => d.code === "R-701")
       .map((d) => d.fix)
       .find((f) => f?.kind === "fitEdge");
 
-    expect(fix).toBeTruthy();
-    expect(fix?.label).toMatch(/^Sträck Inmatning /);
+    expect(fix?.label).toMatch(/^Sträck /);
   });
 
   it("sträcker banan när grenen är satt att nå fram", () => {
@@ -384,5 +412,60 @@ describe("en pil är en gren", () => {
 
     // Tre vägar in: den ursprungliga och de två ritade.
     expect(inmatningar).toEqual(["Inmatning 1", "Inmatning 2", "Inmatning 3"]);
+  });
+});
+
+describe("maskinerna följer pilen", () => {
+  /** En ensam gren mellan två punkter, med några transportörer på. */
+  function gren(från: Vec2, till: Vec2): Configuration {
+    const graph: FlowGraph = { nodes: [], edges: [] };
+    const a = makeNode(graph, "infeed", från, "x+");
+    const b = makeNode(graph, "outfeed", till);
+    graph.nodes.push(a, b);
+    const edge = makeEdge(graph, a.id, b.id);
+    graph.edges.push(edge);
+
+    return {
+      ...defaultConfig(),
+      line: [item("rullbana", edge.id), item("rullbana", edge.id)],
+      flowGraph: graph,
+    };
+  }
+
+  it("går nedåt när pilen ritats nedåt", () => {
+    const config = gren({ x: 10000, y: 3000 }, { x: 10000, y: 20000 });
+    const [första, andra] = solveLayout(config, library).placements;
+
+    // Andra maskinen ska ligga längre ned i hallen, inte längre åt höger.
+    expect(andra.bbox.y).toBeGreaterThan(första.bbox.y + 1000);
+    expect(Math.abs(andra.bbox.x - första.bbox.x)).toBeLessThan(2000);
+  });
+
+  it("går åt vänster när pilen ritats åt vänster", () => {
+    const config = gren({ x: 40000, y: 11000 }, { x: 8000, y: 11000 });
+    const [första, andra] = solveLayout(config, library).placements;
+
+    expect(andra.bbox.x).toBeLessThan(första.bbox.x - 1000);
+  });
+
+  it("läser riktningen ur grafen, inte ur nodens fält", () => {
+    const config = gren({ x: 10000, y: 20000 }, { x: 10000, y: 3000 });
+    const graph = config.flowGraph!;
+    // Noden säger x+ eftersom det är utgångsvärdet; pilen säger uppåt.
+    expect(graph.nodes[0].dir).toBe("x+");
+    expect(edgeDirection(graph, graph.edges[0])).toBe("y-");
+  });
+});
+
+describe("pilar som möts fäster i varandra", () => {
+  it("fäster i en nod som redan finns i stället för att lägga en ny bredvid", () => {
+    const graph: FlowGraph = { nodes: [], edges: [] };
+    const mål = makeNode(graph, "junction", { x: 20000, y: 11000 });
+    graph.nodes.push(mål);
+
+    // Nästan på pricken — så nära ingen siktar med flit.
+    expect(nodeNear(graph, { x: 20400, y: 11300 })?.id).toBe(mål.id);
+    // Och en bit bort ska den inte fästa.
+    expect(nodeNear(graph, { x: 26000, y: 11000 })).toBeNull();
   });
 });

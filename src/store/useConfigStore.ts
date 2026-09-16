@@ -9,6 +9,7 @@ import {
   EMPTY_GRAPH,
   makeEdge,
   makeNode,
+  nodeNear,
   orderedEdges,
   removeNode,
   splitEdge,
@@ -471,11 +472,21 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       let line = clone(before.line);
 
       /*
-       * Finns inget skelett sedan tidigare får linjen som redan står i hallen
-       * bli den första sträckan. Annars hade den blivit hemlös i samma stund
-       * som den första pilen ritades.
+       * Första pilen är linjen.
+       *
+       * Förr la den här koden till en osynlig sträcka från flödets startpunkt
+       * tvärs hallen, så att maskinerna hade någonstans att bo. Resultatet var
+       * att den som ritade sitt flöde fick en gren till som hen aldrig ritat —
+       * och maskinerna stod kvar på den, långt från pilarna. Nu blir pilen
+       * linjen, och maskinerna följer med dit.
+       *
+       * Undantaget är när pilen fäster i en maskin. Då finns linjen redan och
+       * ska klippas, så den behöver en sträcka att klippas ur.
        */
-      if (graph.edges.length === 0) {
+      const startingFresh = graph.edges.length === 0;
+      const touchesMachine = from.kind === "machine" || to.kind === "machine";
+
+      if (startingFresh && touchesMachine && line.length > 0) {
         const bounds = get().layout.bounds;
         const start = makeNode(graph, "infeed", before.flow.startPoint, "x+");
         const end = makeNode(graph, "outfeed", {
@@ -489,14 +500,24 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         line = line.map((i) => (i.edgeId ? i : { ...i, edgeId: spine.id }));
       }
 
-      /** Punkten en ände fäster i: en ny nod på golvet, eller ett möte vid en maskin. */
+      /** Punkten en ände fäster i: en befintlig nod, en ny på golvet, eller en maskin. */
       const anchor = (side: FlowAnchor, where: "before" | "after"): string | null => {
         if (side.kind === "point") {
+          // Släpps pilen på en punkt som redan finns är det den som menas.
+          const near = nodeNear(graph, side.at);
+          if (near) return near.id;
           const node = makeNode(graph, "junction", side.at, "x+");
           graph.nodes.push(node);
           return node.id;
         }
-        const split = splitEdge(graph, line, side.instanceId, side.at, where);
+        /*
+         * Mötet läggs på maskinens port, inte där pekaren råkade släppas.
+         * Det är porten paketen faktiskt kommer in i eller lämnar ur, och en
+         * gren som slutar en meter bredvid den ser fel ut i ritningen.
+         */
+        const placement = get().layout.placements.find((p) => p.instanceId === side.instanceId);
+        const port = placement?.ports.find((p) => p.role === (where === "before" ? "in" : "out"));
+        const split = splitEdge(graph, line, side.instanceId, port?.pos ?? side.at, where);
         if (!split) return null;
         graph = split.graph;
         line = split.line;
@@ -510,6 +531,11 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
       const edge = makeEdge(graph, fromId, toId);
       graph.edges.push(edge);
+
+      // Den allra första pilen tar med sig linjen som redan står i hallen.
+      if (startingFresh && !touchesMachine) {
+        line = line.map((i) => (i.edgeId ? i : { ...i, edgeId: edge.id }));
+      }
 
       get().update((d) => {
         d.flowGraph = graph;

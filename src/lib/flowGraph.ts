@@ -1,4 +1,4 @@
-import type { Configuration, FlowEdge, FlowGraph, FlowNode, LineItem, Vec2 } from "./types";
+import type { Configuration, Dir, FlowEdge, FlowGraph, FlowNode, LineItem, Vec2 } from "./types";
 
 /**
  * Flödesskelettet: noder, sträckor och ordningen de ska lösas i.
@@ -104,6 +104,57 @@ export function edgeOrder(graph: FlowGraph): { order: FlowEdge[]; cyclic: FlowEd
 /** Sträckor i den ordning de placeras, utan de som ligger i en ring. */
 export function orderedEdges(graph: FlowGraph): FlowEdge[] {
   return edgeOrder(graph).order;
+}
+
+/**
+ * Riktningen en sträcka ritades i, snäppt till närmaste axel.
+ *
+ * Pilens riktning är paketens riktning — det är hela vitsen med att rita den.
+ * Utan det här lades maskinerna alltid längs hallen oavsett hur pilen pekade,
+ * och ritningen blev en dekoration bredvid en linje som gick sin egen väg.
+ */
+export function edgeDirection(graph: FlowGraph, edge: FlowEdge): Dir | null {
+  const from = nodeById(graph, edge.fromNodeId);
+  const to = nodeById(graph, edge.toNodeId);
+  if (!from || !to) return null;
+
+  const dx = to.at.x - from.at.x;
+  const dy = to.at.y - from.at.y;
+  if (dx === 0 && dy === 0) return null;
+  if (Math.abs(dx) >= Math.abs(dy)) return dx >= 0 ? "x+" : "x-";
+  return dy >= 0 ? "y+" : "y-";
+}
+
+/** Hur nära en befintlig nod en pil får släppas för att fästa i den, mm. */
+export const SNAP_TO_NODE_MM = 2500;
+
+/**
+ * Noden en pilände fäster i, om den ritades nära en.
+ *
+ * Utan det här blev varje pil en egen ö: fyra ritade pilar gav fyra
+ * frikopplade linjer som alla hette "Linjen", i stället för ett flöde som
+ * möts. Ingen siktar på en osynlig punkt med millimeterprecision — det är
+ * ritverktygets sak att förstå att två ändar som ligger på varandra är samma
+ * punkt.
+ */
+export function nodeNear(graph: FlowGraph, at: Vec2, within = SNAP_TO_NODE_MM): FlowNode | null {
+  let best: { node: FlowNode; distance: number } | null = null;
+  for (const node of graph.nodes) {
+    const away = Math.hypot(node.at.x - at.x, node.at.y - at.y);
+    if (away <= within && (!best || away < best.distance)) best = { node, distance: away };
+  }
+  return best?.node ?? null;
+}
+
+/**
+ * Är noden en överenskommelse mellan flera grenar?
+ *
+ * En fri ände är bara där sträckan råkar sluta, och den följer med
+ * maskinerna. En delad nod är ett möte: två vägar ska träffas där, och då är
+ * avståndet däremellan något att säga till om.
+ */
+export function isSharedNode(graph: FlowGraph, nodeId: string): boolean {
+  return edgesTo(graph, nodeId).length + edgesFrom(graph, nodeId).length > 1;
 }
 
 export function distance(a: Vec2, b: Vec2): number {

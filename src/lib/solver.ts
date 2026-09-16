@@ -1,7 +1,9 @@
 import { segments } from "./branches";
 import {
   EMPTY_GRAPH,
+  edgeDirection,
   hasFlowGraph,
+  isSharedNode,
   nodeById,
   orderedEdges,
   primaryIncoming,
@@ -854,6 +856,21 @@ function walkChain(
   };
 }
 
+/** Flyttar en färdig placering i sidled, utan att röra dess form. */
+function shiftPlacement(placement: Placement, dx: number, dy: number): Placement {
+  const box = (b: Box): Box => ({ ...b, x: b.x + dx, y: b.y + dy });
+  return {
+    ...placement,
+    origin: { x: placement.origin.x + dx, y: placement.origin.y + dy },
+    bbox: box(placement.bbox),
+    ports: placement.ports.map((port) => ({
+      ...port,
+      pos: { x: port.pos.x + dx, y: port.pos.y + dy },
+    })),
+    zones: placement.zones.map((zone) => ({ ...zone, box: box(zone.box) })),
+  };
+}
+
 /** Kapbar maskin på en sträcka: parametrisk längd, ingen modell, inga utföranden. */
 function fittableOf(entries: RunEntry[]): RunEntry | null {
   for (let i = entries.length - 1; i >= 0; i--) {
@@ -919,17 +936,30 @@ function walkGraph(
       continue;
     }
 
-    const start: Cursor = fed?.cursor ?? { point: from!.at, dir: from!.dir };
+    /*
+     * Var sträckan börjar, och åt vilket håll.
+     *
+     * Punkten följer fysiken: fortsätter sträckan efter en annan börjar den
+     * där den slutade, port mot port. Riktningen följer ritningen: pilen är
+     * paketens väg, och drog kunden den nedåt ska maskinerna gå nedåt. Går de
+     * två isär — en pil som svänger där maskinen inte kan svänga — är det
+     * reglernas sak att säga det, inte solverns att tyst räta ut den.
+     */
+    const drawn = edgeDirection(graph, edge);
+    const start: Cursor = {
+      point: fed?.cursor.point ?? from!.at,
+      dir: drawn ?? fed?.cursor.dir ?? from!.dir,
+    };
     const connectedTo = fed?.lastInstanceId ?? null;
 
     let run = placeRun(entries, start, connectedTo, ctx);
+    const target = nodeById(graph, edge.toNodeId);
 
     /*
      * Sträck den kapbara maskinen så att sträckan når fram till sin målnod.
      * Samma korrigering som slutpunkten gör, och av samma skäl: det sista
      * stycket är rakt, så en omkörning räcker.
      */
-    const target = nodeById(graph, edge.toNodeId);
     const fit = fittableOf(entries);
     if (edge.fit && target && fit && run.placements.length > 0) {
       const v = DIR_VEC[run.cursor.dir];
@@ -948,6 +978,44 @@ function walkGraph(
         );
         ctx.lengths.set(fit.item.instanceId, clamped);
         run = placeRun(entries, start, connectedTo, ctx);
+      }
+    }
+
+    /*
+     * En inmatning ska sluta i mötet, inte börja där pilen släpptes.
+     *
+     * Drar man in en andra inmatning i linjen är det sista maskinen på den
+     * som ska möta linjen — resten står bakom den, åt det håll pilen pekar.
+     * Sträckan placeras därför framåt som alla andra och flyttas sedan i sin
+     * helhet så att sista utporten hamnar i mötespunkten. Formen är stel, så
+     * en förskjutning räcker: inget behöver räknas om.
+     *
+     * Bara sträckor som inte redan är fastkopplade i sin början flyttas. Den
+     * som fortsätter efter en annan sitter port mot port, och då är början
+     * given.
+     */
+    if (!fed && target && isSharedNode(graph, target.id) && run.placements.length > 0) {
+      const dx = target.at.x - run.cursor.point.x;
+      const dy = target.at.y - run.cursor.point.y;
+      if (dx !== 0 || dy !== 0) {
+        run = {
+          ...run,
+          placements: run.placements.map((p) => shiftPlacement(p, dx, dy)),
+          cursor: {
+            dir: run.cursor.dir,
+            point: { x: run.cursor.point.x + dx, y: run.cursor.point.y + dy },
+          },
+        };
+        // Hinderlistan delas av alla sträckor och måste följa med.
+        for (const shape of ctx.placed) {
+          if (!entries.some((e) => e.item.instanceId === shape.instanceId)) continue;
+          shape.bbox = { ...shape.bbox, x: shape.bbox.x + dx, y: shape.bbox.y + dy };
+          shape.clear = { ...shape.clear, x: shape.clear.x + dx, y: shape.clear.y + dy };
+          shape.ports = shape.ports.map((port) => ({
+            ...port,
+            pos: { x: port.pos.x + dx, y: port.pos.y + dy },
+          }));
+        }
       }
     }
 

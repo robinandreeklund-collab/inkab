@@ -1,5 +1,5 @@
 import { connectedPairs } from "./branches";
-import { edgeLabel, edgeOrder } from "./flowGraph";
+import { edgeLabel, edgeOrder, isSharedNode } from "./flowGraph";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -567,6 +567,8 @@ function flowRules(config: Configuration, layout: SolveOutput, line: Placement[]
     const target = nodeName(edge.toNodeId);
     if (!run || !target || run.gapMm === null || run.count === 0) continue;
     if (run.gapMm <= NODE_REACH_MM) continue;
+    // En fri ände flyttar sig dit maskinerna slutar; där finns inget glapp.
+    if (!isSharedNode(graph, target.id)) continue;
 
     out.push({
       code: "R-701",

@@ -79,6 +79,12 @@ type State = {
    * gren i stället för att läggas sist.
    */
   branchTarget: { instanceId: string; outPortId: string } | null;
+  /**
+   * Ingången nästa maskin ska mata. Satt när någon tryckt "mata in hit" på en
+   * ledig ingång; nästa maskin ur katalogen startar då en matarlinje som
+   * slutar där, i stället för att läggas sist i linjen.
+   */
+  feedTarget: { instanceId: string; inPortId: string } | null;
 };
 
 type Actions = {
@@ -109,7 +115,9 @@ type Actions = {
   toggleOption: (instanceId: string, optionId: string) => void;
   setVariant: (instanceId: string, variantId: string) => void;
   setBranchTarget: (target: { instanceId: string; outPortId: string } | null) => void;
+  setFeedTarget: (target: { instanceId: string; inPortId: string } | null) => void;
   setOutPort: (instanceId: string, outPortId: string) => void;
+  setInPort: (instanceId: string, inPortId: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
@@ -232,6 +240,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     log: [],
     proposalId: null,
     branchTarget: null,
+    feedTarget: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -324,15 +333,27 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        */
       const target = get().branchTarget;
       if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
-      const fallback = target
-        ? segmentEndIndex(get().config.line, target.instanceId)
-        : segmentEndIndex(get().config.line, get().selectedId);
+
+      /*
+       * En matarlinje läggs sist i listan och byggs framåt i flödesordning:
+       * nästa maskin man väljer hamnar efter den förra och blir därmed den
+       * som möter ingången. Det är samma ordning man tänker i — först där
+       * paketen kommer in, sist där de går över i banan.
+       */
+      const feed = get().feedTarget;
+      if (feed) item.feeds = { toInstanceId: feed.instanceId, inPortId: feed.inPortId };
+
+      const fallback = feed
+        ? get().config.line.length
+        : target
+          ? segmentEndIndex(get().config.line, target.instanceId)
+          : segmentEndIndex(get().config.line, get().selectedId);
 
       get().update((d) => {
         const index = atIndex ?? fallback;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
-      set({ branchTarget: null });
+      set({ branchTarget: null, feedTarget: null });
       get().select(item.instanceId);
     },
 
@@ -354,7 +375,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
       }),
 
-    setBranchTarget: (branchTarget) => set({ branchTarget }),
+    setBranchTarget: (branchTarget) => set({ branchTarget, feedTarget: null }),
+    setFeedTarget: (feedTarget) => set({ feedTarget, branchTarget: null }),
 
     setVariant: (instanceId, variantId) =>
       get().update((d) => {
@@ -370,6 +392,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (item) item.outPortId = outPortId;
+      }),
+
+    setInPort: (instanceId, inPortId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.inPortId = inPortId;
       }),
 
     setParameter: (instanceId, parameterId, value) =>

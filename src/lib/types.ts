@@ -219,6 +219,15 @@ export type LineItem = {
    */
   outPortId?: string;
   /**
+   * Vilken ingång flödet kommer in i, för maskiner med flera. Utelämnas
+   * används den första.
+   *
+   * Speglar outPortId, och styr precis som den hur maskinen vrids: solvern
+   * vänder maskinen så att den VALDA ingången möter flödet. Väljer man en
+   * ingång på långsidan står maskinen därför tvärs mot den som matar den.
+   */
+  inPortId?: string;
+  /**
    * Grenrot: maskinen sitter på en annan maskins utgång i stället för på den
    * föregående i listan. Allt som följer i listan hör till samma gren tills
    * nästa grenrot.
@@ -227,6 +236,18 @@ export type LineItem = {
    * ordningen för offert, ångra och numrering; grenarna ligger i länkarna.
    */
   branch?: { fromInstanceId: string; outPortId: string };
+  /**
+   * Matarrot: posten inleder en linje som MYNNAR i en annan maskins ingång.
+   *
+   * Spegelbilden av `branch`. En gren utgår från en utgång och byggs framåt;
+   * en matarlinje slutar i en ingång och byggs bakåt. Posterna står i
+   * flödesordning som alla andra — först den maskin paketen kommer in i,
+   * sist den som möter maskinen linjen matar.
+   *
+   * Det är så två inmatningar möts på en gemensam bana: banan har två
+   * ingångar, och en matarlinje slutar i var sin.
+   */
+  feeds?: { toInstanceId: string; inPortId: string };
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;

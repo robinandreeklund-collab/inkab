@@ -31,7 +31,7 @@ Vid deployen frågar Render om två miljövariabler:
 | Variabel | Krävs | Vad den gör |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | Nej | Slår på AI-assistenten. Läggs in i Render under **din tjänst → Environment → Environment Variables**. **Utan nyckel fungerar allt annat precis som vanligt** — assistenten faller tillbaka på regelmotorns egna åtgärdsförslag och säger tydligt att den saknar nyckel. |
-| `DATABASE_URL` | **I praktiken ja** | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge serverprocessen gör det — och en instans på Renders gratisplan sover in efter en kvarts stillhet, så arbetet är borta när du kommer tillbaka. Admin-vyns lagringsbanner säger vilket läge servern är i, och vyn **Modell** säger till när en modellfil har försvunnit i stället för att tyst rita en låda. **Sätt den innan ni matar in maskindata.** |
+| `DATABASE_URL` | **I praktiken ja** | Postgres-URL från Render, Neon eller Supabase. Utan den lever konton, admins ändringar och uppladdade 3D-modeller bara så länge serverprocessen gör det — och en instans på Renders gratisplan sover in efter en kvarts stillhet, så arbetet är borta när du kommer tillbaka. Admin-vyns lagringsbanner säger vilket läge servern är i, och vyn **Modell** säger till när en modellfil har försvunnit i stället för att tyst rita en låda. **Sätt den innan ni matar in maskindata.** Vill ni inte ha databas än: *Admin → Exportera demo-paket* lägger bibliotek, bilder och modeller i repot i stället, se [Demo-paket](#admin-vyn). |
 | `ADMIN_EMAILS` | Nej | Kommaseparerade adresser som blir admin automatiskt vid registrering. Standard: `robin@inkab.nu,daniel@inkab.nu,lars@inkab.nu`. |
 | `AUTH_SECRET` | Nej | Signeringsnyckel för sessionscookien. Utan den genereras en ny vid varje omstart, vilket loggar ut alla. |
 
@@ -96,7 +96,9 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. Varje maskins fullständiga beskrivning ur katalogen ligger i systemprompten, så assistenten vet vad maskinerna faktiskt gör. |
 | **Admin-vy** | `/admin` — maskinbibliotek, prisbok och konton. Per maskin: identitet, AI-beskrivning, geometri, maskinzon, portar med live-förhandsgranskning, zoner, kapacitet, media, beroenden, kundens inställningar, bilder, optioner och pris. Provkoppling testar att portarna går att koppla in. Export och import av hela biblioteket som JSON. |
 | **Grenar** | Linjen är ett träd: en maskin med flera utgångar kan bära en egen gren på var och en. Markera maskinen, tryck **Bygg vidare** på en ledig utgång och välj nästa maskin — grenen får en egen rad i linjeremsan med sitt fäste utskrivet. Grenar delar hinderlista med huvudlinjen så de lägger sig fritt, och tas roten bort följer grenen med. Lagras platt: listan behåller ordningen för offert och ångra, trädet ligger i länkarna. |
+| **Matarlinjer** | Spegelbilden av en gren: två inmatningar som möts i en gemensam bana. En gren utgår från en utgång och byggs framåt; en matarlinje slutar i en **ingång** och byggs bakåt. Markera maskinen som tar emot, och panelen **Ingångar** listar dess lediga ingångar — tryck **Mata in hit** på en av dem och bygg linjen som vanligt. Solvern lägger den sista maskinen precis i ingången och resten uppströms därifrån, så linjen mynnar där den ska oavsett från vilket håll den kommer. Kräver att maskinen har mer än en ingång i katalogen: en sammanslagning är en maskin, inte en punkt i luften. |
 | **Flera utgångar** | En maskin kan ha flera utportar — en rullbana lämnar paketet rakt fram eller ut på kortsidan. Vilken linjen fortsätter ur väljs per maskin i konfiguratorn, inte i biblioteket: samma rullbana kan gå rakt i ett flöde och vinkla i ett annat. De andra utgångarna finns kvar och ritas ut. |
+| **Flera ingångar** | Speglar utgångarna: vilken ingång flödet kommer in i väljs per maskin i konfiguratorn. Valet styr hur maskinen vrids — solvern vänder den valda ingången mot flödet, så en bana som tas emot på långsidan står tvärs mot den som matar den, och allt nedströms följer med. En ingång som redan matas av en matarlinje går inte att också ta emot huvudflödet i; R-209 fångar det i en importerad konfiguration. |
 | **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
 | **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
 | **Start- och slutpunkt** | Dras direkt i ritningen eller skrivs in i meter. Slås "anpassa längden automatiskt" på sätter solvern sista kedjetransportörens längd så att linjen slutar exakt i punkten. |
@@ -107,7 +109,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
 | **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
-| **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs`. `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
+| **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora för webbläsarens minne — se [Stora STEP-filer](#stora-step-filer). `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
 | **Utföranden** | Samma maskin i olika längder — en rullbana som 3, 6 och 12 m är en maskin med tre mått, inte tre maskiner. Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Kunden väljer utförande i konfiguratorn; solvern, reglerna, priset och 3D-vyn ser bara en maskin med sina mått. Priset per utförande ligger i prisboken, aldrig i maskindatan. Utföranden slår steglös längd när en maskin har båda. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Ritar modellen i **sin verkliga storlek** — den skalas aldrig för att fylla ut ett mått i biblioteket — och **varnar när måtten inte stämmer** — 3D blir en kontroll av datan, inte bara en bild. Säger också till när en modellfil inte gick att hämta, i stället för att tyst rita en låda. |
 | **Modellens riktning** | En STEP kommer sällan in rättvänd, men konventionen hör till CAD-systemet och inte till maskinen: en rullbana och en lättpress ser inget lika ut och ritas ändå likadant. Riktningen är därför **en inställning för hela biblioteket** (INKAB:s CAD: X tvärs, Y upp, Z i flödet) som varje ny modell tolkas med. Per maskin går den att ändra, med en 3D-förhandsgranskning som visar ändringen direkt — ingen ny konvertering behövs. |
@@ -177,7 +179,7 @@ vänster `−Y`** — den konventionen avgör vad de fyra sidofrågorna betyder.
 ```
 scripts/
 ├── copy-occt-wasm.mjs    Kopierar OpenCascades wasm till public/ före bygget
-└── step-to-glb.mjs       STEP → GLB + katalogkort (CLI runt src/lib/cad/stepConvert.ts)
+└── step-to-glb.mjs       STEP → GLB + katalogkort, en fil eller en hel katalog
 src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
@@ -191,6 +193,8 @@ src/
 │   ├── templates.ts      Fyra startmallar
 │   ├── schema.ts         Zod-validering av allt som når servern
 │   ├── share.ts          Konfiguration ⇄ URL
+│   ├── demoBundle.ts     Demo-paketet: bibliotek och modeller som repofiler
+│   ├── zip.ts            Minimal ZIP-skrivare för paketet
 │   ├── ai/
 │   │   ├── tools.ts      Verktygsskalet
 │   │   ├── prompt.ts     Systemprompt med cache-brytpunkt
@@ -207,7 +211,7 @@ src/
 └── app/
     ├── page.tsx
     ├── admin/            Admin-vyn
-    └── api/              ai/chat · price · library · models · auth · admin (library, model, users) · health
+    └── api/              ai/chat · price · library · models · auth · admin (library, model, users, bundle) · health
 ```
 
 ---
@@ -229,6 +233,8 @@ src/
 | R-205 | Ingen truckgata eller hämtzon är ritad | varning |
 | R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
 | R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
+| R-208 | Linjerna som möts i en maskin lämnar mer än den klarar | varning |
+| R-209 | Två linjer går in i samma ingång | fel |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |
 | R-303 | Paketet är för tungt | fel |
@@ -351,9 +357,75 @@ versionshanterade utgångsläget som gäller vid varje deploy, oavsett databas.
 Det är den arbetsgången jag rekommenderar för maskindata: granskningsbar i en
 pull request, med full historik.
 
+**Demo-paket.** *Exportera demo-paket* gör samma sak för allt på en gång, och
+tar med de uppladdade 3D-modellerna och produktbilderna. Arbetskopian sparas
+alltid först: paketet byggs ur det servern har, och utan databas glömmer den
+allt när den startar om eller somnar in — fliken kan alltså se bilder som
+servern inte längre minns. Arkivet innehåller `data/library.json` —
+med maskiner och prisbok — plus varje uppladdad modell som
+`public/models/<maskin>.glb` och varje produktbild som
+`public/bilder/<maskin>-1.webp`. Maskinernas sökvägar skrivs om på vägen, från
+`/api/models/…` till `/models/…` och från bild-id till `/bilder/…`, så att
+biblioteket pekar på filerna bredvid sig i stället för på serverns minne.
+Bilderna ligger alltså som riktiga filer att titta på och granska i en pull
+request, inte som base64 mitt i en JSON-rad. Packa upp i reporoten, committa
+och pusha:
+
+```
+unzip inkab-demo-2026-09-15.zip
+git add data public/models public/bilder
+git commit -m "Uppdaterat maskinbibliotek, modeller och bilder"
+git push
+```
+
+Det är vägen till en demo som ser likadan ut efter varje omstart **utan
+databas** — repot är lagringen. Paketets `LASMIG.md` räknar upp vad som kom
+med och säger till om någon modell hunnit falla ur minnet innan den hämtades.
+Konton, sparade offerter och maskinernas underlag är inte med: de hör inte
+hemma i git, och för dem behövs en riktig databas.
+
 **Lagring.** Med `DATABASE_URL` sparas ändringar i Postgres. Utan den lever de
 i serverns minne tills den startar om — banderollen högst upp säger vilket som
 gäller.
+
+---
+
+## Stora STEP-filer
+
+Konverteringen i admin-vyn körs i din webbläsare, och en flik har ett par
+gigabyte att röra sig med. En tung sammanställning på 50–80 MB spränger dem
+mitt i tesselleringen: OpenCascade svarar att den lyckats, men delarna kommer
+tillbaka tomma. Då säger panelen att ingen del fick geometri — och att gränsen
+för smådelar inte har med saken att göra.
+
+Kör den filen lokalt i stället, med datorns minne:
+
+```bash
+git clone https://github.com/robinandreeklund-collab/inkab.git
+cd inkab
+npm ci
+node scripts/step-to-glb.mjs ~/CAD/rullbana.step --id rullbana --proxy
+```
+
+Samma kod som admin-vyn, men i Node och med en heap på 8 GB (`--heap <MB>` om
+du vill ha mer eller mindre). Skriptet skriver `public/models/<id>.glb`, en
+proxy med `--proxy`, och ett `<id>.card.json` med fotavtryck, höjd och
+portförslag ur modellen.
+
+En hel katalog går lika bra — en fil som fallerar stoppar inte de andra:
+
+```bash
+node scripts/step-to-glb.mjs ~/CAD/maskiner --tolerance 5 --min-part 100
+```
+
+Sedan: klistra in sökvägen skriptet skriver ut (`GLB-fältet /models/…`) i
+maskinens **GLB**-fält i admin, kontrollera måtten mot kortet, och committa
+`public/models/` tillsammans med biblioteket.
+
+Hjälper inte heller det är filen för tung även för Node — wasm-bygget av
+OpenCascade har fyra gigabyte adressrymd oavsett dator. Exportera då en STEP
+utan skruv, kablage och inköpta komponenter, eller dela sammanställningen i
+delar och konvertera dem var för sig.
 
 ---
 

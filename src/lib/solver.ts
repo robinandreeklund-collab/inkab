@@ -1,3 +1,4 @@
+import { segments } from "./branches";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "./library";
 import {
   DIR_VEC,
@@ -264,15 +265,32 @@ export function pickOutPort<T extends { id: string; role: "in" | "out" }>(
   return outs.find((p) => p.id === outPortId) ?? outs[0];
 }
 
+/**
+ * Ingången flödet kommer in i.
+ *
+ * Spegelbilden av pickOutPort, och lika mycket ett val per maskin: en bana
+ * kan tas emot i kortsidan i ett flöde och på långsidan i ett annat. Valet
+ * styr hur maskinen vrids — solvern vänder den valda ingången mot flödet —
+ * så en bana som matas på långsidan står tvärs mot den som matar den.
+ */
+export function pickInPort<T extends { id: string; role: "in" | "out" }>(
+  ports: T[],
+  inPortId?: string,
+): T | undefined {
+  const ins = ports.filter((p) => p.role === "in");
+  return ins.find((p) => p.id === inPortId) ?? ins[0];
+}
+
 /** Väljer rotation och speglingsläge så att inporten möter flödet. */
 function fitMachine(
   m: EffectiveMachine,
   cursor: Cursor,
   preferMirrored: boolean,
   outPortId?: string,
+  inPortId?: string,
 ): { rotation: Rotation; mirrored: boolean } | null {
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in");
+  const inPort = pickInPort(ports, inPortId);
   const outPort = pickOutPort(ports, outPortId);
   if (!inPort || !outPort) return null;
 
@@ -318,6 +336,139 @@ function clearanceShift(box: Box, others: Box[], dir: Dir, clearance: number): n
   }
 }
 
+/**
+ * Väljer rotation och spegling så att UTporten möter flödet.
+ *
+ * Spegelbilden av fitMachine. En matarlinje byggs bakifrån: vi vet var
+ * maskinens utgång ska ligga — i den ingång den matar — och söker det läge
+ * som lägger den där, åt rätt håll. Ingången hamnar då uppströms, och blir
+ * nästa maskins mål.
+ */
+function fitMachineBackwards(
+  m: EffectiveMachine,
+  cursor: Cursor,
+  preferMirrored: boolean,
+  outPortId?: string,
+  inPortId?: string,
+): { rotation: Rotation; mirrored: boolean } | null {
+  const ports = scaledPorts(m);
+  const inPort = pickInPort(ports, inPortId);
+  const outPort = pickOutPort(ports, outPortId);
+  if (!inPort || !outPort) return null;
+
+  const mirrorStates = m.mirrorable ? [preferMirrored, !preferMirrored] : [false];
+  const candidates: FitCandidate[] = [];
+
+  for (const mirrored of mirrorStates) {
+    for (const rotation of ROTATIONS) {
+      // Utporten ska peka åt samma håll som flödet går där den kopplas in.
+      if (transformDir(outPort.dir, { rotation, mirrored }) !== cursor.dir) continue;
+      const inDir = transformDir(inPort.dir, { rotation, mirrored });
+      const preferenceBonus = mirrored === preferMirrored ? 0.5 : 0;
+      candidates.push({ rotation, mirrored, outDir: inDir, score: dirScore(inDir) + preferenceBonus });
+    }
+  }
+
+  if (candidates.length === 0) return null;
+  candidates.sort((a, b) => b.score - a.score);
+  return { rotation: candidates[0].rotation, mirrored: candidates[0].mirrored };
+}
+
+/**
+ * Placerar en maskin i en matarlinje, bakifrån.
+ *
+ * Markören står i den ingång maskinen ska mata, och pekar åt det håll flödet
+ * går där. Maskinen läggs så att dess utport hamnar precis där, och nästa
+ * markör blir dess egen ingång — alltså ett steg längre uppströms.
+ */
+function placeOneBackwards(
+  item: LineItem,
+  m: EffectiveMachine,
+  pos: number,
+  cursor: Cursor,
+  preferMirrored: boolean,
+): {
+  placement: Placement;
+  idealBbox: Box;
+  idealClearBox: Box;
+  idealPorts: PlacedPort[];
+  next: Cursor;
+} | null {
+  const fit = fitMachineBackwards(m, cursor, preferMirrored, item.outPortId, item.inPortId);
+  if (!fit) return null;
+
+  const ports = scaledPorts(m);
+  const inPort = pickInPort(ports, item.inPortId)!;
+  const outPort = pickOutPort(ports, item.outPortId)!;
+  const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
+
+  // origo väljs så att UTporten hamnar exakt på markörens punkt
+  const outOffset = rotatePoint(
+    fit.mirrored ? { x: outPort.pos.x, y: m.effWidthMm - outPort.pos.y } : outPort.pos,
+    fit.rotation,
+  );
+  const origin: Vec2 = {
+    x: Math.round(cursor.point.x - outOffset.x),
+    y: Math.round(cursor.point.y - outOffset.y),
+  };
+
+  const manual = item.manualOffset ?? { x: 0, y: 0 };
+  const placedOrigin: Vec2 = { x: origin.x + manual.x, y: origin.y + manual.y };
+  const full = { ...opts, origin: placedOrigin };
+
+  const placedPorts: PlacedPort[] = ports.map((p) => ({
+    id: p.id,
+    role: p.role,
+    pos: toWorld(p.pos, full),
+    dir: transformDir(p.dir, opts),
+    levelMm: p.levelMm,
+  }));
+
+  const placement: Placement = {
+    instanceId: item.instanceId,
+    machineId: m.id,
+    machine: m,
+    pos,
+    aux: false,
+    origin: placedOrigin,
+    rotation: fit.rotation,
+    mirrored: fit.mirrored,
+    size: { lengthMm: m.effLengthMm, widthMm: m.effWidthMm, heightMm: m.effHeightMm },
+    bbox: boxToWorld({ x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm }, full),
+    ports: placedPorts,
+    zones: scaledZones(m).map((z) => ({ type: z.type, label: z.label, box: boxToWorld(z.box, full) })),
+    capacity: m.effCapacity,
+    powerKw: m.effPowerKw,
+  };
+
+  const ideal = { ...opts, origin };
+  const inOffset = rotatePoint(
+    fit.mirrored ? { x: inPort.pos.x, y: m.effWidthMm - inPort.pos.y } : inPort.pos,
+    fit.rotation,
+  );
+
+  return {
+    placement,
+    idealBbox: boxToWorld({ x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm }, ideal),
+    idealClearBox: boxToWorld(
+      clearanceZone(m)?.box ?? { x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm },
+      ideal,
+    ),
+    idealPorts: ports.map((p) => ({
+      id: p.id,
+      role: p.role,
+      pos: toWorld(p.pos, ideal),
+      dir: transformDir(p.dir, opts),
+      levelMm: p.levelMm,
+    })),
+    // Uppströms: nästa maskin i matarlinjen ska sluta i den här ingången.
+    next: {
+      point: { x: Math.round(origin.x + inOffset.x), y: Math.round(origin.y + inOffset.y) },
+      dir: transformDir(inPort.dir, opts),
+    },
+  };
+}
+
 function placeOne(
   item: LineItem,
   m: EffectiveMachine,
@@ -331,11 +482,11 @@ function placeOne(
   idealPorts: PlacedPort[];
   next: Cursor;
 } | null {
-  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId);
+  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId, item.inPortId);
   if (!fit) return null;
 
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in")!;
+  const inPort = pickInPort(ports, item.inPortId)!;
   const outPort = pickOutPort(ports, item.outPortId)!;
   const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
 
@@ -651,6 +802,25 @@ type ChainResult = {
  * som redan är placerad. Alla grenar delar samma hinderlista, så en gren
  * lägger sig fritt från huvudlinjen i stället för rakt igenom den.
  */
+/** Motsatt riktning. Matarlinjen byggs uppströms, alltså hitåt. */
+const REVERSE: Record<Dir, Dir> = { "x+": "x-", "x-": "x+", "y+": "y-", "y-": "y+" };
+
+/**
+ * Bygger linjen — som är ett träd med matarlinjer, inte en kedja.
+ *
+ * Tre sorters följder, alla i samma platta lista:
+ *
+ *  · huvudlinjen, som börjar i flödets startpunkt,
+ *  · grenar, som utgår från en utgång på en redan placerad maskin och byggs
+ *    framåt,
+ *  · matarlinjer, som SLUTAR i en ingång på en redan placerad maskin och
+ *    därför byggs bakåt — sista maskinen mot porten, resten uppströms.
+ *
+ * Det är matarlinjen som gör två inmatningar mot en gemensam bana möjliga:
+ * banan har två ingångar, och en matarlinje slutar i var sin. Positionen har
+ * fortfarande bara en auktoritet — porten den kopplas i — och alla tre delar
+ * samma hinderlista, så en följd lägger sig fritt från de andra.
+ */
 function walkChain(
   config: Configuration,
   lineItems: { item: LineItem; machine: Machine }[],
@@ -660,7 +830,7 @@ function walkChain(
 ): ChainResult {
   const placements: Placement[] = [];
   const unplaced: SolveOutput["unplaced"] = [];
-  /** Placerad geometri, delad av alla grenar. */
+  /** Placerad geometri, delad av alla följder. */
   const placed: { instanceId: string; bbox: Box; clear: Box; ports: PlacedPort[] }[] = [];
 
   let cursor = startCursor(config);
@@ -671,81 +841,149 @@ function walkChain(
   let mainCursor: Cursor | null = null;
   let inMain = true;
 
-  lineItems.forEach(({ item, machine }, index) => {
-    if (item.branch) {
-      // Grenrot: hoppa till den utpekade utgången på en redan placerad maskin.
-      if (inMain) mainCursor = cursor;
-      inMain = false;
-
-      const parent = placed.find((p) => p.instanceId === item.branch!.fromInstanceId);
-      const port = parent?.ports.find(
-        (p) => p.role === "out" && p.id === item.branch!.outPortId,
-      );
-      if (!parent || !port) {
-        unplaced.push({
-          instanceId: item.instanceId,
-          machineId: machine.id,
-          reason: parent
-            ? `Utgången "${item.branch.outPortId}" finns inte på maskinen grenen utgår från.`
-            : "Maskinen grenen utgår från ligger inte före den i linjen.",
-        });
-        return;
-      }
-      cursor = { point: port.pos, dir: port.dir };
-      connectedTo = parent.instanceId;
-    }
-
-    const eff = effectiveMachine(
-      machine,
-      item.selectedOptions,
+  const effectiveOf = (index: number) =>
+    effectiveMachine(
+      lineItems[index].machine,
+      lineItems[index].item.selectedOptions,
       index === parametricIndex ? finalLengthMm : undefined,
-      item.parameters,
-      item.variantId,
+      lineItems[index].item.parameters,
+      lineItems[index].item.variantId,
     );
 
-    let result = placeOne(item, eff, index + 1, cursor, preferMirrored);
-    if (!result) {
-      unplaced.push({
-        instanceId: item.instanceId,
-        machineId: machine.id,
-        reason: "Ingen port matchar det inkommande flödet.",
-      });
-      return;
-    }
+  /** Skjuter maskinen tills den står fritt från det som redan står i hallen. */
+  const clear = (
+    from: Cursor,
+    place: (cursor: Cursor) => ReturnType<typeof placeOne>,
+    shiftDir: Dir,
+  ) => {
+    let cursorNow = from;
+    let result = place(cursorNow);
+    if (!result) return null;
 
-    /*
-     * Skjut fram markören tills maskinen står fri. Tidigare maskiner räknas
-     * med sin maskinzon — utom den den kopplas till, som är inkopplad port mot
-     * port och därför med rätta står i frigången framåt.
-     */
     const blockers = placed.map((p) => (p.instanceId === connectedTo ? p.bbox : p.clear));
     for (let attempt = 0; attempt < MAX_CLEARANCE_ATTEMPTS; attempt++) {
-      const shift = clearanceShift(result.idealBbox, blockers, cursor.dir, TURN_CLEARANCE_MM);
+      const shift = clearanceShift(result.idealBbox, blockers, shiftDir, TURN_CLEARANCE_MM);
       if (shift <= 0) break;
-      const v = DIR_VEC[cursor.dir];
-      cursor = {
-        dir: cursor.dir,
+      const v = DIR_VEC[shiftDir];
+      cursorNow = {
+        dir: cursorNow.dir,
         point: {
-          x: Math.round(cursor.point.x + v.x * shift),
-          y: Math.round(cursor.point.y + v.y * shift),
+          x: Math.round(cursorNow.point.x + v.x * shift),
+          y: Math.round(cursorNow.point.y + v.y * shift),
         },
       };
-      const retry = placeOne(item, eff, index + 1, cursor, preferMirrored);
+      const retry = place(cursorNow);
       if (!retry) break;
       result = retry;
     }
+    return { result, cursor: cursorNow };
+  };
 
+  const keep = (index: number, result: NonNullable<ReturnType<typeof placeOne>>) => {
     placements.push(result.placement);
     placed.push({
-      instanceId: item.instanceId,
+      instanceId: lineItems[index].item.instanceId,
       bbox: result.idealBbox,
       clear: result.idealClearBox,
       ports: result.idealPorts,
     });
-    cursor = result.next;
-    connectedTo = item.instanceId;
-    if (inMain && cursor.dir === "x+") turnedToMainAxis = true;
-  });
+  };
+
+  for (const segment of segments(lineItems.map((r) => r.item))) {
+    /* ── Matarlinje: byggs bakåt från den ingång den slutar i ──────────── */
+    if (segment.feeds) {
+      if (inMain) mainCursor = cursor;
+      inMain = false;
+
+      const target = placed.find((p) => p.instanceId === segment.feeds!.toInstanceId);
+      const port = target?.ports.find(
+        (p) => p.role === "in" && p.id === segment.feeds!.inPortId,
+      );
+      if (!target || !port) {
+        for (const index of segment.indices) {
+          unplaced.push({
+            instanceId: lineItems[index].item.instanceId,
+            machineId: lineItems[index].machine.id,
+            reason: target
+              ? `Ingången "${segment.feeds.inPortId}" finns inte på maskinen linjen matar.`
+              : "Maskinen matarlinjen går till ligger inte före den i linjen.",
+          });
+        }
+        continue;
+      }
+
+      let upstream: Cursor = { point: port.pos, dir: port.dir };
+      connectedTo = target.instanceId;
+
+      // Sist i flödet placeras först: den maskinen möter porten.
+      for (const index of [...segment.indices].reverse()) {
+        const eff = effectiveOf(index);
+        const step = clear(
+          upstream,
+          (c) => placeOneBackwards(lineItems[index].item, eff, index + 1, c, preferMirrored),
+          REVERSE[upstream.dir],
+        );
+        if (!step?.result) {
+          unplaced.push({
+            instanceId: lineItems[index].item.instanceId,
+            machineId: lineItems[index].machine.id,
+            reason: "Ingen utgång matchar ingången maskinen ska mata.",
+          });
+          continue;
+        }
+        keep(index, step.result);
+        upstream = step.result.next;
+        connectedTo = lineItems[index].item.instanceId;
+      }
+      continue;
+    }
+
+    /* ── Huvudlinje och grenar: byggs framåt, som förut ────────────────── */
+    if (segment.branch) {
+      if (inMain) mainCursor = cursor;
+      inMain = false;
+
+      const parent = placed.find((p) => p.instanceId === segment.branch!.fromInstanceId);
+      const port = parent?.ports.find(
+        (p) => p.role === "out" && p.id === segment.branch!.outPortId,
+      );
+      if (!parent || !port) {
+        const root = segment.indices[0];
+        unplaced.push({
+          instanceId: lineItems[root].item.instanceId,
+          machineId: lineItems[root].machine.id,
+          reason: parent
+            ? `Utgången "${segment.branch.outPortId}" finns inte på maskinen grenen utgår från.`
+            : "Maskinen grenen utgår från ligger inte före den i linjen.",
+        });
+        segment.indices.shift();
+      } else {
+        cursor = { point: port.pos, dir: port.dir };
+        connectedTo = parent.instanceId;
+      }
+    }
+
+    for (const index of segment.indices) {
+      const eff = effectiveOf(index);
+      const step = clear(
+        cursor,
+        (c) => placeOne(lineItems[index].item, eff, index + 1, c, preferMirrored),
+        cursor.dir,
+      );
+      if (!step?.result) {
+        unplaced.push({
+          instanceId: lineItems[index].item.instanceId,
+          machineId: lineItems[index].machine.id,
+          reason: "Ingen port matchar det inkommande flödet.",
+        });
+        continue;
+      }
+      keep(index, step.result);
+      cursor = step.result.next;
+      connectedTo = lineItems[index].item.instanceId;
+      if (inMain && cursor.dir === "x+") turnedToMainAxis = true;
+    }
+  }
 
   return {
     placements,

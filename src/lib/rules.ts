@@ -1,4 +1,4 @@
-import { connectedPairs } from "./branches";
+import { connectedPairs, connections, inPortOf } from "./branches";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -37,11 +37,23 @@ export function runRules(
   const hall = hallBox(config);
 
   /* ── R-101 Portmatchning ────────────────────────────────────────────── */
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = line[i];
-    const b = line[i + 1];
-    const outPort = a.ports.find((p) => p.role === "out");
-    const inPort = b.ports.find((p) => p.role === "in");
+  /*
+   * Kopplingarna, inte grannarna i listan. En grenrot kan ha nummer 3 och
+   * sitta på nummer 1, och en matarlinje ligger sist i listan men mynnar mitt
+   * i den — att jämföra listgrannar hittade på glapp som inte fanns och
+   * missade dem som fanns.
+   */
+  const byInstanceId = new Map(line.map((p) => [p.instanceId, p]));
+  const links = connections(config.line);
+  for (const link of links) {
+    const a = byInstanceId.get(link.fromInstanceId);
+    const b = byInstanceId.get(link.toInstanceId);
+    if (!a || !b) continue;
+
+    const outs = a.ports.filter((p) => p.role === "out");
+    const ins = b.ports.filter((p) => p.role === "in");
+    const outPort = outs.find((p) => p.id === link.fromPortId) ?? outs[0];
+    const inPort = ins.find((p) => p.id === link.toPortId) ?? ins[0];
     if (!outPort || !inPort) continue;
 
     if (Math.abs(outPort.levelMm - inPort.levelMm) > PORT_LEVEL_TOLERANCE_MM) {
@@ -533,6 +545,69 @@ export function runRules(
       detail: `${getMachine(u.machineId, library)?.name ?? u.machineId}: ${u.reason}`,
       instanceIds: [u.instanceId],
     });
+  }
+
+  /* ── R-208 Sammanslagningen överskrider banans kapacitet ────────────── */
+  /*
+   * Två linjer som möts i samma maskin lämnar ifrån sig sin kapacitet var för
+   * sig, men maskinen som tar emot dem har bara sin egen. Flaskhalsen sitter
+   * i mötet och syns inte i någon av linjerna — därför en egen regel.
+   */
+  for (const target of line) {
+    const feeding = links.filter((c) => c.toInstanceId === target.instanceId);
+    if (feeding.length < 2) continue;
+
+    const sum = feeding.reduce((total, link) => {
+      const source = line.find((p) => p.instanceId === link.fromInstanceId);
+      return total + (source?.capacity ?? 0);
+    }, 0);
+    if (target.capacity <= 0 || sum <= target.capacity) continue;
+
+    out.push({
+      code: "R-208",
+      severity: "warning",
+      title: `${target.machine.name} tar emot mer än den klarar`,
+      detail:
+        `${feeding.length} linjer lämnar tillsammans ${sum} paket/h till en maskin som klarar ` +
+        `${target.capacity}. Flaskhalsen sitter i mötet, inte i linjerna var för sig.`,
+      instanceIds: [target.instanceId, ...feeding.map((f) => f.fromInstanceId)],
+      anchor: boxCenter(target.bbox),
+    });
+  }
+
+  /* ── R-209 Två linjer bokar samma ingång ────────────────────────────── */
+  /*
+   * Gränssnittet hindrar det, men en delad länk eller en importerad
+   * konfiguration kan innehålla det ändå: huvudflödet och en matarlinje som
+   * pekar på samma ingång. Två linjer i samma port är inte en
+   * sammanslagning utan två maskiner på samma punkt.
+   */
+  for (const target of line) {
+    const perPort = new Map<string, string[]>();
+    for (const link of links) {
+      if (link.toInstanceId !== target.instanceId) continue;
+      const port = inPortOf(
+        config.line.find((i) => i.instanceId === target.instanceId),
+        target.machine,
+      );
+      const id = link.toPortId ?? port;
+      perPort.set(id, [...(perPort.get(id) ?? []), link.fromInstanceId]);
+    }
+
+    for (const [portId, sources] of perPort) {
+      if (sources.length < 2) continue;
+      const namn = target.machine.ports.find((p) => p.id === portId)?.name ?? portId;
+      out.push({
+        code: "R-209",
+        severity: "error",
+        title: `Två linjer går in i samma ingång på ${target.machine.name}`,
+        detail:
+          `${sources.length} linjer är kopplade till "${namn}". En ingång tar emot en ` +
+          `linje — behöver maskinen ta emot fler måste den ha fler ingångar.`,
+        instanceIds: [target.instanceId, ...sources],
+        anchor: boxCenter(target.bbox),
+      });
+    }
   }
 
   return dedupe(out);

@@ -94,6 +94,74 @@ function bounds(positions: number[]): Omit<Part, "mesh"> {
   return { min, max, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
 }
 
+export type PartSurvey = {
+  /** Delar med användbar geometri. */
+  parts: Part[];
+  /** De av dem som är stora nog att rita. */
+  kept: Part[];
+  /** Delar som kom tillbaka utan koordinater eller utan index. */
+  empty: number;
+};
+
+/**
+ * Sorterar tesselleringens resultat.
+ *
+ * En del utan koordinater är inte en liten del — den är ingen del alls, och
+ * skillnaden avgör vilket fel användaren får se. Meshar utan index hör hit
+ * också: utan trianglar finns inget att bygga av, och att låta dem gå vidare
+ * ger ett kryptiskt fel längre ner i stället för ett begripligt här.
+ */
+export function surveyMeshes(meshes: OcctMesh[], minPartMm: number): PartSurvey {
+  const parts: Part[] = [];
+  let empty = 0;
+
+  for (const mesh of meshes) {
+    const positions = mesh?.attributes?.position?.array;
+    if (!positions?.length || !mesh.index?.array?.length) {
+      empty++;
+      continue;
+    }
+    const box = bounds(positions);
+    if (!Number.isFinite(box.min[0])) {
+      empty++;
+      continue;
+    }
+    parts.push({ mesh, ...box });
+  }
+
+  return { parts, kept: parts.filter((p) => Math.max(...p.size) >= minPartMm), empty };
+}
+
+/**
+ * Felet när ingenting blev kvar att bygga av — eller null när det finns.
+ *
+ * De två fallen ser likadana ut i koden och är helt olika för den som står
+ * framför skärmen. Är delarna för små hjälper gränsen. Fick vi ingen geometri
+ * alls är gränsen oskyldig, och ett "sänk den" skickar iväg någon på en jakt
+ * som aldrig kan lyckas.
+ */
+export function emptyResultError(
+  survey: PartSurvey,
+  minPartMm: number,
+  stepBytes: number,
+): string | null {
+  if (survey.kept.length > 0) return null;
+
+  if (survey.parts.length > 0) {
+    return `Alla ${survey.parts.length} delar var mindre än gränsen ${minPartMm} mm. Sänk den.`;
+  }
+
+  const size = `${(stepBytes / 1e6).toFixed(0)} MB`;
+  const read = survey.empty === 1 ? "1 del" : `${survey.empty} delar`;
+  return (
+    `OpenCascade läste ${read} ur filen (${size}) men fick ingen geometri ur någon av dem. ` +
+    "Gränsen för smådelar har inget med det att göra — att sänka den hjälper inte. " +
+    "Vanligast är att webbläsaren fick slut på minne på en tung sammanställning: kör filen " +
+    "med `npm run step2glb` på en dator med mer minne, eller exportera en STEP utan skruv, " +
+    "kablage och inköpta komponenter och försök igen."
+  );
+}
+
 export async function convertStep(
   step: Uint8Array,
   options: ConvertOptions = {},
@@ -120,16 +188,10 @@ export async function convertStep(
 
   /* ── Släng det som inte syns ─────────────────────────────────────────── */
   report("rensar");
-  const parts: Part[] = read.meshes
-    .map((mesh) => ({ mesh, ...bounds(mesh.attributes.position.array) }))
-    .filter((p) => Number.isFinite(p.min[0]));
-
-  const kept = parts.filter((p) => Math.max(...p.size) >= opt.minPartMm);
-  if (kept.length === 0) {
-    throw new Error(
-      `Alla ${parts.length} delar var mindre än gränsen ${opt.minPartMm} mm. Sänk den.`,
-    );
-  }
+  const survey = surveyMeshes(read.meshes, opt.minPartMm);
+  const problem = emptyResultError(survey, opt.minPartMm, step.length);
+  if (problem) throw new Error(problem);
+  const { parts, kept } = survey;
   const trianglesIn = kept.reduce((n, p) => n + p.mesh.index.array.length / 3, 0);
 
   /* ── Normalisera: origo, upp-axel, meter ─────────────────────────────── */
@@ -267,6 +329,14 @@ export async function convertStep(
   }
   if (sizeMm[2] < 100) {
     warnings.push(`Höjden ${m(sizeMm[2])} m är för låg för en maskin i biblioteket.`);
+  }
+  // Enstaka tomma delar betyder ofta att tesselleringen tog slut på minne på
+  // vägen. Modellen blir byggd ändå, men den är inte hel.
+  if (survey.empty > 0) {
+    warnings.push(
+      `${survey.empty} av ${read.meshes.length} delar kom tillbaka utan geometri och är inte ` +
+        "med i modellen. Kontrollera att inget syns saknas, eller kör filen med skriptet.",
+    );
   }
   if (trianglesIn > 400_000) {
     warnings.push(

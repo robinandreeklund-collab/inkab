@@ -265,15 +265,32 @@ export function pickOutPort<T extends { id: string; role: "in" | "out" }>(
   return outs.find((p) => p.id === outPortId) ?? outs[0];
 }
 
+/**
+ * Ingången flödet kommer in i.
+ *
+ * Spegelbilden av pickOutPort, och lika mycket ett val per maskin: en bana
+ * kan tas emot i kortsidan i ett flöde och på långsidan i ett annat. Valet
+ * styr hur maskinen vrids — solvern vänder den valda ingången mot flödet —
+ * så en bana som matas på långsidan står tvärs mot den som matar den.
+ */
+export function pickInPort<T extends { id: string; role: "in" | "out" }>(
+  ports: T[],
+  inPortId?: string,
+): T | undefined {
+  const ins = ports.filter((p) => p.role === "in");
+  return ins.find((p) => p.id === inPortId) ?? ins[0];
+}
+
 /** Väljer rotation och speglingsläge så att inporten möter flödet. */
 function fitMachine(
   m: EffectiveMachine,
   cursor: Cursor,
   preferMirrored: boolean,
   outPortId?: string,
+  inPortId?: string,
 ): { rotation: Rotation; mirrored: boolean } | null {
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in");
+  const inPort = pickInPort(ports, inPortId);
   const outPort = pickOutPort(ports, outPortId);
   if (!inPort || !outPort) return null;
 
@@ -332,9 +349,10 @@ function fitMachineBackwards(
   cursor: Cursor,
   preferMirrored: boolean,
   outPortId?: string,
+  inPortId?: string,
 ): { rotation: Rotation; mirrored: boolean } | null {
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in");
+  const inPort = pickInPort(ports, inPortId);
   const outPort = pickOutPort(ports, outPortId);
   if (!inPort || !outPort) return null;
 
@@ -376,11 +394,11 @@ function placeOneBackwards(
   idealPorts: PlacedPort[];
   next: Cursor;
 } | null {
-  const fit = fitMachineBackwards(m, cursor, preferMirrored, item.outPortId);
+  const fit = fitMachineBackwards(m, cursor, preferMirrored, item.outPortId, item.inPortId);
   if (!fit) return null;
 
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in")!;
+  const inPort = pickInPort(ports, item.inPortId)!;
   const outPort = pickOutPort(ports, item.outPortId)!;
   const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
 
@@ -464,11 +482,11 @@ function placeOne(
   idealPorts: PlacedPort[];
   next: Cursor;
 } | null {
-  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId);
+  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId, item.inPortId);
   if (!fit) return null;
 
   const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in")!;
+  const inPort = pickInPort(ports, item.inPortId)!;
   const outPort = pickOutPort(ports, item.outPortId)!;
   const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
 

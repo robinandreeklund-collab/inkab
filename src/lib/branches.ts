@@ -119,20 +119,28 @@ export function usedOutPorts(line: LineItem[], instanceId: string, machine: Mach
  * kedjan kopplas ihop med. Övriga är lediga tills en matarlinje slutar i dem.
  */
 export function usedInPorts(line: LineItem[], instanceId: string, machine: Machine): Set<string> {
-  const ins = machine.ports.filter((p) => p.role === "in");
   const used = new Set<string>();
 
   for (const segment of segments(line)) {
     const at = segment.items.findIndex((i) => i.instanceId === instanceId);
     // Står maskinen efter någon i sin gren, eller är den en grenrot, går
-    // flödet in genom dess första ingång.
-    if (at > 0 || (at === 0 && segment.branch)) used.add(ins[0]?.id ?? "");
+    // flödet in genom den ingång som valts för den — inte nödvändigtvis den
+    // första. Samma val styr hur maskinen vrids, se LineItem.inPortId.
+    if (at > 0 || (at === 0 && segment.branch)) {
+      used.add(inPortOf(segment.items[at], machine));
+    }
     // Matarlinjer som slutar här tar sin egen.
     if (segment.feeds?.toInstanceId === instanceId) used.add(segment.feeds.inPortId);
   }
 
   used.delete("");
   return used;
+}
+
+/** Ingången posten tar emot flödet i. Utan val gäller maskinens första. */
+export function inPortOf(item: LineItem | undefined, machine: Machine): string {
+  const ins = machine.ports.filter((p) => p.role === "in");
+  return ins.find((p) => p.id === item?.inPortId)?.id ?? ins[0]?.id ?? "";
 }
 
 /** Namn på grenen för gränssnittet: "Gren från Rullbana · Ut på kortsidan". */
@@ -182,6 +190,7 @@ export function connections(line: LineItem[]): Connection[] {
         fromInstanceId: segment.items[i - 1].instanceId,
         fromPortId: segment.items[i - 1].outPortId,
         toInstanceId: segment.items[i].instanceId,
+        toPortId: segment.items[i].inPortId,
       });
     }
 
@@ -190,6 +199,7 @@ export function connections(line: LineItem[]): Connection[] {
         fromInstanceId: segment.branch.fromInstanceId,
         fromPortId: segment.branch.outPortId,
         toInstanceId: segment.items[0].instanceId,
+        toPortId: segment.items[0].inPortId,
       });
     }
 

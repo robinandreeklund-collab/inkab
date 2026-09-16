@@ -98,6 +98,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Grenar** | Linjen är ett träd: en maskin med flera utgångar kan bära en egen gren på var och en. Markera maskinen, tryck **Bygg vidare** på en ledig utgång och välj nästa maskin — grenen får en egen rad i linjeremsan med sitt fäste utskrivet. Grenar delar hinderlista med huvudlinjen så de lägger sig fritt, och tas roten bort följer grenen med. Lagras platt: listan behåller ordningen för offert och ångra, trädet ligger i länkarna. |
 | **Matarlinjer** | Spegelbilden av en gren: två inmatningar som möts i en gemensam bana. En gren utgår från en utgång och byggs framåt; en matarlinje slutar i en **ingång** och byggs bakåt. Markera maskinen som tar emot, och panelen **Ingångar** listar dess lediga ingångar — tryck **Mata in hit** på en av dem och bygg linjen som vanligt. Solvern lägger den sista maskinen precis i ingången och resten uppströms därifrån, så linjen mynnar där den ska oavsett från vilket håll den kommer. Kräver att maskinen har mer än en ingång i katalogen: en sammanslagning är en maskin, inte en punkt i luften. |
 | **Flera utgångar** | En maskin kan ha flera utportar — en rullbana lämnar paketet rakt fram eller ut på kortsidan. Vilken linjen fortsätter ur väljs per maskin i konfiguratorn, inte i biblioteket: samma rullbana kan gå rakt i ett flöde och vinkla i ett annat. De andra utgångarna finns kvar och ritas ut. |
+| **Flera ingångar** | Speglar utgångarna: vilken ingång flödet kommer in i väljs per maskin i konfiguratorn. Valet styr hur maskinen vrids — solvern vänder den valda ingången mot flödet, så en bana som tas emot på långsidan står tvärs mot den som matar den, och allt nedströms följer med. En ingång som redan matas av en matarlinje går inte att också ta emot huvudflödet i; R-209 fångar det i en importerad konfiguration. |
 | **Maskinzon** | Fritt utrymme runt varje maskin, satt per sida av admin. Solvern håller avstånden när linjen läggs ut och regel R-106 fångar intrång. |
 | **Kundens inställningar** | Admin definierar per maskin vilka fält kunden ser — tal, lista eller ja/nej. En talparameter kan styra kapacitet eller mått direkt i motorn, och alla kan bära pris. Exempel ur biblioteket: önskad virkestakt, ströets dimensioner, hydraulversion, presstryck. |
 | **Start- och slutpunkt** | Dras direkt i ritningen eller skrivs in i meter. Slås "anpassa längden automatiskt" på sätter solvern sista kedjetransportörens längd så att linjen slutar exakt i punkten. |
@@ -233,6 +234,7 @@ src/
 | R-206 | Linjen slutar inte vid den angivna slutpunkten | varning |
 | R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
 | R-208 | Linjerna som möts i en maskin lämnar mer än den klarar | varning |
+| R-209 | Två linjer går in i samma ingång | fel |
 | R-301 | Kapaciteten understiger målet | varning |
 | R-302 | Paketets mått ligger utanför maskinens intervall | fel |
 | R-303 | Paketet är för tungt | fel |

@@ -219,6 +219,15 @@ export type LineItem = {
    */
   outPortId?: string;
   /**
+   * Vilken ingång flödet kommer in i, för maskiner med flera. Utelämnas
+   * används den första.
+   *
+   * Speglar outPortId, och styr precis som den hur maskinen vrids: solvern
+   * vänder maskinen så att den VALDA ingången möter flödet. Väljer man en
+   * ingång på långsidan står maskinen därför tvärs mot den som matar den.
+   */
+  inPortId?: string;
+  /**
    * Grenrot: maskinen sitter på en annan maskins utgång i stället för på den
    * föregående i listan. Allt som följer i listan hör till samma gren tills
    * nästa grenrot.

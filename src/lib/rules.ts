@@ -1,4 +1,4 @@
-import { connectedPairs, connections } from "./branches";
+import { connectedPairs, connections, inPortOf } from "./branches";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -573,6 +573,41 @@ export function runRules(
       instanceIds: [target.instanceId, ...feeding.map((f) => f.fromInstanceId)],
       anchor: boxCenter(target.bbox),
     });
+  }
+
+  /* ── R-209 Två linjer bokar samma ingång ────────────────────────────── */
+  /*
+   * Gränssnittet hindrar det, men en delad länk eller en importerad
+   * konfiguration kan innehålla det ändå: huvudflödet och en matarlinje som
+   * pekar på samma ingång. Två linjer i samma port är inte en
+   * sammanslagning utan två maskiner på samma punkt.
+   */
+  for (const target of line) {
+    const perPort = new Map<string, string[]>();
+    for (const link of links) {
+      if (link.toInstanceId !== target.instanceId) continue;
+      const port = inPortOf(
+        config.line.find((i) => i.instanceId === target.instanceId),
+        target.machine,
+      );
+      const id = link.toPortId ?? port;
+      perPort.set(id, [...(perPort.get(id) ?? []), link.fromInstanceId]);
+    }
+
+    for (const [portId, sources] of perPort) {
+      if (sources.length < 2) continue;
+      const namn = target.machine.ports.find((p) => p.id === portId)?.name ?? portId;
+      out.push({
+        code: "R-209",
+        severity: "error",
+        title: `Två linjer går in i samma ingång på ${target.machine.name}`,
+        detail:
+          `${sources.length} linjer är kopplade till "${namn}". En ingång tar emot en ` +
+          `linje — behöver maskinen ta emot fler måste den ha fler ingångar.`,
+        instanceIds: [target.instanceId, ...sources],
+        anchor: boxCenter(target.bbox),
+      });
+    }
   }
 
   return dedupe(out);

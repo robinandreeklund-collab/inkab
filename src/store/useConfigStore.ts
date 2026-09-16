@@ -117,6 +117,7 @@ type Actions = {
   setBranchTarget: (target: { instanceId: string; outPortId: string } | null) => void;
   setFeedTarget: (target: { instanceId: string; inPortId: string } | null) => void;
   setOutPort: (instanceId: string, outPortId: string) => void;
+  setInPort: (instanceId: string, inPortId: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   resetOffset: (instanceId: string) => void;
@@ -391,6 +392,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (item) item.outPortId = outPortId;
+      }),
+
+    setInPort: (instanceId, inPortId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.inPortId = inPortId;
       }),
 
     setParameter: (instanceId, parameterId, value) =>

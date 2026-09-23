@@ -31,7 +31,7 @@ export function Sidebar() {
     setScreen,
     library,
     layout,
-    setFlowPoint,
+    setStartPoint,
     setDraggingMachine,
   } = useConfigStore();
   const t = useT();
@@ -201,7 +201,7 @@ export function Sidebar() {
                   value={meters(config.flow.startPoint.x)}
                   onCommit={(raw) => {
                     const mm = parseMeters(raw);
-                    if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, x: mm });
+                    if (mm !== null) setStartPoint({ ...config.flow.startPoint, x: mm });
                   }}
                 />
               </Field>
@@ -210,7 +210,7 @@ export function Sidebar() {
                   value={meters(config.flow.startPoint.y)}
                   onCommit={(raw) => {
                     const mm = parseMeters(raw);
-                    if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, y: mm });
+                    if (mm !== null) setStartPoint({ ...config.flow.startPoint, y: mm });
                   }}
                 />
               </Field>

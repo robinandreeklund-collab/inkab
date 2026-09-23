@@ -28,7 +28,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "top.view": "Vy",
     "top.view.plan": "2D",
     "top.view.model": "Modell",
-    "top.unit": "Enhet",
     "top.language": "Språk",
     "top.history": "Historik",
     "top.historyTitle": "Vad som hänt i projektet: underlag, frågor, ändringar",
@@ -216,6 +215,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "längd",
     "product.width": "bredd",
     "product.height": "höjd",
+    "fallback.withFixes": "Assistenten körs utan API-nyckel, så det här är regelmotorns egna åtgärdsförslag — inte en AI-analys. Layouten har {errors} fel och {warnings} varningar.",
+    "fallback.clean": "Assistenten körs utan API-nyckel. Regelmotorn hittar inga problem i den här layouten.",
+    "fallback.noFixes": "Assistenten körs utan API-nyckel. Regelmotorn hittar {errors} fel och {warnings} varningar, men inget av dem har ett automatiskt åtgärdsförslag.",
   },
 
   en: {
@@ -227,7 +229,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "top.view": "View",
     "top.view.plan": "2D",
     "top.view.model": "Model",
-    "top.unit": "Unit",
     "top.language": "Language",
     "top.history": "History",
     "top.historyTitle": "What has happened in this project: documents, questions, changes",
@@ -410,6 +411,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "length",
     "product.width": "width",
     "product.height": "height",
+    "fallback.withFixes": "The assistant is running without an API key, so these are the rule engine's own suggested fixes — not an AI analysis. The layout has {errors} errors and {warnings} warnings.",
+    "fallback.clean": "The assistant is running without an API key. The rule engine finds no problems in this layout.",
+    "fallback.noFixes": "The assistant is running without an API key. The rule engine finds {errors} errors and {warnings} warnings, but none of them has an automatic fix.",
   },
 
   de: {
@@ -421,7 +425,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "top.view": "Ansicht",
     "top.view.plan": "2D",
     "top.view.model": "Modell",
-    "top.unit": "Einheit",
     "top.language": "Sprache",
     "top.history": "Verlauf",
     "top.historyTitle": "Was im Projekt geschehen ist: Unterlagen, Fragen, Änderungen",
@@ -608,5 +611,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "Länge",
     "product.width": "Breite",
     "product.height": "Höhe",
+    "fallback.withFixes": "Der Assistent läuft ohne API-Schlüssel, dies sind also die Vorschläge des Regelwerks selbst — keine KI-Analyse. Das Layout hat {errors} Fehler und {warnings} Warnungen.",
+    "fallback.clean": "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet keine Probleme in diesem Layout.",
+    "fallback.noFixes": "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet {errors} Fehler und {warnings} Warnungen, für keine davon gibt es einen automatischen Vorschlag.",
   },
 };

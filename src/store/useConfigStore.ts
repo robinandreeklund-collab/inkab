@@ -43,7 +43,6 @@ export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
  * och den kostade en egen uppsättning projektioner genom hela ritlagret.
  */
 export type ViewMode = "2d" | "model";
-export type Unit = "m" | "mm";
 
 type Screen = "onboarding" | "configurator" | "quote";
 
@@ -67,7 +66,6 @@ type State = {
 
   screen: Screen;
   view: ViewMode;
-  unit: Unit;
   tool: Tool;
   selectedId: string | null;
   inspectorOpen: boolean;
@@ -101,7 +99,6 @@ type State = {
 type Actions = {
   setScreen: (s: Screen) => void;
   setView: (v: ViewMode) => void;
-  setUnit: (u: Unit) => void;
   setTool: (t: Tool) => void;
   select: (id: string | null) => void;
   toggleInspector: () => void;
@@ -121,7 +118,8 @@ type Actions = {
   load: (config: Configuration, options?: { resetHistory?: boolean; note?: string }) => void;
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
-  setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
+  /** Flyttar startpunkten — den enda punkt flödet har. */
+  setStartPoint: (point: Vec2) => void;
   /**
    * Lägger till en maskin.
    *
@@ -252,7 +250,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     screen: "onboarding",
     view: "2d",
-    unit: "m",
     tool: "select",
     selectedId: null,
     /*
@@ -274,7 +271,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
-    setUnit: (unit) => set({ unit }),
     setTool: (tool) => set({ tool }),
     select: (selectedId) =>
       // Att markera något är att vilja se det. Panelen fälls ut av sig själv
@@ -353,10 +349,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setFlow: (patch) => get().update((d) => Object.assign(d.flow, patch)),
 
-    setFlowPoint: (which, point) =>
-      get().update((d) => {
-        if (which === "startPoint" && point) d.flow.startPoint = point;
-      }),
+    setStartPoint: (point) => get().update((d) => void (d.flow.startPoint = point)),
 
     addMachine: (machineId, options) => {
       const machine = getMachine(machineId, get().library);

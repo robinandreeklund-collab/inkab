@@ -20,7 +20,7 @@ export function Topbar({
   autoOpenLogin?: boolean;
   onLoginHandled?: () => void;
 }) {
-  const { config, view, unit, past, future, setView, setUnit, undo, redo, update, setScreen } =
+  const { config, view, past, future, setView, undo, redo, update, setScreen } =
     useConfigStore();
   const locale = useLocale();
   const setLocale = useConfigStore((s) => s.setLocale);
@@ -101,15 +101,6 @@ export function Topbar({
             { value: "model", label: t("top.view.model") },
           ]}
           onChange={setView}
-        />
-        <Segmented
-          ariaLabel={t("top.unit")}
-          value={unit}
-          options={[
-            { value: "m", label: "m" },
-            { value: "mm", label: "mm" },
-          ]}
-          onChange={setUnit}
         />
 
         <button

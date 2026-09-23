@@ -97,7 +97,7 @@ export function CadView() {
     turnDrawn,
     addDrawn,
     setTool,
-    setFlowPoint,
+    setStartPoint,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -254,13 +254,13 @@ export function CadView() {
     window.addEventListener("pointerup", up);
   };
 
-  /* ── Dra start- och slutpunkt ────────────────────────────────────────── */
-  const dragFlowPoint = (which: "startPoint" | "endPoint", event: React.PointerEvent) => {
+  /* ── Dra startpunkten ────────────────────────────────────────────────── */
+  const dragStartPoint = (event: React.PointerEvent) => {
     event.stopPropagation();
     if (tool !== "select") return;
     const move = (e: PointerEvent) => {
       const p = toWorld(e);
-      if (p) setFlowPoint(which, { x: snap(p.x), y: snap(p.y) });
+      if (p) setStartPoint({ x: snap(p.x), y: snap(p.y) });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -460,10 +460,8 @@ export function CadView() {
 
         <FlowMarkers
           start={config.flow.startPoint}
-          end={null}
-          lineEnd={null}
           strokeUnit={strokeUnit}
-          onDrag={dragFlowPoint}
+          onDrag={dragStartPoint}
         />
 
         {dropAt && dragged ? (
@@ -890,78 +888,49 @@ function DraftShape({
 }
 
 /** Start- och slutpunkt som dragbara markörer i ritningen. */
+/**
+ * Startpunkten som en dragbar markör.
+ *
+ * Bara start. Här satt också en slutpunkt, med en kryssmarkör och ett mått
+ * på hur långt linjen slutade från den — den hörde till tiden då en solver
+ * räknade fram var kedjan tog slut. Med fri placering slutar anläggningen
+ * där sista maskinen står, och en punkt som inget mäts emot är bara en
+ * markör till i vägen.
+ */
 function FlowMarkers({
   start,
-  end,
   strokeUnit,
   onDrag,
 }: {
   start: Vec2;
-  end: Vec2 | null;
-  lineEnd: Vec2 | null;
   strokeUnit: number;
-  onDrag: (which: "startPoint" | "endPoint", event: React.PointerEvent) => void;
+  onDrag: (event: React.PointerEvent) => void;
 }) {
-  const a = start;
   const r = strokeUnit * 9;
 
   return (
-    <g>
-      <g
-        style={{ cursor: "grab" }}
-        onPointerDown={(e) => onDrag("startPoint", e)}
+    <g style={{ cursor: "grab" }} onPointerDown={onDrag}>
+      <circle
+        cx={start.x}
+        cy={start.y}
+        r={r}
+        fill="#5980a6"
+        fillOpacity="0.18"
+        stroke="#5980a6"
+        strokeWidth={strokeUnit * 1.6}
+      />
+      <circle cx={start.x} cy={start.y} r={strokeUnit * 2.4} fill="#5980a6" />
+      <text
+        x={start.x}
+        y={start.y - r - strokeUnit * 4}
+        textAnchor="middle"
+        fontSize={strokeUnit * 12}
+        fill="#5980a6"
+        className="num"
+        pointerEvents="none"
       >
-        <circle cx={a.x} cy={a.y} r={r} fill="#5980a6" fillOpacity="0.18" stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
-        <circle cx={a.x} cy={a.y} r={strokeUnit * 2.4} fill="#5980a6" />
-        <text
-          x={a.x}
-          y={a.y - r - strokeUnit * 4}
-          textAnchor="middle"
-          fontSize={strokeUnit * 12}
-          fill="#5980a6"
-          className="num"
-          pointerEvents="none"
-        >
-          START
-        </text>
-      </g>
-
-      {end ? (
-        <g style={{ cursor: "grab" }} onPointerDown={(e) => onDrag("endPoint", e)}>
-          {(() => {
-            const b = end;
-            return (
-              <>
-                <circle
-                  cx={b.x}
-                  cy={b.y}
-                  r={r}
-                  fill="#1d2d3d"
-                  fillOpacity="0.12"
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.6}
-                />
-                <path
-                  d={`M${b.x - r} ${b.y}h${r * 2}M${b.x} ${b.y - r}v${r * 2}`}
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.4}
-                />
-                <text
-                  x={b.x}
-                  y={b.y - r - strokeUnit * 4}
-                  textAnchor="middle"
-                  fontSize={strokeUnit * 12}
-                  fill="#1d2d3d"
-                  className="num"
-                  pointerEvents="none"
-                >
-                  SLUT
-                </text>
-              </>
-            );
-          })()}
-        </g>
-      ) : null}
+        START
+      </text>
     </g>
   );
 }

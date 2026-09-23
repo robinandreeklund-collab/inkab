@@ -91,6 +91,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **De fem flödesfrågorna** | Driver geometrin på riktigt. Verifierat i test: pulpeten byter sida, magasinet byter sida, truckgatan flyttar sig, inmatningsriktningen vinklar linjen, och transportörlängden ändrar både layout och totalmått. |
 | **Regelverk** | 17 regler beräknade ur geometrin — kollisioner, zoner, hallgränser, truckgata, buffert, kapacitet, paketmått, beroenden. Varje regel kan ge ett åtgärdsförslag som går att applicera med ett klick. |
 | **Prissättning** | Beräknas på servern. Prisboken är märkt `server-only` — bygget kraschar om en klientkomponent försöker importera den. |
+| **Meter överallt** | Ritverktyget arbetar i meter. Växlaren mellan m och mm är borta — den ändrade ingenting, för ingen vy läste den. Maskindata anges fortfarande i millimeter i admin, där det är rätt enhet. |
 | **Tre språk** | Svenska, engelska och tyska, med växlaren i sidhuvudet. Svenskan är källspråket: en nyckel utan översättning faller tillbaka på den, hellre ett svenskt ord mitt i en tysk mening än en tom ruta. Utan tidigare val följs webbläsarens språk, och valet ligger kvar. Regelverkets diagnostik översätts med resten — en tysk kund ska inte läsa svenska fel om sin egen anläggning. Maskinernas namn och beskrivningar är kundens katalogdata och står kvar på svenska. |
 | **Rollmodell** | Belopp är admins, ingen annans. Gäst och kund bygger fritt och ser mått, kapacitet och regler — men inget pris, inte heller ett intervall: ett "ungefär 2,6–3,4 Mkr" röjer storleksordningen och blir ett ankare i en förhandling ingen hos INKAB varit med i. Serversidan avgör, inte klienten, och det publika maskinbiblioteket rensas från pris per meter och påslag på tillval innan det lämnar servern. |
 | **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. Varje maskins fullständiga beskrivning ur katalogen ligger i systemprompten, så assistenten vet vad maskinerna faktiskt gör. |
@@ -309,7 +310,8 @@ valideras mot regelverket, så ett felaktigt portpar upptäcks direkt.
 ## AI-assistenten
 
 Verktygen modellen har: `get_machine_library`, `get_current_layout`, `set_flow`,
-`add_machine`, `remove_machine`, `set_hall`, `estimate_price`, `propose_variant`.
+`add_machine`, `move_machine`, `remove_machine`, `set_hall`, `estimate_price`,
+`propose_variant`.
 
 Skyddsräcken:
 

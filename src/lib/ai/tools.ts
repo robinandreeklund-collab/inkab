@@ -9,10 +9,14 @@ import {
   type MachineLibrary,
 } from "@/lib/library";
 import { lineItem } from "@/lib/templates";
+import { claimedBox, freeSpot } from "@/lib/solver";
+
+/** Vridningarna en maskin kan ha. */
+const ROTATIONS_DEG = [0, 90, 180, 270];
 import { meters } from "@/lib/format";
 import { priceConfiguration, type Role } from "@/lib/server/pricing";
 import type { PriceBook } from "@/lib/server/pricebook";
-import type { Configuration } from "@/lib/types";
+import type { Configuration, Rotation } from "@/lib/types";
 
 /**
  * Verktygsskalet. Assistenten når systemet ENBART via de här funktionerna:
@@ -213,21 +217,12 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
     {
       name: "set_flow",
       description:
-        "Ändrar ett eller flera av de fem flödesvalen i arbetskopian och räknar om " +
-        "layouten. Returnerar den nya layouten med diagnostik.",
+        "Sätter från vilken sida trucken hämtar färdiga paket. Styr var förslaget på " +
+        "truckgata hamnar. Returnerar den nya layouten med diagnostik.",
       input_schema: {
         type: "object" as const,
-        properties: {
-          infeedFrom: { type: "string", enum: ["straight", "right", "left"] },
-          controlDeskSide: SIDE,
-          stickerMagazineSide: SIDE,
-          truckPickupSide: SIDE,
-          finalConveyorLengthMm: {
-            type: "integer",
-            description: "Längd i millimeter, mellan 1000 och 40000. Värden utanför klipps.",
-          },
-        },
-        required: [],
+        properties: { truckPickupSide: SIDE },
+        required: ["truckPickupSide"],
         additionalProperties: false,
       },
       strict: true,
@@ -235,7 +230,9 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
     {
       name: "add_machine",
       description:
-        "Lägger till en maskin i arbetskopians linje och räknar om layouten.",
+        "Lägger till en maskin i arbetskopian och räknar om layouten. Med x och y " +
+        "hamnar maskinens mitt där; utan dem läggs den på ledig yta till höger om " +
+        "det som redan står. Maskinerna kopplas inte ihop — de står där de står.",
       input_schema: {
         type: "object" as const,
         properties: {
@@ -243,37 +240,45 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
             type: "string",
             enum: library.machines.map((m) => m.id),
           },
-          atIndex: {
-            type: "integer",
-            description: "Position i kedjan, 0 eller större. Utelämna för att lägga sist.",
-          },
           variantId: {
             type: "string",
             description:
               "Utförande, för maskiner som finns i flera längder. Id:na står i " +
               "maskinbiblioteket. Utelämna för maskinens förval.",
           },
-          outPortId: {
-            type: "string",
-            description:
-              "Utgång linjen fortsätter ur, för maskiner med flera. Id:na står i " +
-              "maskinbiblioteket. Utelämna för maskinens förval.",
+          x: {
+            type: "number",
+            description: "Maskinens mitt i meter längs hallen, från nedre vänstra hörnet.",
           },
-          branchFromInstanceId: {
-            type: "string",
-            description:
-              "Starta en gren på en maskin som redan står i linjen, i stället för att " +
-              "lägga maskinen sist i kedjan. Ange maskinens instanceId. Kräver " +
-              "branchOutPortId. Använd detta när flödet delar sig.",
+          y: {
+            type: "number",
+            description: "Maskinens mitt i meter tvärs hallen, från nedre vänstra hörnet.",
           },
-          branchOutPortId: {
-            type: "string",
-            description:
-              "Utgången på branchFromInstanceId som grenen utgår ur. Måste vara ledig — " +
-              "en utgång kan bara mata en maskin.",
+          rotationDeg: {
+            type: "integer",
+            enum: [0, 90, 180, 270],
+            description: "Hur maskinen är vriden. Utelämna för 0.",
           },
         },
         required: ["machineId"],
+        additionalProperties: false,
+      },
+      strict: true,
+    },
+    {
+      name: "move_machine",
+      description:
+        "Flyttar och vrider en maskin som redan står i arbetskopian. Positionen är " +
+        "maskinens mitt i meter. Räknar om layouten och returnerar diagnostiken.",
+      input_schema: {
+        type: "object" as const,
+        properties: {
+          instanceId: { type: "string" },
+          x: { type: "number", description: "Mitten i meter längs hallen." },
+          y: { type: "number", description: "Mitten i meter tvärs hallen." },
+          rotationDeg: { type: "integer", enum: [0, 90, 180, 270] },
+        },
+        required: ["instanceId"],
         additionalProperties: false,
       },
       strict: true,
@@ -550,19 +555,66 @@ export function executeTool(
         item.variantId = wanted ?? variants[0].id;
       }
 
-      const at =
-        typeof input.atIndex === "number" ? input.atIndex : ctx.draft.line.length;
-      ctx.draft.line.splice(
-        Math.max(0, Math.min(ctx.draft.line.length, at)),
-        0,
-        item,
-      );
+      /*
+       * Positionen är maskinens mitt, i meter, som modellen tänker på den.
+       * Internt står origo i hörnet och allt räknas i millimeter; att låta
+       * modellen räkna om det själv vore att be om avrundningsfel i varje
+       * anrop. Utan position hamnar maskinen på ledig yta.
+       */
+      if (typeof input.x === "number" && typeof input.y === "number") {
+        item.pos = {
+          x: Math.round(Number(input.x) * 1000 - machine.footprint.lengthMm / 2),
+          y: Math.round(Number(input.y) * 1000 - machine.footprint.widthMm / 2),
+        };
+      } else {
+        item.pos = freeSpot(
+          computeLayout(ctx.draft, ctx.library).placements.map(claimedBox),
+          { l: machine.footprint.lengthMm, w: machine.footprint.widthMm },
+          ctx.draft.flow.startPoint,
+          ctx.draft.hall,
+        );
+      }
+      if (ROTATIONS_DEG.includes(Number(input.rotationDeg))) {
+        item.rotation = Number(input.rotationDeg) as Rotation;
+      }
+
+      ctx.draft.line.push(item);
       return {
         added: {
           instanceId: item.instanceId,
           machineId,
           variantId: item.variantId,
+          xM: item.pos ? (item.pos.x + machine.footprint.lengthMm / 2) / 1000 : null,
+          yM: item.pos ? (item.pos.y + machine.footprint.widthMm / 2) / 1000 : null,
         },
+        layout: layoutSummary(ctx.draft, ctx.library),
+      };
+    }
+
+    case "move_machine": {
+      const instanceId = String(input.instanceId);
+      const item = ctx.draft.line.find((i) => i.instanceId === instanceId);
+      if (!item) {
+        return {
+          error:
+            `Ingen maskin med instanceId ${instanceId} finns i linjen. ` +
+            `Nuvarande: ${ctx.draft.line.map((i) => i.instanceId).join(", ") || "inga"}.`,
+        };
+      }
+      const machine = getMachine(item.machineId, ctx.library);
+      if (!machine) return { error: `Maskinen ${item.machineId} finns inte i biblioteket.` };
+
+      if (typeof input.x === "number" && typeof input.y === "number") {
+        item.pos = {
+          x: Math.round(Number(input.x) * 1000 - machine.footprint.lengthMm / 2),
+          y: Math.round(Number(input.y) * 1000 - machine.footprint.widthMm / 2),
+        };
+      }
+      if (ROTATIONS_DEG.includes(Number(input.rotationDeg))) {
+        item.rotation = Number(input.rotationDeg) as Rotation;
+      }
+      return {
+        moved: instanceId,
         layout: layoutSummary(ctx.draft, ctx.library),
       };
     }

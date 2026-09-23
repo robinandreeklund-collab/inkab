@@ -42,7 +42,7 @@ const FILE_PROMPTS = [
 ];
 
 export function AiPanel() {
-  const { config, layout, aiOpen, toggleAi, load, note } = useConfigStore();
+  const { config, layout, aiOpen, toggleAi, load, note, locale } = useConfigStore();
 
   const [input, setInput] = useState("");
   const [text, setText] = useState("");
@@ -147,6 +147,7 @@ export function AiPanel() {
           message: question,
           history: historyRef.current.slice(-8),
           attachments: sent.map((f) => ({ name: f.name, mediaType: f.mediaType, data: f.data })),
+          locale,
         }),
       });
       if (!response.ok) {

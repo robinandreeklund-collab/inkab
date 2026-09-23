@@ -220,12 +220,12 @@ src/
 | Kod | Regel | Nivå |
 |---|---|---|
 | R-103 | Maskiner överlappar | fel |
-| R-104 | Servicezon blockerad av annan maskin | varning |
+| R-104 | Servicezon på maskinens långsida blockerad av annan maskin | varning |
 | R-105 | Skyddszon skär truckgatan | fel |
-| R-106 | Maskinzonen inkräktad av annan maskin eller ritat objekt | fel |
+| R-106 | Maskinzonen på maskinens långsida inkräktad av annan maskin eller ritat objekt | fel |
 | R-201 | Truckgatan ligger utanför hallen, eller är smalare än 3,5 m | fel / varning |
 | R-203 | Pulpet eller magasin står i truckgatan | fel |
-| R-204 | Trucken måste korsa flödet för att nå magasinet | varning |
+| R-204 | Trucken måste passera maskinerna för att nå magasinet | varning |
 | R-205 | Ingen truckgata eller hämtzon är ritad | varning |
 | R-207 | Truckgatan ansluter inte till någon av hallens portar | varning |
 | R-107 | Maskinen finns inte i biblioteket | fel |
@@ -239,7 +239,13 @@ src/
 | R-404 | Maskinen står i en truckgata | fel |
 | R-501 | Beroende saknas eller maskiner kan inte kombineras | fel |
 
-20 regler. 
+**Maskinzonen vaktar sidorna, inte ändarna.** Fram och bak är kopplingsytan —
+där står nästa maskin i linjen, och det är så en anläggning byggs. Katalogen
+säger samma sak i siffror: fram och bak är 600–1000 mm, vänster och höger
+1000–2200, och servicezonerna ligger uteslutande längs långsidorna. R-104 och
+R-106 kapar därför zonen vid maskinens egna ändar innan de mäter.
+
+19 regler. 
 
 Reglerna bor i `src/lib/rules.ts`, en funktion per grupp. Att lägga till en
 regel är att lägga till ett block som returnerar `Diagnostic[]`.

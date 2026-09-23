@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { computeLayout } from "@/lib/layout";
-import { defaultConfig, lineItem, templateConfig } from "@/lib/templates";
+import { TEMPLATES, defaultConfig, lineItem, templateConfig } from "@/lib/templates";
+import { BUILTIN_LIBRARY } from "@/lib/library";
 
 const codes = (c: Parameters<typeof computeLayout>[0]) =>
   computeLayout(c).diagnostics.map((d) => d.code);
@@ -194,6 +195,62 @@ describe("serverns validering", () => {
     for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
       const result = configurationSchema.safeParse(templateConfig(id));
       expect(result.success, `${id}: ${JSON.stringify(result.error?.issues)}`).toBe(true);
+    }
+  });
+});
+
+/**
+ * Maskinzonen vaktar sidorna, inte ändarna.
+ *
+ * Fram och bak är kopplingsytan — där står nästa maskin i linjen, och det är
+ * så en anläggning byggs. Förut visste solvern vilka maskiner som satt ihop
+ * port mot port och undantog dem; med fri placering finns ingen kedja att
+ * fråga, och utan undantaget blev varje granne ett intrång. En helt vanlig
+ * linje gav åtta fel och fyra varningar.
+ */
+describe("maskinzonen skiljer ändar från sidor", () => {
+  /** Två rullbanor, den andra placerad relativt den första. */
+  function tva(delta: { x: number; y: number }) {
+    const config = defaultConfig();
+    const a = lineItem("rullbana");
+    const b = lineItem("rullbana");
+    a.pos = { x: 6000, y: 10000 };
+    config.line = [a, b];
+
+    const forst = computeLayout(config, BUILTIN_LIBRARY).placements.find(
+      (p) => p.instanceId === a.instanceId,
+    )!;
+    b.pos = { x: forst.bbox.x + delta.x, y: forst.bbox.y + delta.y };
+    const layout = computeLayout(config, BUILTIN_LIBRARY);
+    return { koder: layout.diagnostics.map((d) => d.code), forst };
+  }
+
+  it("tiger när nästa maskin står kant i kant, som i en linje", () => {
+    const { koder, forst } = tva({ x: 0, y: 0 });
+    const kant = tva({ x: forst.bbox.l, y: 0 });
+    expect(kant.koder).not.toContain("R-106");
+    expect(kant.koder).not.toContain("R-104");
+    expect(koder.length).toBeGreaterThanOrEqual(0);
+  });
+
+  it("anmärker när en maskin ställs längs den andras långsida", () => {
+    const { forst } = tva({ x: 0, y: 0 });
+    const sida = tva({ x: 500, y: forst.bbox.w + 200 });
+    expect(sida.koder).toContain("R-106");
+  });
+
+  it("anmärker fortfarande när maskinerna står på varandra", () => {
+    expect(tva({ x: 0, y: 0 }).koder).toContain("R-103");
+  });
+});
+
+describe("mallarna öppnar utan anmärkning", () => {
+  it("varje mall är ren från start", () => {
+    for (const template of TEMPLATES) {
+      const layout = computeLayout(templateConfig(template.id), BUILTIN_LIBRARY);
+      expect(
+        layout.diagnostics.map((d) => `${template.id}: ${d.code} ${d.detail}`),
+      ).toEqual([]);
     }
   });
 });

@@ -16,6 +16,31 @@ const MIN_TRUCK_WIDTH_MM = 3500;
 /** Hur nära en port truckgatan ska ligga för att räknas som ansluten, mm. */
 const DOOR_REACH_MM = 1500;
 
+/**
+ * Zonen kapad vid maskinens egna ändar.
+ *
+ * En maskinzon är fritt utrymme, men inte lika åt alla håll: framåt och bakåt
+ * är den kopplingsytan — där står nästa maskin i linjen, och det är så en
+ * anläggning byggs. Åt sidorna är den åtkomst, och där är ett hinder ett
+ * hinder. Katalogen säger samma sak i siffror: fram och bak är 600–1000 mm,
+ * vänster och höger 1000–2200. Servicezonerna ligger uteslutande längs
+ * långsidorna.
+ *
+ * Förut visste solvern vilka maskiner som satt ihop port mot port och undantog
+ * dem. Med fri placering finns ingen kedja att fråga, och utan den blev varje
+ * granne ett intrång: en helt vanlig linje gav åtta fel och fyra varningar.
+ * Geometrin räcker för att skilja ändarna från sidorna.
+ */
+function sidesOnly(zone: Box, p: Placement): Box {
+  const alongX = Math.abs(p.bbox.l - p.size.lengthMm) < Math.abs(p.bbox.w - p.size.lengthMm);
+  if (alongX) {
+    const x = Math.max(zone.x, p.bbox.x);
+    return { x, y: zone.y, l: Math.max(0, Math.min(zone.x + zone.l, p.bbox.x + p.bbox.l) - x), w: zone.w };
+  }
+  const y = Math.max(zone.y, p.bbox.y);
+  return { x: zone.x, y, l: zone.l, w: Math.max(0, Math.min(zone.y + zone.w, p.bbox.y + p.bbox.w) - y) };
+}
+
 function hallBox(config: Configuration): Box {
   return { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
 }
@@ -56,16 +81,17 @@ export function runRules(
   /* ── R-104 Servicezon blockerad ─────────────────────────────────────── */
   for (const p of all) {
     for (const zone of p.zones.filter((z) => z.type === "service")) {
+      const box = sidesOnly(zone.box, p);
       for (const other of all) {
         if (other.instanceId === p.instanceId) continue;
-        if (!boxesOverlap(zone.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
+        if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
         out.push({
           code: "R-104",
           severity: "warning",
           title: "Servicezon blockerad",
           detail: `${other.machine.name} står i servicezonen för ${p.machine.name}. Underhåll blir svårt att komma åt.`,
           instanceIds: [p.instanceId, other.instanceId],
-          anchor: boxCenter(zone.box),
+          anchor: boxCenter(box),
         });
       }
     }
@@ -75,10 +101,11 @@ export function runRules(
   for (const p of all) {
     const clearance = p.zones.find((z) => z.type === "clearance");
     if (!clearance) continue;
+    const sides = sidesOnly(clearance.box, p);
 
     for (const other of all) {
       if (other.instanceId === p.instanceId) continue;
-      if (!boxesOverlap(clearance.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
+      if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "error",
@@ -92,7 +119,7 @@ export function runRules(
     for (const obj of config.drawn) {
       if (obj.kind === "door" || obj.kind === "truck") continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
-      if (!boxesOverlap(clearance.box, box, TOUCH_TOLERANCE_MM)) continue;
+      if (!boxesOverlap(sides, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "error",
@@ -173,7 +200,7 @@ export function runRules(
     }
   }
 
-  /* ── R-204 Magasinet nås inte utan att korsa flödet ─────────────────── */
+  /* ── R-204 Magasinet nås inte utan att passera maskinerna ───────────── */
   const magazine = aux.find((p) => p.machine.category === "stickers" && p.aux);
   if (magazine && layout.aisles.length > 0 && line.length > 0) {
     // Närmaste truckzon är den trucken realistiskt kör från.
@@ -191,7 +218,7 @@ export function runRules(
       out.push({
         code: "R-204",
         severity: "warning",
-        title: "Magasinet nås inte utan att korsa flödet",
+        title: "Magasinet nås inte utan att passera maskinerna",
         detail: `Trucken måste passera ${blocking.map((b) => b.machine.name).join(", ")} för att fylla ${magazine.machine.name}.`,
         instanceIds: [magazine.instanceId, ...blocking.map((b) => b.instanceId)],
         anchor: boxCenter(magazine.bbox),

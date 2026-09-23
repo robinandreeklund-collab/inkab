@@ -161,21 +161,61 @@ export function templateConfig(
 
   const solved = solveLayout(config, library);
   const suggestion = suggestTruckZone(solved.lineBounds, "x+", config.flow.truckPickupSide);
-  config.drawn.push({
-    id: "truck-1",
-    kind: "truck",
-    name: "Hämtzon utlastning",
-    ...suggestion,
-    h: 0,
-  });
+
+  /*
+   * Hämtzonen dras ut till närmaste vägg, och porten sätts mitt för den.
+   *
+   * Förut satt porten i gaveln medan zonen hamnade där linjen slutade —
+   * arton meter isär i standardmallen, så regel R-207 anmärkte varje gång
+   * någon öppnade en mall. En varning som redan står där när man börjar lär
+   * ingen att läsa varningar. Och den hade rätt: en hämtzon som inte når
+   * fram till en port är en yta trucken inte kommer till.
+   */
+  const DOOR_W = 4500;
+  const WALL = 300;
+  const avstand = {
+    vanster: suggestion.x,
+    hoger: config.hall.lengthMm - (suggestion.x + suggestion.l),
+    upp: suggestion.y,
+    ner: config.hall.widthMm - (suggestion.y + suggestion.w),
+  };
+  const narmast = (Object.keys(avstand) as (keyof typeof avstand)[]).reduce((a, b) =>
+    avstand[a] <= avstand[b] ? a : b,
+  );
+
+  const zon = { ...suggestion };
+  if (narmast === "vanster") {
+    zon.l += zon.x;
+    zon.x = 0;
+  } else if (narmast === "hoger") {
+    zon.l = config.hall.lengthMm - zon.x;
+  } else if (narmast === "upp") {
+    zon.w += zon.y;
+    zon.y = 0;
+  } else {
+    zon.w = config.hall.widthMm - zon.y;
+  }
+
+  config.drawn.push({ id: "truck-1", kind: "truck", name: "Hämtzon utlastning", ...zon, h: 0 });
+
+  const mitt = (v: number, max: number) => Math.max(0, Math.min(max - DOOR_W, v - DOOR_W / 2));
+  const langsvagg = narmast === "upp" || narmast === "ner";
   config.drawn.push({
     id: "door-1",
     kind: "door",
     name: "Port A",
-    x: config.hall.lengthMm - 300,
-    y: Math.max(0, Math.min(config.hall.widthMm - 4500, suggestion.y + suggestion.w / 2 - 2250)),
-    l: 300,
-    w: 4500,
+    x: langsvagg
+      ? mitt(zon.x + zon.l / 2, config.hall.lengthMm)
+      : narmast === "vanster"
+        ? 0
+        : config.hall.lengthMm - WALL,
+    y: langsvagg
+      ? narmast === "upp"
+        ? 0
+        : config.hall.widthMm - WALL
+      : mitt(zon.y + zon.w / 2, config.hall.widthMm),
+    l: langsvagg ? DOOR_W : WALL,
+    w: langsvagg ? WALL : DOOR_W,
     h: 5000,
   });
 

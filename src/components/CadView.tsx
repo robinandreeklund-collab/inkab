@@ -6,6 +6,7 @@ import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/proje
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
+import { ROTATE_ARC, ROTATE_TIP } from "./ui";
 import type { Box, DrawnObject, DrawnKind, PlacedPort, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 import { DIR_VEC } from "@/lib/geometry";
@@ -1131,12 +1132,14 @@ function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number 
 /**
  * Vridhandtaget på den markerade maskinen.
  *
- * Vridningen låg bara i inspektorn, som en rad små knappar längst ut till
- * höger. Man tittade bort från ritningen för att ändra något man ser i den,
- * och siktade på en knapp stor som en bokstav. Handtaget sitter i stället på
- * maskinen: ett klick är ett kvarts varv medurs, skift-klick moturs.
+ * Vridningen låg bara i inspektorn, som fyra gradknappar längst ut till
+ * höger. Man tittade bort från ritningen för att ändra något man ser i den.
+ * Handtaget sitter i stället på maskinen: ett klick är ett kvarts varv
+ * medurs, skift-klick moturs. Samma sak går med tangenten R.
  *
- * Samma sak går med tangenten R, för den som hellre håller händerna still.
+ * Tecknet är samma som inspektorns, hämtat ur ui.tsx och skalat in i
+ * hallens koordinater — inte en egen båge ritad på fri hand. Ringen ligger
+ * på vit botten så handtaget syns också över en ritad zon.
  */
 function TurnHandle({
   placement,
@@ -1147,11 +1150,16 @@ function TurnHandle({
   strokeUnit: number;
   onTurn: (instanceId: string, steps: number) => void;
 }) {
-  const r = strokeUnit * 13;
-  // Utanför maskinens hörn, så det aldrig ligger över kroppen man drar i.
-  const cx = placement.bbox.x + placement.bbox.l + r * 1.1;
-  const cy = placement.bbox.y - r * 1.1;
-  const b = r * 0.52;
+  const r = strokeUnit * 12;
+  // Utanför maskinens hörn, så det aldrig ligger över ytan man drar i.
+  const cx = placement.bbox.x + placement.bbox.l + r * 1.15;
+  const cy = placement.bbox.y - r * 1.15;
+  /*
+   * Ikonen är ritad i ett rutnät på 24 med bågens mitt i (12, 12) och en
+   * radie på 7. Skalan sätts efter bågen, inte efter rutnätet: annars blir
+   * tecknet en liten krumelur mitt i en stor ring.
+   */
+  const scale = (r * 1.25) / 14;
 
   return (
     <g
@@ -1163,19 +1171,18 @@ function TurnHandle({
       }}
     >
       <title>Vrid 90° (skift för andra hållet, eller tangent R)</title>
-      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.6} />
-      {/* Cirkelpil: nästan ett helt varv, med spets i änden. */}
-      <path
-        d={`M${cx} ${cy - b}A${b} ${b} 0 1 1 ${cx - b} ${cy}`}
+      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.2} />
+      <g
+        transform={`translate(${cx} ${cy}) scale(${scale}) translate(-12 -12)`}
         fill="none"
         stroke="#1d2d3d"
-        strokeWidth={strokeUnit * 1.6}
+        strokeWidth={(strokeUnit * 1.3) / scale}
         strokeLinecap="round"
-      />
-      <path
-        d={`M${cx - b * 1.5} ${cy - b * 0.5}L${cx - b} ${cy + b * 0.35}L${cx - b * 0.45} ${cy - b * 0.4}Z`}
-        fill="#1d2d3d"
-      />
+        strokeLinejoin="round"
+      >
+        <path d={ROTATE_ARC} />
+        <path d={ROTATE_TIP} />
+      </g>
     </g>
   );
 }

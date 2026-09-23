@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters, parseMeters } from "@/lib/format";
-import { Button, Field, NumberInput, Row, Tag } from "./ui";
+import { Button, Field, MirrorIcon, NumberInput, RotateIcon, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
@@ -132,32 +132,32 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                 <span className="num w-[34px] text-right text-[11px] text-muted">
                   {placement.rotation}°
                 </span>
-                <button
-                  onClick={() => turnMachine(item.instanceId, -1)}
-                  className="border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
+                <Button
+                  size="sm"
+                  className="h-7 w-7 p-0"
                   title="Vrid 90° moturs (skift + R)"
+                  onClick={() => turnMachine(item.instanceId, -1)}
                 >
-                  ↺
-                </button>
-                <button
-                  onClick={() => turnMachine(item.instanceId, 1)}
-                  className="border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
+                  <RotateIcon anticlockwise size={15} />
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 w-7 p-0"
                   title="Vrid 90° medurs (R)"
+                  onClick={() => turnMachine(item.instanceId, 1)}
                 >
-                  ↻
-                </button>
+                  <RotateIcon size={15} />
+                </Button>
                 {placement.machine.mirrorable ? (
-                  <button
-                    onClick={() => mirrorMachine(item.instanceId)}
-                    className={
-                      item.mirrored
-                        ? "border border-accent px-1.5 py-0.5 text-[13px] text-accent"
-                        : "border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
-                    }
+                  <Button
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    active={item.mirrored}
                     title="Spegelvänd maskinen"
+                    onClick={() => mirrorMachine(item.instanceId)}
                   >
-                    ⇄
-                  </button>
+                    <MirrorIcon size={15} />
+                  </Button>
                 ) : null}
               </div>
             </div>

@@ -838,9 +838,9 @@
       "summary": "Bandar fast sidoskyddsbrädor på paketets sidor. Justerbart presstryck.",
       "aiDescription": "En maskin som automatiskt placerar och bandar fast sidoskyddsbrädor på sidorna av virkespaketen. Operatören laddar brädor manuellt i magasin på vardera sida om rullbanan; så länge det finns material sker positioneringen automatiskt.\nBrädorna pressas med justerbart tryck mot paketets sidor. Maskinen hanterar sidoskyddsbrädor från 150 mm längd och uppåt.\nEftersom magasinen sitter på båda sidor om banan behöver maskinen fritt utrymme åt båda hållen för påfyllning — det påverkar var pulpet och truckgata kan ligga.",
       "footprint": {
-        "lengthMm": 3600,
-        "widthMm": 4600,
-        "heightMm": 2600
+        "lengthMm": 976,
+        "widthMm": 3977,
+        "heightMm": 1079
       },
       "ports": [
         {
@@ -848,7 +848,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 2300
+            "y": 1989
           },
           "dir": "x+",
           "levelMm": 900,
@@ -862,8 +862,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 3600,
-            "y": 2300
+            "x": 976,
+            "y": 1989
           },
           "dir": "x+",
           "levelMm": 900,
@@ -881,9 +881,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1800,
-            "l": 3600,
-            "w": 1800
+            "y": -1556,
+            "l": 976,
+            "w": 1556
           },
           "label": "Magasinpåfyllning vänster"
         },
@@ -891,9 +891,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": 4600,
-            "l": 3600,
-            "w": 1800
+            "y": 3977,
+            "l": 976,
+            "w": 1556
           },
           "label": "Magasinpåfyllning höger"
         }
@@ -956,7 +956,15 @@
           "step": 10,
           "defaultNumber": 150
         }
-      ]
+      ],
+      "images": [
+        "/bilder/sidoskyddslaggare-1.webp"
+      ],
+      "model": {
+        "glb": "/models/sidoskyddslaggare.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "paketpress-hydraulisk",
@@ -966,9 +974,9 @@
       "summary": "Pressar paketet från sidorna och ovanifrån. Två vertikala och en horisontell balk.",
       "aiDescription": "En paketpress med två vertikala och en horisontell pressbalk, driven av ett hydraulaggregat med ventiler och ställbara tryckbegränsningsventiler. Den monteras före eller efter bandramen och pressar samman paketet med inställt tryck när det stannar.\nOperatören kan välja mellan tre körlägen: alla tre balkar pressar, enbart de två vertikala, eller enbart den horisontella. Inställbart tryck 30–100 bar, där 100 bar ger cirka 6 tons presskraft.\nHydrauliken finns i två versioner. Version 1 har tryckkompenserad kolvpump driven av 11 kW motor, med elstyrda tryckbegränsningsventiler och digital tryckomställning — trycket kan ändras snabbt mellan olika körningar, via potentiometer eller direkt på pekskärmen. Version 2 har kugghjulspump, också 11 kW, med mekaniskt justerbara ventiler; den medger inte snabba anpassningar mellan körningar.\nVälj version 1 när kunden kör blandade dimensioner och behöver byta tryck ofta. Behöver kunden bara sidopress och inte press ovanifrån räcker Lättpressen, som är pneumatisk och betydligt enklare.",
       "footprint": {
-        "lengthMm": 3200,
-        "widthMm": 4400,
-        "heightMm": 3800
+        "lengthMm": 840,
+        "widthMm": 2240,
+        "heightMm": 2340
       },
       "ports": [
         {
@@ -976,7 +984,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 2200
+            "y": 1120
           },
           "dir": "x+",
           "levelMm": 900,
@@ -990,8 +998,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 3200,
-            "y": 2200
+            "x": 840,
+            "y": 1120
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1009,9 +1017,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -1400,
-            "l": 3200,
-            "w": 1400
+            "y": -713,
+            "l": 840,
+            "w": 713
           },
           "label": "Service hydraulaggregat"
         },
@@ -1020,8 +1028,8 @@
           "box": {
             "x": -600,
             "y": -600,
-            "l": 4400,
-            "w": 5600
+            "l": 2040,
+            "w": 3440
           },
           "label": "Skyddszon press"
         }
@@ -1117,7 +1125,12 @@
       ],
       "images": [
         "/bilder/paketpress-hydraulisk-1.webp"
-      ]
+      ],
+      "model": {
+        "glb": "/models/paketpress-hydraulisk.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "lattpress",
@@ -1500,9 +1513,9 @@
       "summary": "Kedjetransport av paket. Kedjekanaler KKR 60×12×4 mm, mittdrift.",
       "aiDescription": "En kedjetransportör där rullkedjan löper i kedjekanaler av KKR 60 × 12 × 4 mm på en plåtränna med E-list, med returen inne i kanalen — en kompakt konstruktion.\nMittdriften driver kedjan via en axel på 40 eller 50 mm, lagrad med UCF flänslager och driven av en SEW kuggväxel. Kedjesträckningen justeras i mittdriftens plåtar och är lätt att komma åt. Vändhjulen har dubbla rullager för lång, problemfri drift.\nDetta är linjens arbetshäst för längre transporter och den maskin som normalt används som buffert före utlastningen. Längden är fri och styrs antingen av kundens svar på frågan om sista kedjetransportören, eller sätts automatiskt så att linjen slutar i den punkt kunden pekat ut i ritningen.\nSom tumregel ska bufferten rymma minst två paketlängder, annars stannar linjen så fort trucken dröjer.",
       "footprint": {
-        "lengthMm": 12000,
-        "widthMm": 2200,
-        "heightMm": 800
+        "lengthMm": 3201,
+        "widthMm": 5076,
+        "heightMm": 860
       },
       "ports": [
         {
@@ -1510,7 +1523,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1100
+            "y": 2538
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1524,8 +1537,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 12000,
-            "y": 1100
+            "x": 3201,
+            "y": 2538
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1548,9 +1561,9 @@
           "type": "service",
           "box": {
             "x": 0,
-            "y": -900,
-            "l": 12000,
-            "w": 900
+            "y": -2077,
+            "l": 3201,
+            "w": 2077
           },
           "label": "Service kedjetransportör"
         }
@@ -1609,7 +1622,38 @@
           ],
           "defaultText": "40"
         }
-      ]
+      ],
+      "variants": [
+        {
+          "id": "ve70y",
+          "name": "1",
+          "footprint": {
+            "lengthMm": 3201,
+            "widthMm": 5076,
+            "heightMm": 860
+          }
+        },
+        {
+          "id": "veal6",
+          "name": "3,20 m",
+          "footprint": {
+            "lengthMm": 3201,
+            "widthMm": 5076,
+            "heightMm": 2260
+          },
+          "model": {
+            "glb": "/models/kedjetransportor-veal6.glb",
+            "upAxis": "y",
+            "yawDeg": 270
+          },
+          "dimensionsVerified": false
+        }
+      ],
+      "model": {
+        "glb": "/models/kedjetransportor.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "kedjekanal-hojsank",
@@ -2057,9 +2101,9 @@
       "aiDescription": "Operatörens manöverplats med elskåp, Siemens PLC och HMI-panel. Flera maskiner i katalogen levereras med eget elskåp; den här posten representerar den samlade operatörsplatsen i layouten.\nPulpeten placeras på den sida kunden valt, vid linjens mest manuella station. Operatören behöver fri sikt mot ströläggning och utlastning, och pulpeten får aldrig hamna i truckgatan — då utlöses regel R-203.\nFlera maskiner har modem för uppkoppling vid distanssupport; den anslutningen dras normalt till elskåpet här.\nDetta är ett hjälpobjekt och ingår inte i produktionskedjan.",
       "aux": true,
       "footprint": {
-        "lengthMm": 3400,
-        "widthMm": 1700,
-        "heightMm": 2100
+        "lengthMm": 499,
+        "widthMm": 800,
+        "heightMm": 972
       },
       "ports": [],
       "mirrorable": false,
@@ -2069,8 +2113,8 @@
           "box": {
             "x": -800,
             "y": -800,
-            "l": 5000,
-            "w": 3300
+            "l": 2099,
+            "w": 2400
           },
           "label": "Operatörsyta"
         }
@@ -2109,7 +2153,91 @@
       "leadTimeWeeks": 12,
       "catalogueNumber": "—",
       "dimensionsVerified": false,
-      "options": []
+      "options": [],
+      "model": {
+        "glb": "/models/manoverpulpet.glb",
+        "proxy": "/models/manoverpulpet.proxy.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
+    },
+    {
+      "id": "maskin-18",
+      "sku": "NY-18",
+      "name": "Paketläggare",
+      "category": "transport",
+      "summary": "",
+      "footprint": {
+        "lengthMm": 5282,
+        "widthMm": 3618,
+        "heightMm": 1920
+      },
+      "ports": [
+        {
+          "id": "in",
+          "role": "in",
+          "pos": {
+            "x": 0,
+            "y": 1809
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            2400
+          ],
+          "allowsDirectionChange": false
+        },
+        {
+          "id": "out",
+          "role": "out",
+          "pos": {
+            "x": 5282,
+            "y": 1809
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            2400
+          ],
+          "allowsDirectionChange": false
+        }
+      ],
+      "mirrorable": false,
+      "zones": [],
+      "capacity": {
+        "packagesPerHour": 20,
+        "packageLengthMm": [
+          2400,
+          6000
+        ],
+        "packageWidthMm": [
+          800,
+          1300
+        ],
+        "packageHeightMm": [
+          500,
+          1400
+        ],
+        "maxWeightKg": 3000
+      },
+      "utilities": {
+        "powerKw": 4,
+        "airNlPerMin": 0
+      },
+      "foundation": {
+        "pitDepthMm": 0,
+        "pointLoadKn": 20
+      },
+      "leadTimeWeeks": 14,
+      "dimensionsVerified": false,
+      "options": [],
+      "model": {
+        "glb": "/models/maskin-18.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     }
   ],
   "priceBook": {
@@ -2209,6 +2337,11 @@
         "list": 168000,
         "cost": 104000,
         "options": {}
+      },
+      "maskin-18": {
+        "list": 0,
+        "cost": 0,
+        "options": {}
       }
     },
     "installFactor": {
@@ -2229,6 +2362,6 @@
     }
   },
   "assets": [],
-  "updatedAt": "2026-09-15T11:00:46.180Z",
+  "updatedAt": "2026-09-23T05:53:33.633Z",
   "updatedBy": "admin"
 }

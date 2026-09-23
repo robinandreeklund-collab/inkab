@@ -253,9 +253,14 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             </div>
           ) : null}
 
+          {/*
+            * Priset står här bara för den som får se belopp. Rutan säger inte
+            * längre "logga in för prisuppgift": inloggning räcker inte, och
+            * ska inte räcka — priset lämnas av INKAB.
+            */}
           <div className="blueprint mt-4 p-3">
             <div className="kicker">Pris</div>
-            {role !== "guest" && priceLine?.rowTotal != null ? (
+            {priceLine?.rowTotal != null ? (
               <>
                 <div className="num text-xl">{formatSek(priceLine.rowTotal)}</div>
                 <div className="text-[11px] text-muted">
@@ -265,8 +270,10 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </>
             ) : (
               <>
-                <div className="text-base">Se pris →</div>
-                <div className="text-[11px] text-muted">Logga in för prisuppgift</div>
+                <div className="text-base">Lämnas av INKAB</div>
+                <div className="text-[11px] text-muted">
+                  Kontakta oss för offert på anläggningen.
+                </div>
               </>
             )}
           </div>

@@ -138,19 +138,13 @@ export function QuoteView({
               value={metrics.throughputPerHour > 0 ? `${metrics.throughputPerHour} pkt/h` : "—"}
             />
             <Line
-              label={
-                price?.adjustment?.fixedTotalSek
-                  ? "Avtalat pris"
-                  : price?.totals
-                    ? "Listpris"
-                    : "Prisintervall"
-              }
+              label={price?.adjustment?.fixedTotalSek ? "Avtalat pris" : "Pris"}
               value={
                 price?.totals
                   ? mkr(price.totals.grandTotal)
-                  : price
+                  : price?.indication
                     ? `${mkr(price.indication.lowSek)}–${mkr(price.indication.highSek)}`
-                    : "—"
+                    : "Lämnas av INKAB"
               }
             />
           </Party>

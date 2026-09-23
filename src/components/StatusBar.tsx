@@ -10,11 +10,15 @@ export function StatusBar({ price }: { price: PriceResult | null }) {
   const { errors, warnings } = countBySeverity(layout);
   const metrics = layout.metrics;
 
-  const priceLabel = !price
-    ? "—"
-    : price.totals
-      ? mkr(price.totals.grandTotal)
-      : `${mkr(price.indication.lowSek)}–${mkr(price.indication.highSek)}`;
+  /*
+   * Ingen prisruta utan belopp. Förut stod ett intervall här för alla —
+   * "2,6–3,4 Mkr" utan inloggning — och ett intervall är ett pris.
+   */
+  const priceLabel = price?.totals
+    ? mkr(price.totals.grandTotal)
+    : price?.indication
+      ? `${mkr(price.indication.lowSek)}–${mkr(price.indication.highSek)}`
+      : null;
 
   return (
     <div className="flex h-9 flex-none items-center gap-5 border-t border-divider bg-ink px-3 text-paper">
@@ -50,12 +54,14 @@ export function StatusBar({ price }: { price: PriceResult | null }) {
             : "Inga anmärkningar"}
       </button>
 
-      <div className="ml-auto flex items-baseline gap-2">
-        <span className="kicker text-paper/50">
-          {price?.totals ? "Listpris" : "Prisintervall"}
-        </span>
-        <span className="num text-sm">{priceLabel}</span>
-      </div>
+      {priceLabel ? (
+        <div className="ml-auto flex items-baseline gap-2">
+          <span className="kicker text-paper/50">
+            {price?.totals ? "Listpris" : "Prisintervall"}
+          </span>
+          <span className="num text-sm">{priceLabel}</span>
+        </div>
+      ) : null}
     </div>
   );
 }

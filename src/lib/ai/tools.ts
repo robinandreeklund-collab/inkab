@@ -606,11 +606,21 @@ export function executeTool(
         ctx.library,
         ctx.priceBook,
       );
+      /*
+       * Assistenten får bara de belopp rollen får se. Utan dem svarar den på
+       * vad den vet: att priset lämnas av INKAB. Att skicka med siffrorna och
+       * be modellen tiga om dem vore att lita på en textgenerator med
+       * någon annans prisbok.
+       */
       return {
         role: result.role,
         priceBook: result.priceBookName,
-        indicationLowSek: result.indication.lowSek,
-        indicationHighSek: result.indication.highSek,
+        ...(result.indication
+          ? {
+              indicationLowSek: result.indication.lowSek,
+              indicationHighSek: result.indication.highSek,
+            }
+          : {}),
         totals: result.totals,
         note: result.note,
       };

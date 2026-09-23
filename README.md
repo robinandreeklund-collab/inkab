@@ -44,10 +44,9 @@ topbaren. Alla andra som registrerar sig blir kund; deras roll ändras under
 
 | Roll | Ser |
 |---|---|
-| Gäst | Bygger fritt, ser prisintervall |
-| Kund | Samma, plus sparade uppgifter |
-| Säljare | Listpriser, radpriser och marginal |
-| Admin | Allt, plus maskinbibliotek, prisbok och konton |
+| Gäst | Bygger fritt: mått, kapacitet och regler. Inga belopp. |
+| Kund | Samma, plus sparade uppgifter. Inga belopp. |
+| Admin | Listpriser, radpriser, marginal, maskinbibliotek, prisbok och konton |
 
 Första bygget tar ett par minuter. Gratisplanen somnar efter inaktivitet, så
 första anropet efter en paus tar cirka 30 sekunder.
@@ -92,7 +91,7 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **De fem flödesfrågorna** | Driver geometrin på riktigt. Verifierat i test: pulpeten byter sida, magasinet byter sida, truckgatan flyttar sig, inmatningsriktningen vinklar linjen, och transportörlängden ändrar både layout och totalmått. |
 | **Regelverk** | 17 regler beräknade ur geometrin — kollisioner, zoner, hallgränser, truckgata, buffert, kapacitet, paketmått, beroenden. Varje regel kan ge ett åtgärdsförslag som går att applicera med ett klick. |
 | **Prissättning** | Beräknas på servern. Prisboken är märkt `server-only` — bygget kraschar om en klientkomponent försöker importera den. |
-| **Rollmodell** | Gäst ser prisintervall, säljläge ser listpris, radpriser och marginal. Serversidan avgör, inte klienten. |
+| **Rollmodell** | Belopp är admins, ingen annans. Gäst och kund bygger fritt och ser mått, kapacitet och regler — men inget pris, inte heller ett intervall: ett "ungefär 2,6–3,4 Mkr" röjer storleksordningen och blir ett ankare i en förhandling ingen hos INKAB varit med i. Serversidan avgör, inte klienten, och det publika maskinbiblioteket rensas från pris per meter och påslag på tillval innan det lämnar servern. |
 | **AI-assistent** | Claude Opus 5 med verktygsskal, adaptive thinking, streaming och prompt-cachning. Modellen kan bara läsa biblioteket och mutera konfigurationen — den räknar aldrig geometri och kan inte hitta på priser. Varje maskins fullständiga beskrivning ur katalogen ligger i systemprompten, så assistenten vet vad maskinerna faktiskt gör. |
 | **Admin-vy** | `/admin` — maskinbibliotek, prisbok och konton. Per maskin: identitet, AI-beskrivning, geometri, maskinzon, portar med live-förhandsgranskning, zoner, kapacitet, media, beroenden, kundens inställningar, bilder, optioner och pris. Provkoppling testar att portarna går att koppla in. Export och import av hela biblioteket som JSON. |
 | **Fri placering** | Maskinerna står där du ställer dem. Dra in dem ur katalogen, flytta dem i ritningen med musen och vrid dem med tangenten **R**, med handtaget vid den markerade maskinen, eller i inspektorn. Positionen räknas inte fram ur något annat: att flytta en maskin rör ingen annan. Nya maskiner landar på ledig yta till höger om det som står, och på en ny rad när hallens gavel är nådd — inte för att det är rätt plats, utan för att de ska synas och gå att dra dit de ska. |

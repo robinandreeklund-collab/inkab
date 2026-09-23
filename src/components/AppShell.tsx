@@ -38,6 +38,7 @@ export function AppShell() {
     selectedId,
     removeItem,
     removeDrawn,
+    turnDrawn,
     turnMachine,
     proposalId,
   } = useConfigStore();
@@ -158,8 +159,10 @@ export function AppShell() {
            * man tittar bort från ritningen för att ändra något man ser i den.
            * Skift vrider åt andra hållet.
            */
-          if (selectedId && config.line.some((i) => i.instanceId === selectedId)) {
-            event.preventDefault();
+          if (!selectedId) break;
+          event.preventDefault();
+          if (config.drawn.some((d) => d.id === selectedId)) turnDrawn(selectedId);
+          else if (config.line.some((i) => i.instanceId === selectedId)) {
             turnMachine(selectedId, event.shiftKey ? -1 : 1);
           }
           break;
@@ -181,6 +184,7 @@ export function AppShell() {
       setTool,
       setView,
       toggleInspector,
+      turnDrawn,
       turnMachine,
       togglePorts,
       toggleZones,

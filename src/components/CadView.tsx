@@ -91,6 +91,8 @@ export function CadView() {
     select,
     moveMachine,
     turnMachine,
+    updateDrawn,
+    turnDrawn,
     addDrawn,
     setTool,
     setFlowPoint,
@@ -195,6 +197,52 @@ export function CadView() {
     };
     const up = () => {
       setFrozen(null);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /* ── Drag av ritat objekt ────────────────────────────────────────────── */
+  const startDragDrawn = (object: DrawnObject, event: React.PointerEvent) => {
+    event.stopPropagation();
+    select(object.id);
+    if (tool !== "select") return;
+
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const frozenInverse = ctm.inverse();
+    const at = (e: { clientX: number; clientY: number }): Vec2 => {
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      return planarView === "2d" ? { x: point.x, y: point.y } : isoUnproject(point.x, point.y);
+    };
+
+    const start = at(event);
+    const from = { x: object.x, y: object.y };
+    setFrozen(contentBox);
+    let senaste = from;
+
+    const move = (e: PointerEvent) => {
+      const now = at(e);
+      senaste = {
+        x: snap(from.x + (now.x - start.x)),
+        y: snap(from.y + (now.y - start.y)),
+      };
+      updateDrawn(object.id, senaste);
+    };
+    const up = () => {
+      setFrozen(null);
+      /*
+       * En port hör till en vägg. Släpps den i närheten av en söker den upp
+       * väggen igen — annars blir den en ruta på golvet, vilket är precis
+       * vad fitDoorToWall finns för när man ritar den.
+       */
+      if (object.kind === "door") {
+        const box = fitDoorToWall({ ...senaste, l: object.l, w: object.w }, walls);
+        if (box) updateDrawn(object.id, box);
+      }
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -361,7 +409,8 @@ export function CadView() {
             hallBox={hallBox}
             config={config}
             layout={layout}
-            onSelectDrawn={select}
+            onDrawnDown={startDragDrawn}
+            onTurnDrawn={turnDrawn}
             showZones={showZones}
             showPorts={showPorts}
             strokeUnit={strokeUnit}
@@ -428,7 +477,8 @@ function Plan2D({
   labelFor,
   onMachineDown,
   onTurn,
-  onSelectDrawn,
+  onDrawnDown,
+  onTurnDrawn,
   selectedId,
 }: {
   hallBox: Box;
@@ -442,7 +492,8 @@ function Plan2D({
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
   onTurn: (instanceId: string, steps: number) => void;
-  onSelectDrawn: (id: string) => void;
+  onDrawnDown: (o: DrawnObject, e: React.PointerEvent) => void;
+  onTurnDrawn: (id: string) => void;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
@@ -478,7 +529,7 @@ function Plan2D({
           object={d}
           selected={d.id === selectedId}
           strokeUnit={strokeUnit}
-          onSelect={onSelectDrawn}
+          onDown={onDrawnDown}
         />
       ))}
 
@@ -529,9 +580,23 @@ function Plan2D({
       ))}
 
       {(() => {
-        const vald = layout.placements.find((p) => p.instanceId === selectedId);
-        return vald ? (
-          <TurnHandle placement={vald} strokeUnit={strokeUnit} onTurn={onTurn} />
+        const maskin = layout.placements.find((p) => p.instanceId === selectedId);
+        if (maskin) {
+          return (
+            <TurnHandle
+              box={maskin.bbox}
+              strokeUnit={strokeUnit}
+              onTurn={(steps) => onTurn(maskin.instanceId, steps)}
+            />
+          );
+        }
+        const ritat = config.drawn.find((d) => d.id === selectedId);
+        return ritat ? (
+          <TurnHandle
+            box={{ x: ritat.x, y: ritat.y, l: ritat.l, w: ritat.w }}
+            strokeUnit={strokeUnit}
+            onTurn={() => onTurnDrawn(ritat.id)}
+          />
         ) : null;
       })()}
 
@@ -795,12 +860,12 @@ function DrawnShape({
   object,
   selected,
   strokeUnit,
-  onSelect,
+  onDown,
 }: {
   object: DrawnObject;
   selected: boolean;
   strokeUnit: number;
-  onSelect: (id: string) => void;
+  onDown: (o: DrawnObject, e: React.PointerEvent) => void;
 }) {
   const style = {
     wall: { fill: "#d4d4d7", stroke: "#1d1f20", dash: undefined as string | undefined },
@@ -822,13 +887,7 @@ function DrawnShape({
   const marked = object.kind === "wall" && object.h === 0;
 
   return (
-    <g
-      style={{ cursor: "pointer" }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        onSelect(object.id);
-      }}
-    >
+    <g style={{ cursor: "grab" }} onPointerDown={(e) => onDown(object, e)}>
       <rect
         x={object.x}
         y={object.y}
@@ -1142,18 +1201,18 @@ function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number 
  * på vit botten så handtaget syns också över en ritad zon.
  */
 function TurnHandle({
-  placement,
+  box,
   strokeUnit,
   onTurn,
 }: {
-  placement: Placement;
+  box: Box;
   strokeUnit: number;
-  onTurn: (instanceId: string, steps: number) => void;
+  onTurn: (steps: number) => void;
 }) {
   const r = strokeUnit * 12;
-  // Utanför maskinens hörn, så det aldrig ligger över ytan man drar i.
-  const cx = placement.bbox.x + placement.bbox.l + r * 1.15;
-  const cy = placement.bbox.y - r * 1.15;
+  // Utanför hörnet, så det aldrig ligger över ytan man drar i.
+  const cx = box.x + box.l + r * 1.15;
+  const cy = box.y - r * 1.15;
   /*
    * Ikonen är ritad i ett rutnät på 24 med bågens mitt i (12, 12) och en
    * radie på 7. Skalan sätts efter bågen, inte efter rutnätet: annars blir
@@ -1167,7 +1226,7 @@ function TurnHandle({
       onPointerDown={(e) => {
         // Utan detta börjar ett drag av maskinen under handtaget.
         e.stopPropagation();
-        onTurn(placement.instanceId, e.shiftKey ? -1 : 1);
+        onTurn(e.shiftKey ? -1 : 1);
       }}
     >
       <title>Vrid 90° (skift för andra hållet, eller tangent R)</title>

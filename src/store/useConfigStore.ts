@@ -113,6 +113,8 @@ type Actions = {
   nudge: (instanceId: string, delta: Vec2) => void;
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
+  /** Vrider ett ritat objekt ett kvarts varv kring sin mitt. */
+  turnDrawn: (id: string) => void;
   removeDrawn: (id: string) => void;
   clearDrawn: () => void;
   applyPatch: (patch: ConfigPatch) => void;
@@ -418,6 +420,26 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const object = d.drawn.find((o) => o.id === id);
         if (object) Object.assign(object, patch);
+      }),
+
+    turnDrawn: (id) =>
+      get().update((d) => {
+        const obj = d.drawn.find((o) => o.id === id);
+        if (!obj) return;
+        /*
+         * Ett ritat objekt är en axelparallell låda utan egen vinkel — så
+         * räknar geometrin och reglerna med den. Att vrida den är därför att
+         * byta längd mot bredd kring mitten, inte att luta den: en truckgata
+         * som ligger längs hallen kommer att ligga tvärs, och ligger kvar
+         * där den låg.
+         */
+        const cx = obj.x + obj.l / 2;
+        const cy = obj.y + obj.w / 2;
+        obj.x = Math.round(cx - obj.w / 2);
+        obj.y = Math.round(cy - obj.l / 2);
+        const l = obj.l;
+        obj.l = obj.w;
+        obj.w = l;
       }),
 
     removeDrawn: (id) => {

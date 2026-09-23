@@ -1,6 +1,5 @@
 import "server-only";
 import { computeLayout } from "@/lib/layout";
-import { removeWithBranches, segmentEndIndex, usedOutPorts } from "@/lib/branches";
 import { MAX_DRAWN, planToDrawn, type Plan } from "@/lib/drawing";
 import { normaliseToolInput } from "./toolInput";
 import {
@@ -504,9 +503,6 @@ export function executeTool(
 
     case "set_flow": {
       const patch = { ...(input as Partial<Configuration["flow"]>) };
-      if (typeof patch.finalConveyorLengthMm === "number") {
-        patch.finalConveyorLengthMm = clamp(patch.finalConveyorLengthMm, 1000, 40000);
-      }
       Object.assign(ctx.draft.flow, patch);
       return { applied: patch, layout: layoutSummary(ctx.draft, ctx.library) };
     }
@@ -554,64 +550,8 @@ export function executeTool(
         item.variantId = wanted ?? variants[0].id;
       }
 
-      const outs = machine.ports.filter((p) => p.role === "out");
-      if (input.outPortId) {
-        const wanted = String(input.outPortId);
-        if (!outs.some((p) => p.id === wanted)) {
-          return {
-            error:
-              `Okänd utgång: ${wanted}. ${machine.name} har ` +
-              `${outs.map((p) => `${p.id} (${p.name ?? p.id})`).join(", ")}.`,
-          };
-        }
-        item.outPortId = wanted;
-      }
-
-      /*
-       * Grenen kopplas till en maskin som redan står i linjen. Allt kontrolleras
-       * mot biblioteket och mot linjen: en gren på en maskin som inte finns, på
-       * en ingång, eller på en utgång som redan matar något annat är inte en
-       * gren utan en trasig konfiguration.
-       */
-      let branchIndex: number | null = null;
-      if (input.branchFromInstanceId) {
-        const fromId = String(input.branchFromInstanceId);
-        const parent = ctx.draft.line.find((i) => i.instanceId === fromId);
-        if (!parent) {
-          return { error: `Ingen maskin med instanceId ${fromId} finns i linjen.` };
-        }
-        const parentMachine = getMachine(parent.machineId, ctx.library);
-        if (!parentMachine) {
-          return { error: `Maskinen ${parent.machineId} finns inte i biblioteket.` };
-        }
-        const parentOuts = parentMachine.ports.filter((p) => p.role === "out");
-        const portId = input.branchOutPortId
-          ? String(input.branchOutPortId)
-          : (parentOuts.find((p) => !usedOutPorts(ctx.draft.line, fromId, parentMachine).has(p.id))?.id ??
-             parentOuts[0]?.id);
-        if (!portId || !parentOuts.some((p) => p.id === portId)) {
-          return {
-            error:
-              `Okänd utgång: ${input.branchOutPortId}. ${parentMachine.name} har ` +
-              `${parentOuts.map((p) => `${p.id} (${p.name ?? p.id})`).join(", ")}.`,
-          };
-        }
-        const used = usedOutPorts(ctx.draft.line, fromId, parentMachine);
-        if (used.has(portId)) {
-          return {
-            error:
-              `Utgången ${portId} på ${parentMachine.name} matar redan en maskin. ` +
-              `Lediga utgångar: ${parentOuts.filter((p) => !used.has(p.id)).map((p) => p.id).join(", ") || "inga"}.`,
-          };
-        }
-        item.branch = { fromInstanceId: fromId, outPortId: portId };
-        branchIndex = segmentEndIndex(ctx.draft.line, fromId);
-      }
-
       const at =
-        typeof input.atIndex === "number"
-          ? input.atIndex
-          : (branchIndex ?? ctx.draft.line.length);
+        typeof input.atIndex === "number" ? input.atIndex : ctx.draft.line.length;
       ctx.draft.line.splice(
         Math.max(0, Math.min(ctx.draft.line.length, at)),
         0,
@@ -622,8 +562,6 @@ export function executeTool(
           instanceId: item.instanceId,
           machineId,
           variantId: item.variantId,
-          outPortId: item.outPortId,
-          branch: item.branch,
         },
         layout: layoutSummary(ctx.draft, ctx.library),
       };
@@ -637,16 +575,9 @@ export function executeTool(
           error: `Ingen maskin med instanceId ${instanceId} finns i linjen.`,
         };
       }
-      // Grenar som hänger på maskinen följer med, precis som i gränssnittet:
-      // en gren utan fäste går inte att placera.
-      ctx.draft.line = removeWithBranches(before, instanceId);
-      const alsoRemoved = before
-        .filter((i) => !ctx.draft.line.some((k) => k.instanceId === i.instanceId))
-        .map((i) => i.instanceId)
-        .filter((id) => id !== instanceId);
+      ctx.draft.line = before.filter((i) => i.instanceId !== instanceId);
       return {
         removed: instanceId,
-        alsoRemoved,
         layout: layoutSummary(ctx.draft, ctx.library),
       };
     }

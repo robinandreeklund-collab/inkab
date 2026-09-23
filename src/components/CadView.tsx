@@ -6,8 +6,9 @@ import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/proje
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
-import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
+import type { Box, DrawnObject, DrawnKind, PlacedPort, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
+import { DIR_VEC } from "@/lib/geometry";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -87,7 +88,7 @@ export function CadView() {
     showZones,
     showPorts,
     select,
-    nudge,
+    moveMachine,
     addDrawn,
     setTool,
     setFlowPoint,
@@ -97,6 +98,15 @@ export function CadView() {
   const planarView: PlanarView = view === "3d" ? "3d" : "2d";
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
+  /*
+   * Utsnittet som gällde när ett drag började.
+   *
+   * Vyn ramar in allt som finns i hallen, så den räknas om när en maskin
+   * flyttas — och då glider ritningen under pekaren mitt i draget. Maskinen
+   * drev i sidled fast man bara drog neråt. Under ett drag står utsnittet
+   * still och släpps när man släpper.
+   */
+  const [frozen, setFrozen] = useState<Box | null>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Vec2>({ x: 0, y: 0 });
 
@@ -114,14 +124,15 @@ export function CadView() {
   const maxHeight = Math.max(config.hall.clearHeightMm, ...layout.placements.map((p) => p.size.heightMm), 1);
 
   const viewBox = useMemo(() => {
+    const framed = frozen ?? contentBox;
     const base =
-      view === "2d" ? padBox(contentBox, PAD_MM) : padBox(isoBounds(contentBox, maxHeight), PAD_MM);
+      view === "2d" ? padBox(framed, PAD_MM) : padBox(isoBounds(framed, maxHeight), PAD_MM);
     const cx = base.x + base.l / 2 + pan.x;
     const cy = base.y + base.w / 2 + pan.y;
     const l = base.l / zoom;
     const w = base.w / zoom;
     return { x: cx - l / 2, y: cy - w / 2, l, w };
-  }, [contentBox, view, maxHeight, zoom, pan]);
+  }, [contentBox, frozen, view, maxHeight, zoom, pan]);
 
   /** Skärmkoordinat → världskoordinat (mm), via SVG:ns egen transform. */
   const toWorld = useCallback(
@@ -144,22 +155,44 @@ export function CadView() {
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
     event.stopPropagation();
     select(placement.instanceId);
-    if (tool !== "select" || placement.aux === undefined) return;
+    if (tool !== "select") return;
 
-    const start = toWorld(event);
-    if (!start) return;
-    let last = { x: 0, y: 0 };
+    /*
+     * Koordinatsystemet låses vid draget.
+     *
+     * toWorld frågar SVG:n om dess transform varje gång. Den ändras mitt i
+     * draget — vyn ramar om sig, panelen öppnas — och då betyder samma punkt
+     * på skärmen olika punkter i hallen från ett ögonblick till nästa.
+     * Maskinen drev i sidled fast man bara drog neråt. Med matrisen från
+     * nedtryckningen följer maskinen pekaren.
+     */
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const frozenInverse = ctm.inverse();
+    const at = (e: { clientX: number; clientY: number }): Vec2 => {
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      return planarView === "2d" ? { x: point.x, y: point.y } : isoUnproject(point.x, point.y);
+    };
+
+    const start = at(event);
+    /*
+     * Positionen sätts absolut, inte som en förskjutning. Maskinen står där
+     * den står — den räknas inte fram ur något annat — så draget behöver
+     * inte veta vad den hade för utgångsläge, bara var den hamnar.
+     */
+    const origin = { ...placement.origin };
+    setFrozen(contentBox);
 
     const move = (e: PointerEvent) => {
-      const now = toWorld(e);
-      if (!now) return;
-      const target = { x: snap(now.x - start.x), y: snap(now.y - start.y) };
-      const delta = { x: target.x - last.x, y: target.y - last.y };
-      if (delta.x === 0 && delta.y === 0) return;
-      last = target;
-      nudge(placement.instanceId, delta);
+      const now = at(e);
+      moveMachine(placement.instanceId, {
+        x: snap(origin.x + (now.x - start.x)),
+        y: snap(origin.y + (now.y - start.y)),
+      });
     };
     const up = () => {
+      setFrozen(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -353,8 +386,8 @@ export function CadView() {
 
         <FlowMarkers
           start={config.flow.startPoint}
-          end={config.flow.endPoint}
-          lineEnd={layout.metrics.endPointGapMm !== null ? config.flow.endPoint : null}
+          end={null}
+          lineEnd={null}
           view={planarView}
           strokeUnit={strokeUnit}
           onDrag={dragFlowPoint}
@@ -493,13 +526,10 @@ function Plan2D({
       {showPorts
         ? layout.placements.flatMap((p) =>
             p.ports.map((port) => (
-              <circle
+              <FlowArrow
                 key={`${p.instanceId}-${port.id}`}
-                cx={port.pos.x}
-                cy={port.pos.y}
-                r={strokeUnit * 4}
-                fill={port.role === "in" ? "#5980a6" : "#1d2d3d"}
-                pointerEvents="none"
+                port={port}
+                strokeUnit={strokeUnit}
               />
             )),
           )
@@ -716,15 +746,13 @@ function DiagnosticBadges({
         const width = strokeUnit * 44;
         const height = strokeUnit * 22;
         return (
-          <g
-            key={`${d.code}-${i}`}
-            style={{ cursor: "pointer" }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              if (d.instanceIds[0]) select(d.instanceIds[0]);
-              toggleDiagnostics(true);
-            }}
-          >
+          /*
+           * Brickan är en markering, inte en knapp. Den sitter mitt på den
+           * maskin den handlar om, och fångade den pekaren gick maskinen inte
+           * att dra — man tog tag mitt i den och ingenting hände. Felen nås
+           * i diagnostikpanelen; att peka på maskinen räcker här.
+           */
+          <g key={`${d.code}-${i}`} pointerEvents="none">
             <rect
               x={p.x - width / 2}
               y={p.y - height / 2}
@@ -1031,6 +1059,60 @@ function MeasureLine({
       >
         {meters(distance)} m
       </text>
+    </g>
+  );
+}
+
+/**
+ * Flödespil vid en port: åt vilket håll maskinen tar emot eller lämnar paket.
+ *
+ * Pilen kopplar ingenting. Portarna var förut anslutningspunkter som en
+ * solver matchade mot varandra, och positionen räknades fram ur kedjan; nu
+ * står maskinerna där kunden ställt dem och pilen är en upplysning om vad
+ * maskinen klarar — in på den här sidan, ut på den där.
+ *
+ * Ingång och utgång ritas åt samma håll som flödet går. Pilspetsen pekar
+ * därför in i maskinen på en ingång och bort från den på en utgång, vilket
+ * är precis skillnaden man vill se när man vänder en maskin.
+ */
+function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number }) {
+  const v = DIR_VEC[port.dir];
+  const len = strokeUnit * 26;
+  const head = strokeUnit * 9;
+  const inPort = port.role === "in";
+  const color = inPort ? "#5980a6" : "#1d2d3d";
+
+  // Ingången ritas utanför maskinen och pekar in; utgången börjar i porten
+  // och pekar ut. Bägge slutar alltså där paketen är på väg.
+  const tip = inPort
+    ? port.pos
+    : { x: port.pos.x + v.x * len, y: port.pos.y + v.y * len };
+  const tail = inPort
+    ? { x: port.pos.x - v.x * len, y: port.pos.y - v.y * len }
+    : port.pos;
+
+  // Vinkelrätt mot flödet, för pilspetsens vingar.
+  const n = { x: -v.y, y: v.x };
+
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={tail.x}
+        y1={tail.y}
+        x2={tip.x}
+        y2={tip.y}
+        stroke={color}
+        strokeWidth={strokeUnit * 2.5}
+        strokeLinecap="round"
+      />
+      <path
+        d={
+          `M${tip.x} ${tip.y}` +
+          `L${tip.x - v.x * head + n.x * head * 0.6} ${tip.y - v.y * head + n.y * head * 0.6}` +
+          `L${tip.x - v.x * head - n.x * head * 0.6} ${tip.y - v.y * head - n.y * head * 0.6}Z`
+        }
+        fill={color}
+      />
     </g>
   );
 }

@@ -8,19 +8,20 @@ export const lineItemSchema = z.object({
   instanceId: z.string().min(1).max(64),
   machineId: z.string().min(1).max(64),
   variantId: z.string().max(64).optional(),
-  outPortId: z.string().max(64).optional(),
-  inPortId: z.string().max(64).optional(),
-  branch: z
-    .object({ fromInstanceId: z.string().min(1).max(64), outPortId: z.string().min(1).max(64) })
-    .optional(),
-  feeds: z
-    .object({ toInstanceId: z.string().min(1).max(64), inPortId: z.string().min(1).max(64) })
-    .optional(),
+  /*
+   * Positionen är valfri: en konfiguration sparad före fri placering har
+   * ingen, och får då en plats på ledig yta när layouten räknas ut. Gamla
+   * fält (portval, grenar, matarlinjer) faller bort av sig själva — zod
+   * släpper igenom okända nycklar utan att ta med dem vidare.
+   */
+  pos: vec2.optional(),
+  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  mirrored: z.boolean().optional(),
+  lengthMm: z.number().int().min(100).max(60000).optional(),
   selectedOptions: z.array(z.string().max(64)).max(12),
   parameters: z
     .record(z.string().max(64), z.union([z.string().max(200), z.number().finite(), z.boolean()]))
     .optional(),
-  manualOffset: vec2.optional(),
 });
 
 export const drawnSchema = z.object({
@@ -35,14 +36,8 @@ export const drawnSchema = z.object({
 });
 
 export const flowSchema = z.object({
-  infeedFrom: z.enum(["straight", "right", "left"]),
-  controlDeskSide: z.enum(["right", "left"]),
-  stickerMagazineSide: z.enum(["right", "left"]),
   truckPickupSide: z.enum(["right", "left"]),
-  finalConveyorLengthMm: z.number().int().min(1000).max(40000),
   startPoint: vec2,
-  endPoint: vec2.nullable(),
-  fitToEndPoint: z.boolean(),
 });
 
 export const configurationSchema = z.object({

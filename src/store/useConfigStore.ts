@@ -4,7 +4,7 @@ import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
-import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
+import { claimedBox, freeSpot } from "@/lib/solver";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
@@ -14,6 +14,7 @@ import type {
   LayoutResult,
   Machine,
   ParameterValue,
+  Rotation,
   Vec2,
 } from "@/lib/types";
 
@@ -73,18 +74,6 @@ type State = {
    * skriver tillbaka till samma rad i stället för att lägga en kopia bredvid.
    */
   proposalId: string | null;
-  /**
-   * Utgången nästa maskin ska hängas på. Satt när någon tryckt "bygg vidare
-   * härifrån" på en ledig utgång; nästa maskin ur katalogen startar då en
-   * gren i stället för att läggas sist.
-   */
-  branchTarget: { instanceId: string; outPortId: string } | null;
-  /**
-   * Ingången nästa maskin ska mata. Satt när någon tryckt "mata in hit" på en
-   * ledig ingång; nästa maskin ur katalogen startar då en matarlinje som
-   * slutar där, i stället för att läggas sist i linjen.
-   */
-  feedTarget: { instanceId: string; inPortId: string } | null;
 };
 
 type Actions = {
@@ -114,13 +103,13 @@ type Actions = {
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
   setVariant: (instanceId: string, variantId: string) => void;
-  setBranchTarget: (target: { instanceId: string; outPortId: string } | null) => void;
-  setFeedTarget: (target: { instanceId: string; inPortId: string } | null) => void;
-  setOutPort: (instanceId: string, outPortId: string) => void;
-  setInPort: (instanceId: string, inPortId: string) => void;
+  /** Flyttar maskinen till en ny position i hallen, mm. */
+  moveMachine: (instanceId: string, pos: Vec2) => void;
+  rotateMachine: (instanceId: string, rotation: Rotation) => void;
+  mirrorMachine: (instanceId: string) => void;
+  setLength: (instanceId: string, lengthMm: number) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
-  resetOffset: (instanceId: string) => void;
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
   removeDrawn: (id: string) => void;
@@ -234,13 +223,11 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     aiOpen: false,
     diagnosticsOpen: false,
     showZones: true,
-    showPorts: false,
+    showPorts: true,
     hydrated: false,
     shareNotice: null,
     log: [],
     proposalId: null,
-    branchTarget: null,
-    feedTarget: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -304,11 +291,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setFlowPoint: (which, point) =>
       get().update((d) => {
-        if (which === "startPoint") {
-          if (point) d.flow.startPoint = point;
-        } else {
-          d.flow.endPoint = point;
-        }
+        if (which === "startPoint" && point) d.flow.startPoint = point;
       }),
 
     addMachine: (machineId, atIndex) => {
@@ -327,42 +310,33 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       if (machine.variants?.length) item.variantId = machine.variants[0].id;
 
       /*
-       * Var maskinen hamnar: på den utpekade utgången om någon är vald, annars
-       * sist i samma gren som den markerade maskinen. Utan markering sist i
-       * listan, som förut.
+       * Var maskinen hamnar: på ledig yta till höger om det som redan står.
+       * Inte för att det är rätt plats, utan för att den ska synas och gå
+       * att dra dit den ska. Placeringen är kundens.
        */
-      const target = get().branchTarget;
-      if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
+      const { config, layout } = get();
+      item.pos = freeSpot(
+        layout.placements.map(claimedBox),
+        {
+          l: machine.footprint.lengthMm,
+          w: machine.footprint.widthMm,
+        },
+        config.flow.startPoint,
+        config.hall,
+      );
 
-      /*
-       * En matarlinje läggs sist i listan och byggs framåt i flödesordning:
-       * nästa maskin man väljer hamnar efter den förra och blir därmed den
-       * som möter ingången. Det är samma ordning man tänker i — först där
-       * paketen kommer in, sist där de går över i banan.
-       */
-      const feed = get().feedTarget;
-      if (feed) item.feeds = { toInstanceId: feed.instanceId, inPortId: feed.inPortId };
-
-      const fallback = feed
-        ? get().config.line.length
-        : target
-          ? segmentEndIndex(get().config.line, target.instanceId)
-          : segmentEndIndex(get().config.line, get().selectedId);
+      const fallback = config.line.length;
 
       get().update((d) => {
         const index = atIndex ?? fallback;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
-      set({ branchTarget: null, feedTarget: null });
       get().select(item.instanceId);
     },
 
     removeItem: (instanceId) => {
       get().update((d) => {
-        // Grenar som hänger på maskinen följer med: en gren utan fäste går
-        // inte att placera, och att lämna kvar den vore att lämna maskiner
-        // som varken kan ritas eller hittas.
-        d.line = removeWithBranches(d.line, instanceId);
+        d.line = d.line.filter((i) => i.instanceId !== instanceId);
       });
       if (get().selectedId === instanceId) set({ selectedId: null });
     },
@@ -375,29 +349,35 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
       }),
 
-    setBranchTarget: (branchTarget) => set({ branchTarget, feedTarget: null }),
-    setFeedTarget: (feedTarget) => set({ feedTarget, branchTarget: null }),
-
     setVariant: (instanceId, variantId) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (!item) return;
         item.variantId = variantId;
-        // Manuell förskjutning hör ihop med det gamla måttet. Ett nytt
-        // utförande är en annan maskin i geometrin, så justeringen släpps.
-        delete item.manualOffset;
       }),
 
-    setOutPort: (instanceId, outPortId) =>
+    moveMachine: (instanceId, pos) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) item.outPortId = outPortId;
+        if (item) item.pos = { x: Math.round(pos.x), y: Math.round(pos.y) };
       }),
 
-    setInPort: (instanceId, inPortId) =>
+    rotateMachine: (instanceId, rotation) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) item.inPortId = inPortId;
+        if (item) item.rotation = rotation;
+      }),
+
+    mirrorMachine: (instanceId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.mirrored = !item.mirrored;
+      }),
+
+    setLength: (instanceId, lengthMm) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.lengthMm = Math.round(lengthMm);
       }),
 
     setParameter: (instanceId, parameterId, value) =>
@@ -419,15 +399,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     nudge: (instanceId, delta) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (!item) return;
-        const current = item.manualOffset ?? { x: 0, y: 0 };
-        item.manualOffset = { x: current.x + delta.x, y: current.y + delta.y };
-      }),
-
-    resetOffset: (instanceId) =>
-      get().update((d) => {
-        const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) delete item.manualOffset;
+        if (!item?.pos) return;
+        item.pos = { x: Math.round(item.pos.x + delta.x), y: Math.round(item.pos.y + delta.y) };
       }),
 
     addDrawn: (obj) => {

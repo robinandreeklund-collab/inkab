@@ -295,14 +295,7 @@ export function QuoteView({
 
           <Section title="Flöde och konfiguration">
             <dl className="text-sm">
-              <Line label="Paketen kommer in" value={infeedLabel(config.flow.infeedFrom)} />
-              <Line label="Pulpetens sida" value={sideLabel(config.flow.controlDeskSide)} />
-              <Line label="Ströfacksmagasin" value={sideLabel(config.flow.stickerMagazineSide)} />
               <Line label="Trucken hämtar från" value={sideLabel(config.flow.truckPickupSide)} />
-              <Line
-                label="Sista kedjetransportör"
-                value={`${meters(config.flow.finalConveyorLengthMm)} m`}
-              />
               <Line
                 label="Virkesbredd"
                 value={`${meters(config.product.packageWidthMinMm)}–${meters(config.product.packageWidthMaxMm)} m`}

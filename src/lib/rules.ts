@@ -1,4 +1,3 @@
-import { connectedPairs, connections, inPortOf } from "./branches";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
@@ -35,64 +34,6 @@ export function runRules(
   const aux = layout.placements.filter((p) => p.aux);
   const all = layout.placements;
   const hall = hallBox(config);
-
-  /* ── R-101 Portmatchning ────────────────────────────────────────────── */
-  /*
-   * Kopplingarna, inte grannarna i listan. En grenrot kan ha nummer 3 och
-   * sitta på nummer 1, och en matarlinje ligger sist i listan men mynnar mitt
-   * i den — att jämföra listgrannar hittade på glapp som inte fanns och
-   * missade dem som fanns.
-   */
-  const byInstanceId = new Map(line.map((p) => [p.instanceId, p]));
-  const links = connections(config.line);
-  for (const link of links) {
-    const a = byInstanceId.get(link.fromInstanceId);
-    const b = byInstanceId.get(link.toInstanceId);
-    if (!a || !b) continue;
-
-    const outs = a.ports.filter((p) => p.role === "out");
-    const ins = b.ports.filter((p) => p.role === "in");
-    const outPort = outs.find((p) => p.id === link.fromPortId) ?? outs[0];
-    const inPort = ins.find((p) => p.id === link.toPortId) ?? ins[0];
-    if (!outPort || !inPort) continue;
-
-    if (Math.abs(outPort.levelMm - inPort.levelMm) > PORT_LEVEL_TOLERANCE_MM) {
-      out.push({
-        code: "R-101",
-        severity: "error",
-        title: "Portarna ligger på olika höjd",
-        detail: `${a.machine.name} lämnar paketet på ${outPort.levelMm} mm och ${b.machine.name} tar emot på ${inPort.levelMm} mm. Skillnaden är ${Math.abs(outPort.levelMm - inPort.levelMm)} mm.`,
-        instanceIds: [a.instanceId, b.instanceId],
-        anchor: outPort.pos,
-      });
-    }
-
-    const gap = Math.hypot(outPort.pos.x - inPort.pos.x, outPort.pos.y - inPort.pos.y);
-    if (gap > 50) {
-      out.push({
-        code: "R-101",
-        severity: "warning",
-        title: "Glapp mellan maskinerna",
-        detail: `Det är ${m(gap)} m mellan ${a.machine.name} och ${b.machine.name}. En manuell förskjutning har brutit kopplingen.`,
-        instanceIds: [a.instanceId, b.instanceId],
-        anchor: outPort.pos,
-      });
-    }
-  }
-
-  /* ── R-102 Riktningsändring saknas ──────────────────────────────────── */
-  if (layout.neverTurnedToMainAxis && line.length > 0) {
-    out.push({
-      code: "R-102",
-      severity: "error",
-      title: "Linjen vänds aldrig längs hallen",
-      detail:
-        "Paketen kommer in från sidan men ingen maskin i linjen kan vinkla flödet. Lägg till en tvärtransportör efter inmatningen.",
-      instanceIds: [line[0].instanceId],
-      anchor: boxCenter(line[0].bbox),
-      fix: { kind: "addMachine", machineId: "tt1", label: "Lägg till tvärtransportör" },
-    });
-  }
 
   /* ── R-103 Maskiner överlappar ──────────────────────────────────────── */
   for (let i = 0; i < all.length; i++) {
@@ -131,19 +72,12 @@ export function runRules(
   }
 
   /* ── R-106 Maskinzonen inkräktad ────────────────────────────────────── */
-  const connected = connectedPairs(config.line);
-  const isConnected = (a: string, b: string) => connected.has([a, b].sort().join("|"));
-
   for (const p of all) {
     const clearance = p.zones.find((z) => z.type === "clearance");
     if (!clearance) continue;
 
     for (const other of all) {
       if (other.instanceId === p.instanceId) continue;
-      // Den inkopplade grannen står port mot port och därmed med rätta i
-      // frigången. Kopplingen läses ur linjens träd, inte ur positionsnummer:
-      // en grenrot kan ha nummer 3 och sitta på nummer 1.
-      if (!p.aux && !other.aux && isConnected(p.instanceId, other.instanceId)) continue;
       if (!boxesOverlap(clearance.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
@@ -224,57 +158,10 @@ export function runRules(
     });
   }
 
-  /* ── R-202 För kort buffert på sista transportören ──────────────────── */
-  const parametric = [...line].reverse().find((p) => p.machine.parametricLength);
-  if (parametric) {
-    const needed = config.product.packageLengthMm * 2;
-    if (parametric.size.lengthMm < needed) {
-      out.push({
-        code: "R-202",
-        severity: "warning",
-        title: "För kort buffert före utlastning",
-        detail: `${parametric.machine.name} är ${m(parametric.size.lengthMm)} m. För två pakets buffert behövs minst ${m(needed)} m.`,
-        instanceIds: [parametric.instanceId],
-        anchor: boxCenter(parametric.bbox),
-        fix: {
-          kind: "flow",
-          patch: { finalConveyorLengthMm: needed },
-          label: `Förläng till ${m(needed)} m`,
-        },
-      });
-    }
-  }
-
-  /* ── R-206 Längdfrågan styr ingenting ───────────────────────────────── */
-  /*
-   * "Längd på sista kedjetransportören" gäller bara en maskin som verkligen
-   * kapas till längd. Har alla transportörer i linjen uppmätt CAD-modell
-   * eller bestämda utföranden har frågan ingen verkan — och då ska det sägas,
-   * i stället för att kunden ställer in ett mått som inte händer något av.
-   */
-  const adjustable = line.find(
-    (p) => p.machine.parametricLength && !p.machine.model && !(p.machine.variants?.length ?? 0),
-  );
-  const fixedLength = line.filter((p) => p.machine.parametricLength && !adjustable);
-  if (!adjustable && fixedLength.length > 0) {
-    out.push({
-      code: "R-206",
-      severity: "info",
-      title: "Längdfrågan styr ingen maskin",
-      detail:
-        `${fixedLength.map((p) => p.machine.name).join(", ")} har mått ur CAD-modell eller ` +
-        "valt utförande, så längden kommer därifrån. Inställningen \"längd på sista " +
-        "kedjetransportören\" påverkar inget i den här linjen.",
-      instanceIds: fixedLength.map((p) => p.instanceId),
-      anchor: boxCenter(fixedLength[fixedLength.length - 1].bbox),
-    });
-  }
-
   /* ── R-203 Hjälpobjekt står i truckgatan ────────────────────────────── */
   for (const aisle of layout.aisles) {
     for (const p of aux) {
       if (!boxesOverlap(p.bbox, aisle.box, TOUCH_TOLERANCE_MM)) continue;
-      const isDesk = p.machine.category === "control";
       out.push({
         code: "R-203",
         severity: "error",
@@ -282,19 +169,6 @@ export function runRules(
         detail: `${p.machine.name} står i ${aisle.label.toLowerCase()}. Trucken kan inte passera.`,
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
-        fix: isDesk
-          ? {
-              kind: "flow",
-              patch: { controlDeskSide: config.flow.controlDeskSide === "right" ? "left" : "right" },
-              label: "Flytta pulpeten till andra sidan",
-            }
-          : {
-              kind: "flow",
-              patch: {
-                stickerMagazineSide: config.flow.stickerMagazineSide === "right" ? "left" : "right",
-              },
-              label: "Flytta magasinet till andra sidan",
-            },
       });
     }
   }
@@ -321,33 +195,6 @@ export function runRules(
         detail: `Trucken måste passera ${blocking.map((b) => b.machine.name).join(", ")} för att fylla ${magazine.machine.name}.`,
         instanceIds: [magazine.instanceId, ...blocking.map((b) => b.instanceId)],
         anchor: boxCenter(magazine.bbox),
-        fix: {
-          kind: "flow",
-          patch: {
-            stickerMagazineSide: config.flow.stickerMagazineSide === "right" ? "left" : "right",
-          },
-          label: "Flytta magasinet till andra sidan",
-        },
-      });
-    }
-  }
-
-  /* ── R-206 Linjen slutar inte där kunden vill ───────────────────────── */
-  if (config.flow.endPoint && layout.lineEnd) {
-    const gap = layout.metrics.endPointGapMm ?? 0;
-    if (gap > END_POINT_TOLERANCE_MM) {
-      out.push({
-        code: "R-206",
-        severity: "warning",
-        title: "Linjen slutar inte vid slutpunkten",
-        detail: config.flow.fitToEndPoint
-          ? `Linjen slutar ${m(gap)} m från slutpunkten trots automatisk anpassning. Sista transportörens längd räcker inte hela vägen — flytta slutpunkten eller lägg till en transportör.`
-          : `Linjen slutar ${m(gap)} m från slutpunkten. Slå på automatisk anpassning eller justera sista transportörens längd.`,
-        instanceIds: [],
-        anchor: layout.lineEnd,
-        fix: config.flow.fitToEndPoint
-          ? undefined
-          : { kind: "flow", patch: { fitToEndPoint: true }, label: "Anpassa längden automatiskt" },
       });
     }
   }
@@ -521,93 +368,15 @@ export function runRules(
     }
   }
 
-  /* ── R-601 Kedjan är felsorterad ────────────────────────────────────── */
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = CATEGORY_ORDER.indexOf(line[i].machine.category);
-    const b = CATEGORY_ORDER.indexOf(line[i + 1].machine.category);
-    if (a <= b) continue;
-    out.push({
-      code: "R-601",
-      severity: "info",
-      title: "Ovanlig ordning i linjen",
-      detail: `${line[i].machine.name} står före ${line[i + 1].machine.name}. Kontrollera att ordningen är avsedd.`,
-      instanceIds: [line[i].instanceId, line[i + 1].instanceId],
-      anchor: boxCenter(line[i].bbox),
-    });
-  }
-
-  /* ── Maskiner som inte gick att koppla in ───────────────────────────── */
+  /* ── R-107 Maskinen finns inte i biblioteket ────────────────────────── */
   for (const u of layout.unplaced) {
     out.push({
-      code: "R-102",
+      code: "R-107",
       severity: "error",
-      title: "Maskinen kunde inte kopplas in",
+      title: "Maskinen finns inte i biblioteket",
       detail: `${getMachine(u.machineId, library)?.name ?? u.machineId}: ${u.reason}`,
       instanceIds: [u.instanceId],
     });
-  }
-
-  /* ── R-208 Sammanslagningen överskrider banans kapacitet ────────────── */
-  /*
-   * Två linjer som möts i samma maskin lämnar ifrån sig sin kapacitet var för
-   * sig, men maskinen som tar emot dem har bara sin egen. Flaskhalsen sitter
-   * i mötet och syns inte i någon av linjerna — därför en egen regel.
-   */
-  for (const target of line) {
-    const feeding = links.filter((c) => c.toInstanceId === target.instanceId);
-    if (feeding.length < 2) continue;
-
-    const sum = feeding.reduce((total, link) => {
-      const source = line.find((p) => p.instanceId === link.fromInstanceId);
-      return total + (source?.capacity ?? 0);
-    }, 0);
-    if (target.capacity <= 0 || sum <= target.capacity) continue;
-
-    out.push({
-      code: "R-208",
-      severity: "warning",
-      title: `${target.machine.name} tar emot mer än den klarar`,
-      detail:
-        `${feeding.length} linjer lämnar tillsammans ${sum} paket/h till en maskin som klarar ` +
-        `${target.capacity}. Flaskhalsen sitter i mötet, inte i linjerna var för sig.`,
-      instanceIds: [target.instanceId, ...feeding.map((f) => f.fromInstanceId)],
-      anchor: boxCenter(target.bbox),
-    });
-  }
-
-  /* ── R-209 Två linjer bokar samma ingång ────────────────────────────── */
-  /*
-   * Gränssnittet hindrar det, men en delad länk eller en importerad
-   * konfiguration kan innehålla det ändå: huvudflödet och en matarlinje som
-   * pekar på samma ingång. Två linjer i samma port är inte en
-   * sammanslagning utan två maskiner på samma punkt.
-   */
-  for (const target of line) {
-    const perPort = new Map<string, string[]>();
-    for (const link of links) {
-      if (link.toInstanceId !== target.instanceId) continue;
-      const port = inPortOf(
-        config.line.find((i) => i.instanceId === target.instanceId),
-        target.machine,
-      );
-      const id = link.toPortId ?? port;
-      perPort.set(id, [...(perPort.get(id) ?? []), link.fromInstanceId]);
-    }
-
-    for (const [portId, sources] of perPort) {
-      if (sources.length < 2) continue;
-      const namn = target.machine.ports.find((p) => p.id === portId)?.name ?? portId;
-      out.push({
-        code: "R-209",
-        severity: "error",
-        title: `Två linjer går in i samma ingång på ${target.machine.name}`,
-        detail:
-          `${sources.length} linjer är kopplade till "${namn}". En ingång tar emot en ` +
-          `linje — behöver maskinen ta emot fler måste den ha fler ingångar.`,
-        instanceIds: [target.instanceId, ...sources],
-        anchor: boxCenter(target.bbox),
-      });
-    }
   }
 
   return dedupe(out);

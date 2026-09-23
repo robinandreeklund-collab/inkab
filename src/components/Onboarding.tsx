@@ -1,19 +1,11 @@
 "use client";
 
-import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { DraftJobDialog } from "./DraftJobDialog";
 import { TEMPLATES, emptyConfig, templateConfig } from "@/lib/templates";
 import { Button } from "./ui";
 
 export function Onboarding() {
-  const { load, setScreen, note } = useConfigStore();
-  /*
-   * Tom canvas är det läge där kunden har mest att vinna på att slippa rita
-   * allt själv. Därför frågar vi efter underlaget just där — en gång, med
-   * möjlighet att tacka nej och rita för hand som förut.
-   */
-  const [asking, setAsking] = useState<Parameters<typeof load>[0] | null>(null);
+  const { load, setScreen, library } = useConfigStore();
 
   const start = (config: Parameters<typeof load>[0], what: string) => {
     load(config, { resetHistory: true, note: what });
@@ -22,40 +14,21 @@ export function Onboarding() {
 
   return (
     <div className="flex h-full flex-col items-center justify-center overflow-y-auto bg-paper p-6">
-      {asking ? (
-        <DraftJobDialog
-          config={asking}
-          onQueued={(files) => {
-            start(asking, `Skickade in underlag: ${files.join(", ")}`);
-            setAsking(null);
-          }}
-          onSkip={() => {
-            start(asking, "Startade från en tom ritning");
-            setAsking(null);
-          }}
-        />
-      ) : null}
       <div className="w-full max-w-5xl">
         <div className="kicker mb-2">Digital förstudie på 15 minuter</div>
-        <h1 className="mb-2 text-3xl leading-tight">Konfigurera din anläggning</h1>
+        <h1 className="mb-2 text-3xl leading-tight">Bygg din anläggning</h1>
         <p className="mb-8 max-w-2xl text-sm leading-relaxed text-muted">
-          Välj maskiner, svara på fem flödesfrågor och se layouten byggas i planvy och 3D.
-          Geometrin räknas fram deterministiskt och valideras mot ett regelverk. Ingen inloggning
-          krävs för att bygga.
+          Dra in maskinerna du vill ha, ställ dem där de ska stå och se anläggningen växa i
+          planvy och 3D. Måtten är maskinernas egna och kontrolleras mot ett regelverk. Ingen
+          inloggning krävs för att bygga.
         </p>
 
-        <div className="mb-6 grid gap-3 md:grid-cols-3">
-          <Card
-            title="Ladda upp ritning"
-            body="Ritning över lokalen eller skiss på tänkt flöde. Assistenten bygger ett förslag medan du ritar vidare."
-            meta="Om du har underlag"
-            onClick={() => setAsking(emptyConfig())}
-          />
+        <div className="mb-6 grid gap-3 md:grid-cols-2">
           <Card
             title="Börja från en mall"
             body="Fyra vanliga pakethanteringslinjer att utgå ifrån och ändra."
             meta="Snabbast"
-            onClick={() => start(templateConfig("strolinje"), "Startade från mallen Truckströläggning – enkel")}
+            onClick={() => start(templateConfig("strolinje", library), "Startade från mallen Truckströläggning – enkel")}
           />
           <Card
             title="Bygg från grunden"
@@ -70,7 +43,7 @@ export function Onboarding() {
           {TEMPLATES.map((template) => (
             <button
               key={template.id}
-              onClick={() => start(templateConfig(template.id), `Startade från mallen ${template.name}`)}
+              onClick={() => start(templateConfig(template.id, library), `Startade från mallen ${template.name}`)}
               className="blueprint bg-white p-3 text-left hover:border-accent"
             >
               <div className="text-[15px]">{template.name}</div>

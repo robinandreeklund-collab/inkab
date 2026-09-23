@@ -81,7 +81,7 @@ export function priceConfiguration(
     const eff = effectiveMachine(
       machine,
       item.selectedOptions,
-      machine.parametricLength ? config.flow.finalConveyorLengthMm : undefined,
+      item.lengthMm,
       item.parameters,
       item.variantId,
     );

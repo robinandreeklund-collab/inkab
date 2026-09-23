@@ -40,7 +40,8 @@ function signature(config: Configuration): string {
       machineId: item.machineId,
       selectedOptions: [...item.selectedOptions].sort(),
       parameters: item.parameters ?? null,
-      manualOffset: item.manualOffset ?? null,
+      pos: item.pos ?? null,
+      rotation: item.rotation ?? null,
     })),
     drawn: config.drawn.map((d) => {
       const { id: _id, ...rest } = d;

@@ -54,13 +54,6 @@ describe("regelmotorn", () => {
     });
   });
 
-  it("R-202 när bufferten är för kort", () => {
-    const config = defaultConfig();
-    config.flow.finalConveyorLengthMm = 4000;
-    const diag = computeLayout(config).diagnostics.find((d) => d.code === "R-202");
-    expect(diag).toBeDefined();
-    expect(diag!.fix).toMatchObject({ kind: "flow" });
-  });
 
   it("R-302 när paketet är för långt för maskinerna", () => {
     const config = defaultConfig();
@@ -80,9 +73,11 @@ describe("regelmotorn", () => {
     expect(codes(config)).toContain("R-301");
   });
 
-  it("R-103 när en manuell förskjutning skapar överlapp", () => {
+  it("R-103 när två maskiner ställs på varandra", () => {
+    // Fri placering låter kunden ställa maskiner var som helst — också fel.
+    // Det är därför överlappsregeln finns kvar.
     const config = defaultConfig();
-    config.line[2].manualOffset = { x: -4000, y: 0 };
+    config.line[2].pos = { ...config.line[1].pos! };
     expect(codes(config)).toContain("R-103");
   });
 
@@ -99,9 +94,11 @@ describe("regelmotorn", () => {
       w: desk.bbox.w + 1000,
       h: 0,
     });
+    // Åtgärden är att dra pulpeten ur zonen, inte att svara om på en
+    // flödesfråga — därför bär regeln inget färdigt förslag längre.
     const diag = computeLayout(config).diagnostics.find((d) => d.code === "R-203");
     expect(diag).toBeDefined();
-    expect(diag!.fix).toMatchObject({ kind: "flow" });
+    expect(diag!.fix).toBeUndefined();
   });
 
   it("R-205 när ingen truckgata är ritad", () => {
@@ -142,14 +139,6 @@ describe("regelmotorn", () => {
     expect(codes(config)).not.toContain("R-403");
   });
 
-  it("åtgärdsförslag går att applicera och tar bort felet", () => {
-    const config = defaultConfig();
-    config.flow.finalConveyorLengthMm = 4000;
-    const diag = computeLayout(config).diagnostics.find((d) => d.code === "R-202")!;
-    if (diag.fix?.kind !== "flow") throw new Error("förväntade ett flödesförslag");
-    const fixed = { ...config, flow: { ...config.flow, ...diag.fix.patch } };
-    expect(codes(fixed)).not.toContain("R-202");
-  });
 
   it("diagnostik dubbletteras inte", () => {
     const list = computeLayout(defaultConfig()).diagnostics;
@@ -176,10 +165,8 @@ describe("regelmotorn", () => {
 });
 
 describe("hjälpobjekt", () => {
-  it("placeras utan att krocka med varandra på samma sida", () => {
+  it("placeras utan att krocka med varandra", () => {
     const config = defaultConfig();
-    config.flow.controlDeskSide = "right";
-    config.flow.stickerMagazineSide = "right";
     const layout = computeLayout(config);
     const overlaps = layout.diagnostics.filter(
       (d) => d.code === "R-103" && d.instanceIds.length === 2,

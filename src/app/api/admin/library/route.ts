@@ -50,7 +50,7 @@ export async function PUT(request: Request) {
   // Provkörning: ett bibliotek som får motorn att kasta får inte sparas.
   try {
     const library = makeLibrary(document.machines as Machine[]);
-    computeLayout(templateConfig("strolinje"), library);
+    computeLayout(templateConfig("strolinje", library), library);
   } catch (error) {
     return NextResponse.json(
       {

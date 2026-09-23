@@ -33,29 +33,12 @@ export function Sidebar() {
     library,
     layout,
     setFlowPoint,
-    branchTarget,
-    feedTarget,
   } = useConfigStore();
 
   const [search, setSearch] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const hasStickerStacker = config.line.some((i) => i.machineId === "ts4");
-
-  /*
-   * Katalogen är där man klickar härnäst, så den ska säga vad klicket gör.
-   * Med en gren eller en matarlinje riggad hamnar maskinen inte sist i
-   * linjen, och att låta hjälptexten påstå det gör läget osynligt.
-   */
-  const nameOf = (instanceId: string) => {
-    const item = config.line.find((i) => i.instanceId === instanceId);
-    return item ? library.machines.find((m) => m.id === item.machineId)?.name ?? "maskinen" : "maskinen";
-  };
-  const hint = feedTarget
-    ? `Klicka för att bygga linjen som matar in i ${nameOf(feedTarget.instanceId)}.`
-    : branchTarget
-      ? `Klicka för att bygga grenen från ${nameOf(branchTarget.instanceId)}.`
-      : "Klicka för att lägga sist i linjen.";
 
   const grouped = library.machines
     .filter((m) => {
@@ -78,14 +61,8 @@ export function Sidebar() {
           placeholder="Sök maskin…"
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
-        <p
-          className={
-            branchTarget || feedTarget
-              ? "mb-2 border border-accent px-2 py-1 text-[11px] text-accent"
-              : "mb-2 text-[11px] text-muted"
-          }
-        >
-          {hint}
+        <p className="mb-2 text-[11px] text-muted">
+          Klicka för att lägga till. Maskinen hamnar på ledig yta — dra den dit den ska.
         </p>
 
         <div className="space-y-3">
@@ -177,62 +154,17 @@ export function Sidebar() {
         )}
       </section>
 
-      {/* ③ Flöde — de fem frågorna */}
+      {/* ③ Hallen och trucken */}
       <section className="border-b border-divider p-3">
         <SectionHeading index={3} title="Flöde" />
 
-        <div className="mb-3">
-          <span className="kicker mb-1 block">Paketen kommer in</span>
-          <div className="grid grid-cols-3 gap-1">
-            {(
-              [
-                { value: "straight", label: "Rakt", path: "M4 11h22M22 6l5 5-5 5" },
-                { value: "right", label: "Höger", path: "M8 3v8h18M22 6l5 5-5 5" },
-                { value: "left", label: "Vänster", path: "M8 19v-8h18M22 6l5 5-5 5" },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setFlow({ infeedFrom: option.value })}
-                className={`blueprint flex flex-col items-center gap-1 py-2 text-[11px] ${
-                  config.flow.infeedFrom === option.value
-                    ? "border-accent bg-accent text-white"
-                    : "bg-white hover:border-accent"
-                }`}
-              >
-                <svg width="30" height="20" viewBox="0 0 30 22" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d={option.path} />
-                </svg>
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">
+          Maskinerna står där du ställer dem. Pilarna i ritningen visar åt vilket håll varje
+          maskin tar emot och lämnar paket — de kopplar ingenting, de berättar bara vad maskinen
+          klarar.
+        </p>
 
         <div className="space-y-3">
-          <div>
-            <span className="kicker mb-1 block">Pulpetens sida</span>
-            <Segmented
-              ariaLabel="Pulpetens sida"
-              value={config.flow.controlDeskSide}
-              options={SIDE_OPTIONS}
-              onChange={(v) => setFlow({ controlDeskSide: v })}
-            />
-          </div>
-
-          {/* Frågan ställs bara när en truckströläggare finns i linjen. */}
-          {hasStickerStacker ? (
-            <div>
-              <span className="kicker mb-1 block">Ströfacksmagasinets sida</span>
-              <Segmented
-                ariaLabel="Ströfacksmagasinets sida"
-                value={config.flow.stickerMagazineSide}
-                options={SIDE_OPTIONS}
-                onChange={(v) => setFlow({ stickerMagazineSide: v })}
-              />
-            </div>
-          ) : null}
-
           <div>
             <span className="kicker mb-1 block">Trucken hämtar från</span>
             <Segmented
@@ -243,107 +175,32 @@ export function Sidebar() {
             />
           </div>
 
-          <Field label="Sista kedjetransportörens längd">
-            <NumberInput
-              value={meters(config.flow.finalConveyorLengthMm)}
-              suffix="m"
-              min={1}
-              max={40}
-              onCommit={(raw) => {
-                const mm = parseMeters(raw);
-                if (mm !== null) setFlow({ finalConveyorLengthMm: Math.min(40000, Math.max(1000, mm)) });
-              }}
-            />
-          </Field>
-        </div>
-
-        {/* Start- och slutpunkt: kan också dras direkt i ritningen. */}
-        <div className="mt-4 border-t border-divider pt-3">
-          <span className="kicker mb-1 block">Linjens start och slut</span>
-          <p className="mb-2 text-[11px] text-muted">Dra markörerna i ritningen, eller skriv måtten här.</p>
-
-          <div className="mb-2 grid grid-cols-2 gap-2">
-            <Field label="Start X">
-              <NumberInput
-                value={meters(config.flow.startPoint.x)}
-                onCommit={(raw) => {
-                  const mm = parseMeters(raw);
-                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, x: mm });
-                }}
-              />
-            </Field>
-            <Field label="Start Y">
-              <NumberInput
-                value={meters(config.flow.startPoint.y)}
-                onCommit={(raw) => {
-                  const mm = parseMeters(raw);
-                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, y: mm });
-                }}
-              />
-            </Field>
-          </div>
-
-          {config.flow.endPoint ? (
-            <>
-              <div className="mb-2 grid grid-cols-2 gap-2">
-                <Field label="Slut X">
-                  <NumberInput
-                    value={meters(config.flow.endPoint.x)}
-                    onCommit={(raw) => {
-                      const mm = parseMeters(raw);
-                      if (mm !== null && config.flow.endPoint)
-                        setFlowPoint("endPoint", { ...config.flow.endPoint, x: mm });
-                    }}
-                  />
-                </Field>
-                <Field label="Slut Y">
-                  <NumberInput
-                    value={meters(config.flow.endPoint.y)}
-                    onCommit={(raw) => {
-                      const mm = parseMeters(raw);
-                      if (mm !== null && config.flow.endPoint)
-                        setFlowPoint("endPoint", { ...config.flow.endPoint, y: mm });
-                    }}
-                  />
-                </Field>
-              </div>
-              <label className="mb-2 flex cursor-pointer items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={config.flow.fitToEndPoint}
-                  onChange={(e) => setFlow({ fitToEndPoint: e.target.checked })}
-                  className="mt-0.5 accent-accent"
-                />
-                <span>
-                  <span className="text-[13px]">Anpassa längden automatiskt</span>
-                  <span className="block text-[11px] leading-relaxed text-muted">
-                    Sätter sista kedjetransportörens längd så att linjen slutar i punkten.
-                  </span>
-                </span>
-              </label>
-              <Button size="sm" variant="ghost" onClick={() => setFlowPoint("endPoint", null)}>
-                Ta bort slutpunkt
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
-              className="w-full"
-              onClick={() =>
-                setFlowPoint("endPoint", {
-                  x: Math.max(0, layout.bounds.x + layout.bounds.l),
-                  y: config.flow.startPoint.y,
-                })
-              }
-            >
-              Sätt slutpunkt
-            </Button>
-          )}
-          {layout.metrics.endPointGapMm !== null ? (
-            <p className="mt-2 text-[11px] text-muted">
-              Linjen slutar {meters(layout.metrics.endPointGapMm)} m från slutpunkten.
+          <div>
+            <span className="kicker mb-1 block">Var nya maskiner läggs</span>
+            <p className="mb-2 text-[11px] text-muted">
+              Startpunkten. Dra markören i ritningen, eller skriv måtten här.
             </p>
-          ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Start X">
+                <NumberInput
+                  value={meters(config.flow.startPoint.x)}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, x: mm });
+                  }}
+                />
+              </Field>
+              <Field label="Start Y">
+                <NumberInput
+                  value={meters(config.flow.startPoint.y)}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, y: mm });
+                  }}
+                />
+              </Field>
+            </div>
+          </div>
         </div>
 
         {/* Virkesbredd som intervall — maskinernas portar måste täcka hela spannet. */}

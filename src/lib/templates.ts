@@ -1,4 +1,5 @@
 import { defaultStartPoint, solveLayout, suggestTruckZone } from "./solver";
+import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
 import type { Configuration, Flow, Hall, LineItem, Product } from "./types";
 
 let counter = 0;
@@ -27,14 +28,8 @@ export const DEFAULT_PRODUCT: Product = {
 };
 
 export const DEFAULT_FLOW: Flow = {
-  infeedFrom: "straight",
-  controlDeskSide: "right",
-  stickerMagazineSide: "right",
   truckPickupSide: "left",
-  finalConveyorLengthMm: 12000,
   startPoint: { x: 2000, y: Math.round(DEFAULT_HALL.widthMm / 2) },
-  endPoint: null,
-  fitToEndPoint: false,
 };
 
 function base(projectName: string, machineIds: string[]): Configuration {
@@ -127,7 +122,18 @@ export const TEMPLATES: Template[] = [
   },
 ];
 
-export function templateConfig(templateId: string): Configuration {
+/**
+ * Mallen som en färdig konfiguration, med maskinernas positioner inskrivna.
+ *
+ * Biblioteket måste vara detsamma som vyn sedan ritar med. Måtten kommer
+ * därifrån, och en rad lagd efter inbyggda mått hamnar fel så fort admin
+ * ändrat en maskin: rullbanan är tre meter i katalogen som följer med koden
+ * och tolv i kundens, och då står nästa maskin mitt inne i den.
+ */
+export function templateConfig(
+  templateId: string,
+  library: MachineLibrary = BUILTIN_LIBRARY,
+): Configuration {
   const template = TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0];
   const config = base(`${template.name} — förstudie`, template.machineIds);
   Object.assign(config.hall, template.hall ?? {});
@@ -140,8 +146,21 @@ export function templateConfig(templateId: string): Configuration {
    * utgångspunkt. Båda är vanliga ritade objekt som kunden flyttar, ändrar
    * eller tar bort — truckgatan hänger inte ihop med linjens längd.
    */
-  const solved = solveLayout(config);
-  const suggestion = suggestTruckZone(solved.lineBounds, solved.outDir, config.flow.truckPickupSide);
+  /*
+   * Mallens maskiner läggs på rad och får sina positioner inskrivna.
+   *
+   * Positionen är kundens att ändra, så mallen måste ge varje maskin en
+   * att börja från — annars står allt i origo. Raden räknas av layouten
+   * själv, ur maskinernas verkliga mått, och skrivs sedan in i posterna.
+   */
+  const row = solveLayout(config, library);
+  for (const placement of row.placements) {
+    const item = config.line.find((i) => i.instanceId === placement.instanceId);
+    if (item) item.pos = { ...placement.origin };
+  }
+
+  const solved = solveLayout(config, library);
+  const suggestion = suggestTruckZone(solved.lineBounds, "x+", config.flow.truckPickupSide);
   config.drawn.push({
     id: "truck-1",
     kind: "truck",

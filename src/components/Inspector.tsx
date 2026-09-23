@@ -6,7 +6,6 @@ import { meters, parseMeters } from "@/lib/format";
 import { Button, Field, NumberInput, Row, Tag } from "./ui";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
-import { feedInPorts, usedInPorts, usedOutPorts } from "@/lib/branches";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
@@ -17,34 +16,17 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleInspector,
     toggleOption,
     setVariant,
-    setOutPort,
-    setInPort,
-    setBranchTarget,
-    branchTarget,
-    setFeedTarget,
-    feedTarget,
+    rotateMachine,
+    mirrorMachine,
     removeItem,
     removeDrawn,
     updateDrawn,
-    resetOffset,
     nudge,
   } = useConfigStore();
 
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
-  /** Utgångar som redan har något kopplat till sig. */
-  const used =
-    item && placement
-      ? usedOutPorts(config.line, item.instanceId, placement.machine)
-      : new Set<string>();
-  /** Ingångar som redan har något kopplat till sig. */
-  const usedIn =
-    item && placement
-      ? usedInPorts(config.line, item.instanceId, placement.machine)
-      : new Set<string>();
-  /** Ingångar som en matarlinje redan mynnar i, se feedInPorts. */
-  const fedIn = item ? feedInPorts(config.line, item.instanceId) : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (
@@ -143,7 +125,41 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             value={`${meters(placement.size.lengthMm)} × ${meters(placement.size.widthMm)} × ${meters(placement.size.heightMm)} m`}
           />
           <Row label="Position X, Y" value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
-          <Row label="Rotation" value={`${placement.rotation}°${placement.mirrored ? " · speglad" : ""}`} />
+          {item ? (
+            <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
+              <span className="text-muted">Rotation</span>
+              <div className="flex items-center gap-1">
+                {([0, 90, 180, 270] as const).map((deg) => (
+                  <button
+                    key={deg}
+                    onClick={() => rotateMachine(item.instanceId, deg)}
+                    className={
+                      (item.rotation ?? 0) === deg
+                        ? "num border border-accent px-1 text-[11px] text-accent"
+                        : "num border border-divider px-1 text-[11px] text-muted hover:text-ink"
+                    }
+                  >
+                    {deg}°
+                  </button>
+                ))}
+                {placement.machine.mirrorable ? (
+                  <button
+                    onClick={() => mirrorMachine(item.instanceId)}
+                    className={
+                      item.mirrored
+                        ? "border border-accent px-1 text-[11px] text-accent"
+                        : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
+                    }
+                    title="Spegelvänd maskinen"
+                  >
+                    ⇄
+                  </button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <Row label="Rotation" value={`${placement.rotation}°`} />
+          )}
           <Row label="Kapacitet" value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
           <Row label="Effekt" value={`${placement.powerKw} kW`} />
           <Row
@@ -211,132 +227,6 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             </div>
           ) : null}
 
-          {item && placement.machine.ports.filter((p) => p.role === "in").length > 1 ? (
-            <div className="mt-4">
-              <div className="kicker mb-2">Ingångar</div>
-              <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                Maskinen tar emot flöde från flera håll. Den markerade är den linjen kommer in i,
-                och maskinen vrids så att den möter flödet — väljer du en ingång på långsidan
-                står maskinen tvärs mot den som matar den. På en ledig ingång kan du bygga en
-                egen linje som slutar där, så möts två inmatningar på samma bana.
-              </p>
-              <div className="space-y-1">
-                {placement.machine.ports
-                  .filter((p) => p.role === "in")
-                  .map((port, index) => {
-                    const chosen = item.inPortId ? item.inPortId === port.id : index === 0;
-                    const taken = usedIn.has(port.id);
-                    const targeted =
-                      feedTarget?.instanceId === item.instanceId &&
-                      feedTarget.inPortId === port.id;
-                    return (
-                      <div key={port.id} className="flex items-center gap-2 text-[13px]">
-                        <input
-                          type="radio"
-                          name={`in-${item.instanceId}`}
-                          checked={chosen}
-                          disabled={fedIn.has(port.id)}
-                          title={
-                            fedIn.has(port.id)
-                              ? "En matarlinje mynnar redan här"
-                              : undefined
-                          }
-                          onChange={() => setInPort(item.instanceId, port.id)}
-                          className="accent-accent disabled:opacity-40"
-                        />
-                        <span className="flex-1">{port.name || port.id}</span>
-                        <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
-                        {fedIn.has(port.id) ? (
-                          <Tag>matas</Tag>
-                        ) : taken ? (
-                          <Tag>kopplad</Tag>
-                        ) : (
-                          <button
-                            className={
-                              targeted
-                                ? "border border-accent px-1 text-[11px] text-accent"
-                                : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
-                            }
-                            onClick={() =>
-                              setFeedTarget(
-                                targeted ? null : { instanceId: item.instanceId, inPortId: port.id },
-                              )
-                            }
-                          >
-                            {targeted ? "Avbryt" : "Mata in hit"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-              {feedTarget?.instanceId === item.instanceId ? (
-                <p className="mt-2 border border-accent px-2 py-1 text-[11px] leading-relaxed text-accent">
-                  Välj maskiner i katalogen till vänster. De bildar en linje som slutar i den
-                  ingången — först den paketen kommer in i, sist den som möter maskinen.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          {item && placement.machine.ports.filter((p) => p.role === "out").length > 1 ? (
-            <div className="mt-4">
-              <div className="kicker mb-2">Utgångar</div>
-              <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                Maskinen har flera utgångar. Den markerade är den linjen fortsätter ur. På en
-                ledig utgång kan du bygga vidare med en egen gren.
-              </p>
-              <div className="space-y-1">
-                {placement.machine.ports
-                  .filter((p) => p.role === "out")
-                  .map((port, index) => {
-                    const chosen = item.outPortId ? item.outPortId === port.id : index === 0;
-                    const taken = used.has(port.id);
-                    const targeted =
-                      branchTarget?.instanceId === item.instanceId &&
-                      branchTarget.outPortId === port.id;
-                    return (
-                      <div key={port.id} className="flex items-center gap-2 text-[13px]">
-                        <input
-                          type="radio"
-                          name={`out-${item.instanceId}`}
-                          checked={chosen}
-                          onChange={() => setOutPort(item.instanceId, port.id)}
-                          className="accent-accent"
-                        />
-                        <span className="flex-1">{port.name || port.id}</span>
-                        <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
-                        {taken ? (
-                          <Tag>kopplad</Tag>
-                        ) : (
-                          <button
-                            className={
-                              targeted
-                                ? "border border-accent px-1 text-[11px] text-accent"
-                                : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
-                            }
-                            onClick={() =>
-                              setBranchTarget(
-                                targeted ? null : { instanceId: item.instanceId, outPortId: port.id },
-                              )
-                            }
-                          >
-                            {targeted ? "Avbryt" : "Bygg vidare"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-              {branchTarget?.instanceId === item.instanceId ? (
-                <p className="mt-2 border border-accent px-2 py-1 text-[11px] leading-relaxed text-accent">
-                  Välj en maskin i katalogen till vänster — den hamnar på den utgången och
-                  startar en gren.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">
               <div className="kicker mb-2">Optioner</div>
@@ -376,15 +266,6 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </>
             )}
           </div>
-
-          {item?.manualOffset ? (
-            <div className="mt-3 flex items-center gap-2">
-              <Tag tone="warn">Manuellt flyttad</Tag>
-              <Button size="sm" variant="ghost" onClick={() => resetOffset(item.instanceId)}>
-                Återställ
-              </Button>
-            </div>
-          ) : null}
 
           {item ? (
             <div className="mt-4 space-y-2">

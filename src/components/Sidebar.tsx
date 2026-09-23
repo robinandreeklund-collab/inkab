@@ -7,6 +7,7 @@ import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
 import { MachineThumb } from "./MachineThumb";
+import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import type { Machine, MachineCategory, Side } from "@/lib/types";
 
 const SIDE_OPTIONS: { value: Side; label: string }[] = [
@@ -33,6 +34,7 @@ export function Sidebar() {
     library,
     layout,
     setFlowPoint,
+    setDraggingMachine,
   } = useConfigStore();
 
   const [search, setSearch] = useState("");
@@ -62,7 +64,7 @@ export function Sidebar() {
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
         <p className="mb-2 text-[11px] text-muted">
-          Klicka för att lägga till. Maskinen hamnar på ledig yta — dra den dit den ska.
+          Dra maskinen dit den ska stå, eller klicka för att lägga den på ledig yta.
         </p>
 
         <div className="space-y-3">
@@ -73,8 +75,22 @@ export function Sidebar() {
                 {machines.map((machine) => (
                   <button
                     key={machine.id}
+                    draggable
+                    /*
+                     * Dra maskinen dit den ska, eller klicka för att lägga
+                     * den på ledig yta. Klicket är kvar: det är snabbare när
+                     * man ändå tänker flytta den sedan.
+                     */
+                    onDragStart={(e) => {
+                      setDraggingMachine(machine.id);
+                      e.dataTransfer.setData(MACHINE_DRAG_TYPE, machine.id);
+                      // Kladden vill annars ha machineId som text i fältet.
+                      e.dataTransfer.setData("text/plain", machine.name);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onDragEnd={() => setDraggingMachine(null)}
                     onClick={() => addMachine(machine.id)}
-                    className="blueprint flex w-full items-start gap-2 bg-white p-2 text-left hover:border-accent"
+                    className="blueprint flex w-full cursor-grab items-start gap-2 bg-white p-2 text-left hover:border-accent active:cursor-grabbing"
                   >
                     <MachineThumb machine={machine} className="mt-0.5 h-8 w-11" />
                     <div className="min-w-0">

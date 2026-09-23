@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { decodeConfig, encodeConfig, shareUrl } from "@/lib/share";
 import { quoteReference, validUntil } from "@/lib/quote";
+import { defaultConfig, lineItem } from "@/lib/templates";
+import type { Configuration } from "@/lib/types";
 import { machineListCsv, planDxf, exportName } from "@/lib/export";
 import { computeLayout } from "@/lib/layout";
 import { templateConfig } from "@/lib/templates";
@@ -147,5 +149,36 @@ describe("export", () => {
     expect(exportName("INKAB-2603-AB2CD", "Ströläggning Hjo", "dxf")).toBe(
       "INKAB-2603-AB2CD-strolaggning-hjo.dxf",
     );
+  });
+});
+
+/**
+ * Vad underlagsnumret räknas på.
+ *
+ * Numret ska skilja två anläggningar åt. Utförande och längd saknades, så
+ * en tremetersbana och en tolvmeters fick samma nummer — samma papper för
+ * två olika leveranser. Anteckningen står däremot bara på pappret.
+ */
+describe("underlagsnumret följer anläggningen", () => {
+  const med = (patch: Partial<Configuration["line"][number]>) => {
+    const config = defaultConfig();
+    config.line = [{ ...lineItem("rullbana"), ...patch }];
+    return quoteReference(config);
+  };
+
+  it("skiljer på utförande", () => {
+    expect(med({ variantId: "3m" })).not.toBe(med({ variantId: "12m" }));
+  });
+
+  it("skiljer på längd", () => {
+    expect(med({ lengthMm: 3000 })).not.toBe(med({ lengthMm: 12000 }));
+  });
+
+  it("skiljer på spegling", () => {
+    expect(med({ mirrored: true })).not.toBe(med({ mirrored: false }));
+  });
+
+  it("bryr sig inte om anteckningen", () => {
+    expect(med({ note: "flyttas från hall 2" })).toBe(med({}));
   });
 });

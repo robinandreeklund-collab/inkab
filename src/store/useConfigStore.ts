@@ -72,6 +72,14 @@ type State = {
   showZones: boolean;
   showPorts: boolean;
   hydrated: boolean;
+  /**
+   * Maskinen som just nu dras ur katalogen, medan den dras.
+   *
+   * Ritningen ritar dess fotavtryck under pekaren så att man ser vad man
+   * får innan man släpper. Släppet självt bär id:t i dataTransfer —
+   * webbläsaren låter ingen läsa det under dragover, bara vid drop.
+   */
+  draggingMachineId: string | null;
   shareNotice: ShareNotice | null;
   /** Vad som hänt i projektet, äldst först. */
   log: LogEntry[];
@@ -95,6 +103,7 @@ type Actions = {
   toggleDiagnostics: (open?: boolean) => void;
   toggleZones: () => void;
   togglePorts: () => void;
+  setDraggingMachine: (machineId: string | null) => void;
 
   setLibrary: (machines: Machine[]) => void;
   /** Skriver en rad i projektloggen. */
@@ -106,7 +115,13 @@ type Actions = {
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
   setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
-  addMachine: (machineId: string, atIndex?: number) => void;
+  /**
+   * Lägger till en maskin.
+   *
+   * Med `pos` hamnar den där — maskinens mitt i punkten, för det är den man
+   * siktar med när man släpper. Utan `pos` läggs den på ledig yta.
+   */
+  addMachine: (machineId: string, options?: { atIndex?: number; pos?: Vec2 }) => void;
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
@@ -117,6 +132,8 @@ type Actions = {
   turnMachine: (instanceId: string, steps: number) => void;
   mirrorMachine: (instanceId: string) => void;
   setLength: (instanceId: string, lengthMm: number) => void;
+  /** Kundens anteckning om maskinen. Tom text tar bort den. */
+  setNote: (instanceId: string, note: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   addDrawn: (obj: DrawnObject) => void;
@@ -236,6 +253,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     showZones: true,
     showPorts: true,
     hydrated: false,
+    draggingMachineId: null,
     shareNotice: null,
     log: [],
     proposalId: null,
@@ -256,6 +274,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
+
+    setDraggingMachine: (draggingMachineId) => set({ draggingMachineId }),
 
     note: (kind, text, detail) => note(logEntry(kind, text, detail)),
     setProposalId: (proposalId) => set({ proposalId }),
@@ -305,7 +325,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (which === "startPoint" && point) d.flow.startPoint = point;
       }),
 
-    addMachine: (machineId, atIndex) => {
+    addMachine: (machineId, options) => {
       const machine = getMachine(machineId, get().library);
       if (!machine) return;
       // Hjälpobjekt är unika: en linje har en pulpet och ett ströfacksmagasin.
@@ -326,20 +346,22 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        * att dra dit den ska. Placeringen är kundens.
        */
       const { config, layout } = get();
-      item.pos = freeSpot(
-        layout.placements.map(claimedBox),
-        {
-          l: machine.footprint.lengthMm,
-          w: machine.footprint.widthMm,
-        },
-        config.flow.startPoint,
-        config.hall,
-      );
-
-      const fallback = config.line.length;
+      const storlek = { l: machine.footprint.lengthMm, w: machine.footprint.widthMm };
+      item.pos = options?.pos
+        ? {
+            // Maskinens mitt i punkten: det är mitten man siktar med.
+            x: Math.round(options.pos.x - storlek.l / 2),
+            y: Math.round(options.pos.y - storlek.w / 2),
+          }
+        : freeSpot(
+            layout.placements.map(claimedBox),
+            storlek,
+            config.flow.startPoint,
+            config.hall,
+          );
 
       get().update((d) => {
-        const index = atIndex ?? fallback;
+        const index = options?.atIndex ?? config.line.length;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
       get().select(item.instanceId);
@@ -392,6 +414,15 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (item) item.lengthMm = Math.round(lengthMm);
+      }),
+
+    setNote: (instanceId, note) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (!item) return;
+        const rensad = note.trim();
+        if (rensad) item.note = rensad.slice(0, 1000);
+        else delete item.note;
       }),
 
     setParameter: (instanceId, parameterId, value) =>

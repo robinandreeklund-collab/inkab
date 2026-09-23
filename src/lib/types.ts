@@ -239,6 +239,15 @@ export type LineItem = {
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;
+  /**
+   * Kundens egen anteckning om just den här maskinen.
+   *
+   * "Befintlig, flyttas från hall 2", "kunden vill ha extra lyft här".
+   * Sådant som inte går att uttrycka i mått eller optioner men som den som
+   * läser offerten behöver veta. Den följer med till offertunderlaget och
+   * påverkar varken geometri eller pris.
+   */
+  note?: string;
 };
 
 /**

@@ -189,7 +189,15 @@ export function QuoteView({
                 return (
                   <tr key={line.instanceId} className="break-inside-avoid border-b border-divider">
                     <Td>{line.pos}</Td>
-                    <Td>{line.name}</Td>
+                    <Td>
+                      {line.name}
+                      {/* Kundens egen anteckning om maskinen, om den skrivit en. */}
+                      {line.note ? (
+                        <span className="mt-0.5 block text-[11px] italic leading-relaxed text-muted">
+                          {line.note}
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td muted>{line.sku}</Td>
                     <Td muted>
                       {placement

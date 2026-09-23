@@ -17,6 +17,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleOption,
     setVariant,
     turnMachine,
+    setNote,
     mirrorMachine,
     removeItem,
     removeDrawn,
@@ -250,6 +251,23 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                   </label>
                 ))}
               </div>
+            </div>
+          ) : null}
+
+          {item ? (
+            <div className="mt-4">
+              <div className="kicker mb-2">Anteckning</div>
+              <textarea
+                value={item.note ?? ""}
+                onChange={(e) => setNote(item.instanceId, e.target.value)}
+                rows={3}
+                maxLength={1000}
+                placeholder="T.ex. befintlig maskin som flyttas, eller något leverantören behöver veta."
+                className="w-full resize-y border border-divider bg-white px-2 py-1 text-[13px] leading-relaxed outline-none placeholder:text-muted/70 focus:border-accent"
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                Följer med till offertunderlaget. Påverkar varken mått eller pris.
+              </p>
             </div>
           ) : null}
 

@@ -22,6 +22,7 @@ export const lineItemSchema = z.object({
   parameters: z
     .record(z.string().max(64), z.union([z.string().max(200), z.number().finite(), z.boolean()]))
     .optional(),
+  note: z.string().max(1000).optional(),
 });
 
 export const drawnSchema = z.object({

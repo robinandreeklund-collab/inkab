@@ -7,9 +7,10 @@ import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
 import { ROTATE_ARC, ROTATE_TIP } from "./ui";
-import type { Box, DrawnObject, DrawnKind, PlacedPort, Placement, Vec2 } from "@/lib/types";
+import type { Box, DrawnObject, DrawnKind, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 import { DIR_VEC } from "@/lib/geometry";
+import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -88,6 +89,9 @@ export function CadView() {
     select,
     moveMachine,
     turnMachine,
+    addMachine,
+    library,
+    draggingMachineId,
     updateDrawn,
     turnDrawn,
     addDrawn,
@@ -107,6 +111,11 @@ export function CadView() {
    * still och släpps när man släpper.
    */
   const [frozen, setFrozen] = useState<Box | null>(null);
+  /** Punkten en maskin ur katalogen skulle landa i, medan den dras. */
+  const [dropAt, setDropAt] = useState<Vec2 | null>(null);
+  const dragged = draggingMachineId
+    ? (library.machines.find((m) => m.id === draggingMachineId) ?? null)
+    : null;
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Vec2>({ x: 0, y: 0 });
 
@@ -347,8 +356,42 @@ export function CadView() {
   const cursor =
     tool === "select" ? "default" : tool === "measure" ? "crosshair" : "crosshair";
 
+  /* ── Släpp en maskin ur katalogen ────────────────────────────────────── */
+  /*
+   * Maskinen läggs där den släpps. Att först klicka fram den på ledig yta
+   * och sedan dra den dit den ska är två moment för en sak. Rutan som ritas
+   * under pekaren är maskinens verkliga fotavtryck — man ser vad man får
+   * innan man släpper.
+   */
+  const dropMachine = (event: React.DragEvent): Machine | null => {
+    const id = event.dataTransfer.getData(MACHINE_DRAG_TYPE);
+    return id ? (library.machines.find((m) => m.id === id) ?? null) : null;
+  };
+
+  const onDragOver = (event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes(MACHINE_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    const at = toWorld(event.nativeEvent);
+    setDropAt(at ? { x: snap(at.x), y: snap(at.y) } : null);
+  };
+
+  const onDrop = (event: React.DragEvent) => {
+    const machine = dropMachine(event);
+    setDropAt(null);
+    if (!machine) return;
+    event.preventDefault();
+    const at = toWorld(event.nativeEvent);
+    if (at) addMachine(machine.id, { pos: { x: snap(at.x), y: snap(at.y) } });
+  };
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-paper">
+    <div
+      className="relative h-full w-full overflow-hidden bg-paper"
+      onDragOver={onDragOver}
+      onDragLeave={() => setDropAt(null)}
+      onDrop={onDrop}
+    >
       <svg
         ref={svgRef}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.l} ${viewBox.w}`}
@@ -419,6 +462,32 @@ export function CadView() {
           strokeUnit={strokeUnit}
           onDrag={dragFlowPoint}
         />
+
+        {dropAt && dragged ? (
+          <g pointerEvents="none">
+            <rect
+              x={dropAt.x - dragged.footprint.lengthMm / 2}
+              y={dropAt.y - dragged.footprint.widthMm / 2}
+              width={dragged.footprint.lengthMm}
+              height={dragged.footprint.widthMm}
+              fill="#5980a6"
+              fillOpacity="0.12"
+              stroke="#5980a6"
+              strokeWidth={strokeUnit * 2}
+              strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
+            />
+            <text
+              x={dropAt.x}
+              y={dropAt.y - dragged.footprint.widthMm / 2 - strokeUnit * 8}
+              textAnchor="middle"
+              fontSize={strokeUnit * 13}
+              fill="#5980a6"
+              className="num"
+            >
+              {dragged.name}
+            </text>
+          </g>
+        ) : null}
 
         {measure ? <MeasureLine measure={measure} strokeUnit={strokeUnit} /> : null}
       </svg>

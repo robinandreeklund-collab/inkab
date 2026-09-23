@@ -30,6 +30,8 @@ export type QuoteLine = {
   optionNames: string[];
   /** Kundens parametrar, som text för offertunderlaget. */
   parameterLines: string[];
+  /** Kundens egen anteckning om maskinen, när den skrivit en. */
+  note?: string;
   /** Endast i säljläge. */
   listPrice?: number;
   optionsPrice?: number;
@@ -168,6 +170,7 @@ export function priceConfiguration(
         .map((id) => machine.options.find((o) => o.id === id)?.name)
         .filter((n): n is string => !!n),
       parameterLines,
+      ...(item.note ? { note: item.note } : {}),
       ...(showPrices ? { listPrice, optionsPrice: optionsPrice + parametersPrice, rowTotal } : {}),
     });
   });

@@ -105,7 +105,8 @@ type Actions = {
   setVariant: (instanceId: string, variantId: string) => void;
   /** Flyttar maskinen till en ny position i hallen, mm. */
   moveMachine: (instanceId: string, pos: Vec2) => void;
-  rotateMachine: (instanceId: string, rotation: Rotation) => void;
+  /** Vrider ett kvarts varv i taget. +1 medurs, -1 moturs. */
+  turnMachine: (instanceId: string, steps: number) => void;
   mirrorMachine: (instanceId: string) => void;
   setLength: (instanceId: string, lengthMm: number) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
@@ -362,10 +363,13 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         if (item) item.pos = { x: Math.round(pos.x), y: Math.round(pos.y) };
       }),
 
-    rotateMachine: (instanceId, rotation) =>
+    turnMachine: (instanceId, steps) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) item.rotation = rotation;
+        if (!item) return;
+        // Fyra lägen runt varvet, alltid 0/90/180/270 oavsett hur många steg.
+        const varv = (((item.rotation ?? 0) / 90 + steps) % 4 + 4) % 4;
+        item.rotation = (varv * 90) as Rotation;
       }),
 
     mirrorMachine: (instanceId) =>

@@ -89,6 +89,7 @@ export function CadView() {
     showPorts,
     select,
     moveMachine,
+    turnMachine,
     addDrawn,
     setTool,
     setFlowPoint,
@@ -367,6 +368,7 @@ export function CadView() {
             strokeFor={strokeFor}
             labelFor={labelFor}
             onMachineDown={startDrag}
+            onTurn={turnMachine}
             selectedId={selectedId}
           />
         ) : (
@@ -424,6 +426,7 @@ function Plan2D({
   strokeFor,
   labelFor,
   onMachineDown,
+  onTurn,
   onSelectDrawn,
   selectedId,
 }: {
@@ -437,6 +440,7 @@ function Plan2D({
   strokeFor: (p: Placement) => string;
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
+  onTurn: (instanceId: string, steps: number) => void;
   onSelectDrawn: (id: string) => void;
   selectedId: string | null;
 }) {
@@ -522,6 +526,13 @@ function Plan2D({
           </text>
         </g>
       ))}
+
+      {(() => {
+        const vald = layout.placements.find((p) => p.instanceId === selectedId);
+        return vald ? (
+          <TurnHandle placement={vald} strokeUnit={strokeUnit} onTurn={onTurn} />
+        ) : null;
+      })()}
 
       {showPorts
         ? layout.placements.flatMap((p) =>
@@ -1112,6 +1123,58 @@ function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number 
           `L${tip.x - v.x * head - n.x * head * 0.6} ${tip.y - v.y * head - n.y * head * 0.6}Z`
         }
         fill={color}
+      />
+    </g>
+  );
+}
+
+/**
+ * Vridhandtaget på den markerade maskinen.
+ *
+ * Vridningen låg bara i inspektorn, som en rad små knappar längst ut till
+ * höger. Man tittade bort från ritningen för att ändra något man ser i den,
+ * och siktade på en knapp stor som en bokstav. Handtaget sitter i stället på
+ * maskinen: ett klick är ett kvarts varv medurs, skift-klick moturs.
+ *
+ * Samma sak går med tangenten R, för den som hellre håller händerna still.
+ */
+function TurnHandle({
+  placement,
+  strokeUnit,
+  onTurn,
+}: {
+  placement: Placement;
+  strokeUnit: number;
+  onTurn: (instanceId: string, steps: number) => void;
+}) {
+  const r = strokeUnit * 13;
+  // Utanför maskinens hörn, så det aldrig ligger över kroppen man drar i.
+  const cx = placement.bbox.x + placement.bbox.l + r * 1.1;
+  const cy = placement.bbox.y - r * 1.1;
+  const b = r * 0.52;
+
+  return (
+    <g
+      style={{ cursor: "pointer" }}
+      onPointerDown={(e) => {
+        // Utan detta börjar ett drag av maskinen under handtaget.
+        e.stopPropagation();
+        onTurn(placement.instanceId, e.shiftKey ? -1 : 1);
+      }}
+    >
+      <title>Vrid 90° (skift för andra hållet, eller tangent R)</title>
+      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.6} />
+      {/* Cirkelpil: nästan ett helt varv, med spets i änden. */}
+      <path
+        d={`M${cx} ${cy - b}A${b} ${b} 0 1 1 ${cx - b} ${cy}`}
+        fill="none"
+        stroke="#1d2d3d"
+        strokeWidth={strokeUnit * 1.6}
+        strokeLinecap="round"
+      />
+      <path
+        d={`M${cx - b * 1.5} ${cy - b * 0.5}L${cx - b} ${cy + b * 0.35}L${cx - b * 0.45} ${cy - b * 0.4}Z`}
+        fill="#1d2d3d"
       />
     </g>
   );

@@ -16,7 +16,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleInspector,
     toggleOption,
     setVariant,
-    rotateMachine,
+    turnMachine,
     mirrorMachine,
     removeItem,
     removeDrawn,
@@ -129,26 +129,30 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
               <span className="text-muted">Rotation</span>
               <div className="flex items-center gap-1">
-                {([0, 90, 180, 270] as const).map((deg) => (
-                  <button
-                    key={deg}
-                    onClick={() => rotateMachine(item.instanceId, deg)}
-                    className={
-                      (item.rotation ?? 0) === deg
-                        ? "num border border-accent px-1 text-[11px] text-accent"
-                        : "num border border-divider px-1 text-[11px] text-muted hover:text-ink"
-                    }
-                  >
-                    {deg}°
-                  </button>
-                ))}
+                <span className="num w-[34px] text-right text-[11px] text-muted">
+                  {placement.rotation}°
+                </span>
+                <button
+                  onClick={() => turnMachine(item.instanceId, -1)}
+                  className="border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
+                  title="Vrid 90° moturs (skift + R)"
+                >
+                  ↺
+                </button>
+                <button
+                  onClick={() => turnMachine(item.instanceId, 1)}
+                  className="border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
+                  title="Vrid 90° medurs (R)"
+                >
+                  ↻
+                </button>
                 {placement.machine.mirrorable ? (
                   <button
                     onClick={() => mirrorMachine(item.instanceId)}
                     className={
                       item.mirrored
-                        ? "border border-accent px-1 text-[11px] text-accent"
-                        : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
+                        ? "border border-accent px-1.5 py-0.5 text-[13px] text-accent"
+                        : "border border-divider px-1.5 py-0.5 text-[13px] text-muted hover:border-accent hover:text-ink"
                     }
                     title="Spegelvänd maskinen"
                   >

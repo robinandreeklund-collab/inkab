@@ -302,7 +302,7 @@ export function Sidebar() {
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-muted">
           {tool === "select"
-            ? "Dra maskiner och zoner i vyn. Snapp 250 mm."
+            ? "Dra maskiner och zoner i vyn. Snapp 250 mm. Vrid med R, eller med handtaget vid den markerade maskinen."
             : tool === "wall"
               ? "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir 300 mm tjock."
               : tool === "door"

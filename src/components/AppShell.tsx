@@ -38,6 +38,7 @@ export function AppShell() {
     selectedId,
     removeItem,
     removeDrawn,
+    turnMachine,
     proposalId,
   } = useConfigStore();
 
@@ -150,6 +151,18 @@ export function AppShell() {
         case "f":
           toggleInspector();
           break;
+        case "r":
+          /*
+           * Vrida ska gå där man står. Att behöva sikta på en liten knapp i
+           * inspektorn för varje kvarts varv är ett avbrott mitt i arbetet —
+           * man tittar bort från ritningen för att ändra något man ser i den.
+           * Skift vrider åt andra hållet.
+           */
+          if (selectedId && config.line.some((i) => i.instanceId === selectedId)) {
+            event.preventDefault();
+            turnMachine(selectedId, event.shiftKey ? -1 : 1);
+          }
+          break;
         case "delete":
         case "backspace":
           if (!selectedId) break;
@@ -160,6 +173,7 @@ export function AppShell() {
     },
     [
       config.drawn,
+      config.line,
       redo,
       removeDrawn,
       removeItem,
@@ -167,6 +181,7 @@ export function AppShell() {
       setTool,
       setView,
       toggleInspector,
+      turnMachine,
       togglePorts,
       toggleZones,
       undo,

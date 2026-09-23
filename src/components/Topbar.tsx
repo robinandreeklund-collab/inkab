@@ -7,12 +7,7 @@ import { ProposalDialog } from "./ProposalDialog";
 import { HistoryDialog } from "./HistoryDialog";
 import { AuthDialog, type SessionUser } from "./AuthDialog";
 import { Button, Segmented } from "./ui";
-
-const ROLE_LABEL: Record<string, string> = {
-  customer: "Kund",
-  sales: "Säljare",
-  admin: "Admin",
-};
+import { LOCALES, LOCALE_SHORT, useLocale, useT } from "@/lib/i18n";
 
 export function Topbar({
   user,
@@ -27,6 +22,9 @@ export function Topbar({
 }) {
   const { config, view, unit, past, future, setView, setUnit, undo, redo, update, setScreen } =
     useConfigStore();
+  const locale = useLocale();
+  const setLocale = useConfigStore((s) => s.setLocale);
+  const t = useT();
   const [authOpen, setAuthOpen] = useState(false);
   const [proposalsOpen, setProposalsOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
@@ -50,11 +48,11 @@ export function Topbar({
       </button>
 
       <div className="flex min-w-0 items-baseline gap-2">
-        <span className="kicker text-paper/50">Projekt</span>
+        <span className="kicker text-paper/50">{t("top.project")}</span>
         <input
           value={config.projectName}
           onChange={(e) => update((d) => void (d.projectName = e.target.value))}
-          aria-label="Projektnamn"
+          aria-label={t("top.projectName")}
           className="min-w-0 max-w-[280px] border-b border-transparent bg-transparent text-sm text-paper outline-none hover:border-paper/30 focus:border-accent"
         />
       </div>
@@ -63,7 +61,7 @@ export function Topbar({
         href="tel:+46705701760"
         className="ml-auto hidden items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
       >
-        <span className="kicker text-paper/50">Frågor</span>
+        <span className="kicker text-paper/50">{t("top.questions")}</span>
         <span className="num text-sm">+46 70-570 17 60</span>
       </a>
 
@@ -71,7 +69,7 @@ export function Topbar({
         <button
           onClick={undo}
           disabled={past.length === 0}
-          title="Ångra (Ctrl+Z)"
+          title={t("top.undo")}
           className="px-2 py-1 text-sm text-paper/70 hover:text-paper disabled:opacity-30"
         >
           ↶
@@ -79,23 +77,33 @@ export function Topbar({
         <button
           onClick={redo}
           disabled={future.length === 0}
-          title="Gör om (Ctrl+Shift+Z)"
+          title={t("top.redo")}
           className="px-2 py-1 text-sm text-paper/70 hover:text-paper disabled:opacity-30"
         >
           ↷
         </button>
 
+        {/*
+          * Språkväljaren står först bland reglagen: den som inte förstår
+          * sidhuvudet ska hitta den utan att läsa något annat.
+          */}
         <Segmented
-          ariaLabel="Vy"
+          ariaLabel={t("top.language")}
+          value={locale}
+          options={LOCALES.map((code) => ({ value: code, label: LOCALE_SHORT[code] }))}
+          onChange={setLocale}
+        />
+        <Segmented
+          ariaLabel={t("top.view")}
           value={view}
           options={[
             { value: "2d", label: "2D" },
-            { value: "model", label: "Modell" },
+            { value: "model", label: t("top.view.model") },
           ]}
           onChange={setView}
         />
         <Segmented
-          ariaLabel="Enhet"
+          ariaLabel={t("top.unit")}
           value={unit}
           options={[
             { value: "m", label: "m" },
@@ -106,10 +114,10 @@ export function Topbar({
 
         <button
           onClick={() => setHistoryOpen(true)}
-          title="Vad som hänt i projektet: underlag, frågor, ändringar"
+          title={t("top.historyTitle")}
           className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
         >
-          Historik{log.length > 0 ? ` (${log.length})` : ""}
+          {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
         </button>
 
         {user?.role === "admin" ? (
@@ -127,11 +135,11 @@ export function Topbar({
               onClick={() => setProposalsOpen(true)}
               className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
-              Mina förslag
+              {t("top.myProposals")}
             </button>
             <span className="hidden text-right leading-tight sm:block">
               <span className="block text-xs text-paper">{user.name || user.email}</span>
-              <span className="kicker text-paper/50">{ROLE_LABEL[user.role] ?? user.role}</span>
+              <span className="kicker text-paper/50">{t(`role.${user.role}`)}</span>
             </span>
             <button
               onClick={async () => {
@@ -140,7 +148,7 @@ export function Topbar({
               }}
               className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
-              Logga ut
+              {t("top.logOut")}
             </button>
           </div>
         ) : (
@@ -148,7 +156,7 @@ export function Topbar({
             onClick={() => setAuthOpen(true)}
             className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
-            Logga in
+            {t("top.logIn")}
           </button>
         )}
       </div>

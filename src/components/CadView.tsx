@@ -11,6 +11,7 @@ import type { Box, DrawnObject, DrawnKind, Machine, PlacedPort, Placement, Vec2 
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 import { DIR_VEC } from "@/lib/geometry";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { useT } from "@/lib/i18n";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -100,6 +101,7 @@ export function CadView() {
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
+  const t = useT();
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
   /*
@@ -442,6 +444,7 @@ export function CadView() {
             layout={layout}
             onDrawnDown={startDragDrawn}
             onTurnDrawn={turnDrawn}
+            turnTitle={t("cad.turn")}
             showZones={showZones}
             showPorts={showPorts}
             strokeUnit={strokeUnit}
@@ -494,7 +497,7 @@ export function CadView() {
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
         <span className="kicker bg-paper/80 px-1">
-          Planvy · snapp {SNAP_MM} mm
+          {t("cad.plan")} · {t("cad.snap", { mm: SNAP_MM })}
         </span>
         <button
           onClick={fit}
@@ -523,6 +526,7 @@ function Plan2D({
   onTurn,
   onDrawnDown,
   onTurnDrawn,
+  turnTitle,
   selectedId,
 }: {
   hallBox: Box;
@@ -538,6 +542,7 @@ function Plan2D({
   onTurn: (instanceId: string, steps: number) => void;
   onDrawnDown: (o: DrawnObject, e: React.PointerEvent) => void;
   onTurnDrawn: (id: string) => void;
+  turnTitle: string;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
@@ -631,6 +636,7 @@ function Plan2D({
               box={maskin.bbox}
               strokeUnit={strokeUnit}
               onTurn={(steps) => onTurn(maskin.instanceId, steps)}
+              title={turnTitle}
             />
           );
         }
@@ -640,6 +646,7 @@ function Plan2D({
             box={{ x: ritat.x, y: ritat.y, l: ritat.l, w: ritat.w }}
             strokeUnit={strokeUnit}
             onTurn={() => onTurnDrawn(ritat.id)}
+            title={turnTitle}
           />
         ) : null;
       })()}
@@ -1068,10 +1075,12 @@ function TurnHandle({
   box,
   strokeUnit,
   onTurn,
+  title,
 }: {
   box: Box;
   strokeUnit: number;
   onTurn: (steps: number) => void;
+  title: string;
 }) {
   const r = strokeUnit * 12;
   // Utanför hörnet, så det aldrig ligger över ytan man drar i.
@@ -1093,7 +1102,7 @@ function TurnHandle({
         onTurn(e.shiftKey ? -1 : 1);
       }}
     >
-      <title>Vrid 90° (skift för andra hållet, eller tangent R)</title>
+      <title>{title}</title>
       <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.2} />
       <g
         transform={`translate(${cx} ${cy}) scale(${scale}) translate(-12 -12)`}

@@ -8,12 +8,10 @@ import { suggestTruckZone } from "@/lib/solver";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
 import { MachineThumb } from "./MachineThumb";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { useT } from "@/lib/i18n";
 import type { Machine, MachineCategory, Side } from "@/lib/types";
 
-const SIDE_OPTIONS: { value: Side; label: string }[] = [
-  { value: "right", label: "Höger" },
-  { value: "left", label: "Vänster" },
-];
+
 
 export function Sidebar() {
   const {
@@ -36,6 +34,11 @@ export function Sidebar() {
     setFlowPoint,
     setDraggingMachine,
   } = useConfigStore();
+  const t = useT();
+  const SIDE_OPTIONS: { value: Side; label: string }[] = [
+    { value: "right", label: t("side.right") },
+    { value: "left", label: t("side.left") },
+  ];
 
   const [search, setSearch] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -56,15 +59,15 @@ export function Sidebar() {
     <aside className="scroll-thin flex h-full w-[280px] flex-none flex-col overflow-y-auto border-r border-divider bg-white">
       {/* ① Maskiner */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={1} title="Maskiner" />
+        <SectionHeading index={1} title={t("sidebar.machines")} />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Sök maskin…"
+          placeholder={t("sidebar.search")}
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
         <p className="mb-2 text-[11px] text-muted">
-          Dra maskinen dit den ska stå, eller klicka för att lägga den på ledig yta.
+          {t("sidebar.addHint")}
         </p>
 
         <div className="space-y-3">
@@ -112,7 +115,7 @@ export function Sidebar() {
               </div>
             </div>
           ))}
-          {Object.keys(grouped).length === 0 ? <Empty>Ingen maskin matchar sökningen.</Empty> : null}
+          {Object.keys(grouped).length === 0 ? <Empty>{t("sidebar.noMatch")}</Empty> : null}
         </div>
       </section>
 
@@ -120,11 +123,11 @@ export function Sidebar() {
       <section className="border-b border-divider p-3">
         <SectionHeading
           index={2}
-          title="Linjen"
-          action={<span className="kicker">{config.line.length} st</span>}
+          title={t("sidebar.line")}
+          action={<span className="kicker">{t("sidebar.count", { count: config.line.length })}</span>}
         />
         {config.line.length === 0 ? (
-          <Empty>Linjen är tom. Lägg till en maskin ovanför.</Empty>
+          <Empty>{t("sidebar.lineEmpty")}</Empty>
         ) : (
           <div className="border border-divider">
             {config.line.map((item, index) => {
@@ -172,19 +175,15 @@ export function Sidebar() {
 
       {/* ③ Hallen och trucken */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={3} title="Flöde" />
+        <SectionHeading index={3} title={t("sidebar.flow")} />
 
-        <p className="mb-3 text-[11px] leading-relaxed text-muted">
-          Maskinerna står där du ställer dem. Pilarna i ritningen visar åt vilket håll varje
-          maskin tar emot och lämnar paket — de kopplar ingenting, de berättar bara vad maskinen
-          klarar.
-        </p>
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">{t("sidebar.flowHint")}</p>
 
         <div className="space-y-3">
           <div>
-            <span className="kicker mb-1 block">Trucken hämtar från</span>
+            <span className="kicker mb-1 block">{t("sidebar.truckPickup")}</span>
             <Segmented
-              ariaLabel="Trucken hämtar från"
+              ariaLabel={t("sidebar.truckPickup")}
               value={config.flow.truckPickupSide}
               options={SIDE_OPTIONS}
               onChange={(v) => setFlow({ truckPickupSide: v })}
@@ -192,12 +191,12 @@ export function Sidebar() {
           </div>
 
           <div>
-            <span className="kicker mb-1 block">Var nya maskiner läggs</span>
+            <span className="kicker mb-1 block">{t("sidebar.newMachinesAt")}</span>
             <p className="mb-2 text-[11px] text-muted">
-              Startpunkten. Dra markören i ritningen, eller skriv måtten här.
+              {t("sidebar.startPointHint")}
             </p>
             <div className="grid grid-cols-2 gap-2">
-              <Field label="Start X">
+              <Field label={t("sidebar.startX")}>
                 <NumberInput
                   value={meters(config.flow.startPoint.x)}
                   onCommit={(raw) => {
@@ -206,7 +205,7 @@ export function Sidebar() {
                   }}
                 />
               </Field>
-              <Field label="Start Y">
+              <Field label={t("sidebar.startY")}>
                 <NumberInput
                   value={meters(config.flow.startPoint.y)}
                   onCommit={(raw) => {
@@ -223,7 +222,7 @@ export function Sidebar() {
         <div className="mt-4 border-t border-divider pt-3">
           <span className="kicker mb-1 block">Virke</span>
           <div className="mb-2 grid grid-cols-2 gap-2">
-            <Field label="Minsta virkesbredd">
+            <Field label={t("sidebar.widthMin")}>
               <NumberInput
                 value={meters(config.product.packageWidthMinMm)}
                 onCommit={(raw) => {
@@ -232,7 +231,7 @@ export function Sidebar() {
                 }}
               />
             </Field>
-            <Field label="Största virkesbredd">
+            <Field label={t("sidebar.widthMax")}>
               <NumberInput
                 value={meters(config.product.packageWidthMaxMm)}
                 onCommit={(raw) => {
@@ -243,7 +242,7 @@ export function Sidebar() {
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Paketlängd">
+            <Field label={t("sidebar.packageLength")}>
               <NumberInput
                 value={meters(config.product.packageLengthMm)}
                 onCommit={(raw) => {
@@ -252,7 +251,7 @@ export function Sidebar() {
                 }}
               />
             </Field>
-            <Field label="Målkapacitet">
+            <Field label={t("sidebar.target")}>
               <NumberInput
                 value={String(config.product.targetPackagesPerHour)}
                 suffix="pkt/h"
@@ -270,16 +269,16 @@ export function Sidebar() {
 
       {/* ④ Hall och zoner */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={4} title="Hall och zoner" />
+        <SectionHeading index={4} title={t("sidebar.hall")} />
         <div className="mb-3 grid grid-cols-3 gap-2">
           {(
             [
-              ["Längd", "lengthMm"],
-              ["Bredd", "widthMm"],
-              ["Höjd", "clearHeightMm"],
+              ["sidebar.length", "lengthMm"],
+              ["sidebar.width", "widthMm"],
+              ["sidebar.height", "clearHeightMm"],
             ] as const
           ).map(([label, key]) => (
-            <Field key={key} label={`${label} m`}>
+            <Field key={key} label={`${t(label)} m`}>
               <NumberInput
                 value={meters(config.hall[key])}
                 onCommit={(raw) => {
@@ -291,7 +290,7 @@ export function Sidebar() {
           ))}
         </div>
 
-        <span className="kicker mb-1 block">Ritverktyg</span>
+        <span className="kicker mb-1 block">{t("sidebar.tools")}</span>
         <div className="grid grid-cols-3 gap-1">
           {(
             [
@@ -318,16 +317,16 @@ export function Sidebar() {
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-muted">
           {tool === "select"
-            ? "Dra maskiner, zoner och väggar i vyn. Snapp 250 mm. Vrid med R, eller med handtaget vid det markerade objektet."
+            ? t("sidebar.drawHint", { mm: 250 })
             : tool === "wall"
-              ? "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir 300 mm tjock."
+              ? t("tool.wallHint", { mm: 300 })
               : tool === "door"
-                ? "Dra där porten sitter, i x- eller y-led. Låses till närmaste axel."
+                ? t("tool.doorHint")
                 : tool === "truck"
-                  ? "Dra en rektangel där trucken kör eller hämtar. Kan vara en hel gata eller bara en hämtzon."
+                  ? t("tool.truckHint")
                   : tool === "nogo"
-                    ? "Dra en rektangel för att spärra en yta."
-                    : "Dra mellan två punkter för att mäta avståndet."}
+                    ? t("tool.nogoHint")
+                    : t("tool.measureHint")}
         </p>
 
         <div className="mt-2 flex flex-wrap gap-1">
@@ -392,7 +391,7 @@ export function Sidebar() {
 
       {/* ⑤ Offert */}
       <section className="p-3">
-        <SectionHeading index={5} title="Offert" />
+        <SectionHeading index={5} title={t("sidebar.quote")} />
         <div className="space-y-2">
           <Button variant="primary" className="w-full" onClick={() => setScreen("quote")}>
             Sammanställ offertunderlag
@@ -409,6 +408,7 @@ export function Sidebar() {
 }
 
 function ShareButton() {
+  const t = useT();
   const config = useConfigStore((s) => s.config);
   const note = useConfigStore((s) => s.note);
   const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
@@ -423,7 +423,7 @@ function ShareButton() {
       setTimeout(() => setState("idle"), long ? 8000 : 2000);
     } catch {
       // Utklippet kräver säker kontext och kan nekas. Då får man länken ändå.
-      window.prompt("Kopiera länken:", url);
+      window.prompt(t("sidebar.shareCopy"), url);
       setState("idle");
     }
   };
@@ -431,13 +431,10 @@ function ShareButton() {
   return (
     <div>
       <Button className="w-full" onClick={share}>
-        {state === "idle" || state === "failed" ? "Kopiera delningslänk" : "Länk kopierad"}
+        {state === "idle" || state === "failed" ? t("sidebar.share") : t("sidebar.shareCopied")}
       </Button>
       {state === "long" ? (
-        <p className="mt-1 text-[11px] leading-relaxed text-warn">
-          Länken blev lång. Skicka den som klickbar länk — vissa e-postklienter bryter
-          långa adresser och då går den inte att öppna.
-        </p>
+        <p className="mt-1 text-[11px] leading-relaxed text-warn">{t("sidebar.shareLong")}</p>
       ) : (
         <p className="mt-1 text-[11px] leading-relaxed text-muted">
           Hela konfigurationen ligger i länken. Inget sparas på servern, och mottagaren

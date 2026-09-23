@@ -2,6 +2,10 @@ import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
+import { translate } from "./i18n/translate";
+
+/** Textslagning på kundens språk. Se lib/i18n. */
+export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
 
@@ -53,6 +57,12 @@ export function runRules(
   config: Configuration,
   layout: SolveOutput,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  /*
+   * Texterna kommer utifrån, på kundens språk. Regeln räknar, den formulerar
+   * inte: en tysk kund ska inte läsa svenska fel om sin egen anläggning.
+   * Utan översättare svarar regelverket på svenska, som förut.
+   */
+  t: Translate = (key, vars) => translate("sv", key, vars),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const line = layout.placements.filter((p) => !p.aux).sort((a, b) => a.pos - b.pos);
@@ -70,8 +80,12 @@ export function runRules(
       out.push({
         code: "R-103",
         severity: "error",
-        title: "Maskiner överlappar",
-        detail: `${a.machine.name} och ${b.machine.name} går in i varandra över ${area.toFixed(1).replace(".", ",")} m².`,
+        title: t("rule.overlap.t"),
+        detail: t("rule.overlap.d", {
+          a: a.machine.name,
+          b: b.machine.name,
+          area: area.toFixed(1).replace(".", ","),
+        }),
         instanceIds: [a.instanceId, b.instanceId],
         anchor: boxCenter(a.bbox),
       });
@@ -88,8 +102,8 @@ export function runRules(
         out.push({
           code: "R-104",
           severity: "warning",
-          title: "Servicezon blockerad",
-          detail: `${other.machine.name} står i servicezonen för ${p.machine.name}. Underhåll blir svårt att komma åt.`,
+          title: t("rule.service.t"),
+          detail: t("rule.service.d", { other: other.machine.name, machine: p.machine.name }),
           instanceIds: [p.instanceId, other.instanceId],
           anchor: boxCenter(box),
         });
@@ -109,8 +123,8 @@ export function runRules(
       out.push({
         code: "R-106",
         severity: "error",
-        title: "Maskinzonen är inkräktad",
-        detail: `${other.machine.name} står innanför maskinzonen kring ${p.machine.name}. Det fria utrymmet runt maskinen måste hållas.`,
+        title: t("rule.clearance.t"),
+        detail: t("rule.clearance.d", { other: other.machine.name, machine: p.machine.name }),
         instanceIds: [p.instanceId, other.instanceId],
         anchor: boxCenter(other.bbox),
       });
@@ -123,8 +137,8 @@ export function runRules(
       out.push({
         code: "R-106",
         severity: "error",
-        title: "Maskinzonen är inkräktad",
-        detail: `${obj.name} går in i maskinzonen kring ${p.machine.name}.`,
+        title: t("rule.clearance.t"),
+        detail: t("rule.clearanceObj.d", { obj: obj.name, machine: p.machine.name }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(box),
       });
@@ -139,8 +153,8 @@ export function runRules(
         out.push({
           code: "R-105",
           severity: "error",
-          title: "Skyddszon ligger i truckgatan",
-          detail: `Skyddszonen kring ${p.machine.name} skär ${aisle.label.toLowerCase()}. Trucken kan inte passera en aktiv skyddszon.`,
+          title: t("rule.safety.t"),
+          detail: t("rule.safety.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
           instanceIds: [p.instanceId],
           anchor: boxCenter(zone.box),
         });
@@ -154,8 +168,12 @@ export function runRules(
       out.push({
         code: "R-201",
         severity: "error",
-        title: "Truckgatan ligger utanför hallen",
-        detail: `${aisle.label} sträcker sig utanför hallens ${m(config.hall.lengthMm)} × ${m(config.hall.widthMm)} m.`,
+        title: t("rule.aisleOut.t"),
+        detail: t("rule.aisleOut.d", {
+          aisle: aisle.label,
+          l: m(config.hall.lengthMm),
+          w: m(config.hall.widthMm),
+        }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -164,8 +182,12 @@ export function runRules(
       out.push({
         code: "R-201",
         severity: "warning",
-        title: "Truckgatan är smal",
-        detail: `${aisle.label} är ${m(aisle.widthMm)} m på sitt smalaste ställe. En motviktstruck med paket behöver normalt minst ${m(MIN_TRUCK_WIDTH_MM)} m.`,
+        title: t("rule.aisleNarrow.t"),
+        detail: t("rule.aisleNarrow.d", {
+          aisle: aisle.label,
+          w: m(aisle.widthMm),
+          min: m(MIN_TRUCK_WIDTH_MM),
+        }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -177,9 +199,8 @@ export function runRules(
     out.push({
       code: "R-205",
       severity: "warning",
-      title: "Ingen truckgata eller hämtzon",
-      detail:
-        "Rita ut var trucken kör och hämtar färdiga paket. Utan den kan varken utrymme eller åtkomst kontrolleras.",
+      title: t("rule.noAisle.t"),
+      detail: t("rule.noAisle.d"),
       instanceIds: [],
       anchor: boxCenter(layout.lineBounds),
     });
@@ -192,8 +213,8 @@ export function runRules(
       out.push({
         code: "R-203",
         severity: "error",
-        title: `${p.machine.name} står i truckgatan`,
-        detail: `${p.machine.name} står i ${aisle.label.toLowerCase()}. Trucken kan inte passera.`,
+        title: t("rule.auxAisle.t", { machine: p.machine.name }),
+        detail: t("rule.auxAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -218,8 +239,11 @@ export function runRules(
       out.push({
         code: "R-204",
         severity: "warning",
-        title: "Magasinet nås inte utan att passera maskinerna",
-        detail: `Trucken måste passera ${blocking.map((b) => b.machine.name).join(", ")} för att fylla ${magazine.machine.name}.`,
+        title: t("rule.magazine.t"),
+        detail: t("rule.magazine.d", {
+          blocking: blocking.map((b) => b.machine.name).join(", "),
+          magazine: magazine.machine.name,
+        }),
         instanceIds: [magazine.instanceId, ...blocking.map((b) => b.instanceId)],
         anchor: boxCenter(magazine.bbox),
       });
@@ -237,8 +261,8 @@ export function runRules(
       out.push({
         code: "R-207",
         severity: "warning",
-        title: "Truckgatan når ingen port",
-        detail: `${aisle.label} ansluter inte till någon av hallens portar. Kontrollera hur trucken tar sig in och ut.`,
+        title: t("rule.aisleDoor.t"),
+        detail: t("rule.aisleDoor.d", { aisle: aisle.label }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -252,8 +276,12 @@ export function runRules(
     out.push({
       code: "R-301",
       severity: "warning",
-      title: "Kapaciteten understiger målet",
-      detail: `${p.machine.name} klarar ${p.capacity} paket/h men linjen är dimensionerad för ${config.product.targetPackagesPerHour} paket/h.`,
+      title: t("rule.capacity.t"),
+      detail: t("rule.capacity.d", {
+        machine: p.machine.name,
+        has: p.capacity,
+        target: config.product.targetPackagesPerHour,
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -265,18 +293,24 @@ export function runRules(
     const c = p.machine.capacity;
     if (c.maxWeightKg <= 0) continue;
     const checks: [string, number, [number, number]][] = [
-      ["längd", prod.packageLengthMm, c.packageLengthMm],
-      ["minsta virkesbredd", prod.packageWidthMinMm, c.packageWidthMm],
-      ["största virkesbredd", prod.packageWidthMaxMm, c.packageWidthMm],
-      ["höjd", prod.packageHeightMm, c.packageHeightMm],
+      ["product.length", prod.packageLengthMm, c.packageLengthMm],
+      ["sidebar.widthMin", prod.packageWidthMinMm, c.packageWidthMm],
+      ["sidebar.widthMax", prod.packageWidthMaxMm, c.packageWidthMm],
+      ["product.height", prod.packageHeightMm, c.packageHeightMm],
     ];
     for (const [label, value, [min, max]] of checks) {
       if (value >= min && value <= max) continue;
       out.push({
         code: "R-302",
         severity: "error",
-        title: "Paketet passar inte maskinen",
-        detail: `Paketets ${label} ${m(value)} m ligger utanför ${p.machine.name}: ${m(min)}–${m(max)} m.`,
+        title: t("rule.package.t"),
+        detail: t("rule.package.d", {
+          label: t(label).toLowerCase(),
+          value: m(value),
+          machine: p.machine.name,
+          min: m(min),
+          max: m(max),
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -290,8 +324,15 @@ export function runRules(
       out.push({
         code: "R-304",
         severity: "warning",
-        title: "Porten täcker inte hela virkesbreddsintervallet",
-        detail: `Port ${port.id} på ${p.machine.name} tar ${m(portMin)}–${m(portMax)} m, men linjen ska köra ${m(prod.packageWidthMinMm)}–${m(prod.packageWidthMaxMm)} m.`,
+        title: t("rule.portWidth.t"),
+        detail: t("rule.portWidth.d", {
+          port: port.id,
+          machine: p.machine.name,
+          portMin: m(portMin),
+          portMax: m(portMax),
+          prodMin: m(prod.packageWidthMinMm),
+          prodMax: m(prod.packageWidthMaxMm),
+        }),
         instanceIds: [p.instanceId],
         anchor: port.pos,
       });
@@ -300,8 +341,12 @@ export function runRules(
       out.push({
         code: "R-303",
         severity: "error",
-        title: "Paketet är för tungt",
-        detail: `${prod.packageWeightKg} kg överstiger ${p.machine.name}s max ${c.maxWeightKg} kg.`,
+        title: t("rule.weight.t"),
+        detail: t("rule.weight.d", {
+          kg: prod.packageWeightKg,
+          machine: p.machine.name,
+          max: c.maxWeightKg,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -314,8 +359,12 @@ export function runRules(
     out.push({
       code: "R-401",
       severity: "error",
-      title: "Maskinen hamnar utanför hallen",
-      detail: `${p.machine.name} ligger utanför hallens ${m(config.hall.lengthMm)} × ${m(config.hall.widthMm)} m.`,
+      title: t("rule.outsideHall.t"),
+      detail: t("rule.outsideHall.d", {
+        machine: p.machine.name,
+        l: m(config.hall.lengthMm),
+        w: m(config.hall.widthMm),
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -325,8 +374,12 @@ export function runRules(
     out.push({
       code: "R-402",
       severity: "error",
-      title: "Maskinen är högre än hallen",
-      detail: `${p.machine.name} är ${m(p.size.heightMm)} m hög, fri höjd är ${m(config.hall.clearHeightMm)} m.`,
+      title: t("rule.tooTall.t"),
+      detail: t("rule.tooTall.d", {
+        machine: p.machine.name,
+        h: m(p.size.heightMm),
+        clear: m(config.hall.clearHeightMm),
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -343,8 +396,8 @@ export function runRules(
       out.push({
         code: "R-403",
         severity: "error",
-        title: obj.kind === "wall" ? "Maskinen krockar med en vägg" : "Maskinen står i en no-go-zon",
-        detail: `${p.machine.name} överlappar ${obj.name}.`,
+        title: obj.kind === "wall" ? t("rule.hitWall.t") : t("rule.hitNogo.t"),
+        detail: t("rule.hitObj.d", { machine: p.machine.name, obj: obj.name }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -358,8 +411,8 @@ export function runRules(
       out.push({
         code: "R-404",
         severity: "error",
-        title: "Maskinen står i truckgatan",
-        detail: `${p.machine.name} ligger i ${aisle.label.toLowerCase()}. Flytta maskinen eller rita om zonen.`,
+        title: t("rule.inAisle.t"),
+        detail: t("rule.inAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -375,8 +428,8 @@ export function runRules(
       out.push({
         code: "R-501",
         severity: "error",
-        title: "Maskin saknas i linjen",
-        detail: `${p.machine.name} kräver ${reqMachine?.name ?? req} för att fungera.`,
+        title: t("rule.requires.t"),
+        detail: t("rule.requires.d", { machine: p.machine.name, needs: reqMachine?.name ?? req }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
         fix: { kind: "addMachine", machineId: req, label: `Lägg till ${reqMachine?.name ?? req}` },
@@ -387,8 +440,11 @@ export function runRules(
       out.push({
         code: "R-501",
         severity: "error",
-        title: "Maskinerna kan inte kombineras",
-        detail: `${p.machine.name} kan inte kombineras med ${getMachine(conflict, library)?.name ?? conflict}.`,
+        title: t("rule.conflict.t"),
+        detail: t("rule.conflict.d", {
+          machine: p.machine.name,
+          other: getMachine(conflict, library)?.name ?? conflict,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -400,8 +456,11 @@ export function runRules(
     out.push({
       code: "R-107",
       severity: "error",
-      title: "Maskinen finns inte i biblioteket",
-      detail: `${getMachine(u.machineId, library)?.name ?? u.machineId}: ${u.reason}`,
+      title: t("rule.unknown.t"),
+      detail: t("rule.unknown.d", {
+        machine: getMachine(u.machineId, library)?.name ?? u.machineId,
+        reason: t("rule.reasonMissing"),
+      }),
       instanceIds: [u.instanceId],
     });
   }

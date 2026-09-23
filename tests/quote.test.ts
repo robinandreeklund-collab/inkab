@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { decodeConfig, encodeConfig, shareUrl } from "@/lib/share";
 import { quoteReference, validUntil } from "@/lib/quote";
 import { defaultConfig, lineItem } from "@/lib/templates";
-import type { Configuration } from "@/lib/types";
 import { machineListCsv, planDxf, exportName } from "@/lib/export";
 import { computeLayout } from "@/lib/layout";
 import { templateConfig } from "@/lib/templates";

@@ -4,6 +4,8 @@ import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
+import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/translate";
 import { claimedBox, freeSpot } from "@/lib/solver";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
@@ -28,6 +30,8 @@ const STORAGE_KEY = "inkab.config.v1";
 const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
+/** Kundens språkval. Ligger vid sidan av konfigurationen: det är en läsare, inte en anläggning. */
+const LOCALE_KEY = "inkab.locale";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 /*
@@ -72,6 +76,8 @@ type State = {
   showZones: boolean;
   showPorts: boolean;
   hydrated: boolean;
+  /** Språket gränssnittet visas på. Se lib/i18n. */
+  locale: Locale;
   /**
    * Maskinen som just nu dras ur katalogen, medan den dras.
    *
@@ -104,6 +110,7 @@ type Actions = {
   toggleZones: () => void;
   togglePorts: () => void;
   setDraggingMachine: (machineId: string | null) => void;
+  setLocale: (locale: Locale) => void;
 
   setLibrary: (machines: Machine[]) => void;
   /** Skriver en rad i projektloggen. */
@@ -211,11 +218,17 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     persistLog(log);
   };
 
+  /** Regelverkets texter på det språk kunden valt just nu. */
+  const t = () => {
+    const locale = get().locale;
+    return (key: string, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  };
+
   const commit = (next: Configuration) => {
     const { config, past, library } = get();
     set({
       config: next,
-      layout: computeLayout(next, library),
+      layout: computeLayout(next, library, t()),
       past: [...past, config].slice(-HISTORY_LIMIT),
       future: [],
     });
@@ -254,6 +267,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     showPorts: true,
     hydrated: false,
     draggingMachineId: null,
+    locale: "sv",
     shareNotice: null,
     log: [],
     proposalId: null,
@@ -277,6 +291,25 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setDraggingMachine: (draggingMachineId) => set({ draggingMachineId }),
 
+    setLocale: (locale) => {
+      set({ locale });
+      /*
+       * Diagnostiken är redan uträknad, med texterna inbakade. Den räknas om
+       * nu — annars står de gamla felen kvar på gammalt språk tills någon
+       * råkar ändra något i anläggningen.
+       */
+      const { config, library } = get();
+      set({
+        layout: computeLayout(config, library, (key, vars) => translate(locale, key, vars)),
+      });
+      if (typeof document !== "undefined") document.documentElement.lang = locale;
+      try {
+        window.localStorage.setItem(LOCALE_KEY, locale);
+      } catch {
+        // Privat läge: språket gäller sessionen ut, och det får duga.
+      }
+    },
+
     note: (kind, text, detail) => note(logEntry(kind, text, detail)),
     setProposalId: (proposalId) => set({ proposalId }),
     setLog: (entries) => {
@@ -291,7 +324,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setLibrary: (machines) => {
       const library = makeLibrary(machines);
-      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library) });
+      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library, t()) });
     },
 
     load: (config, options) => {
@@ -299,7 +332,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       if (options?.resetHistory) {
         set({
           config: next,
-          layout: computeLayout(next, get().library),
+          layout: computeLayout(next, get().library, t()),
           past: [],
           future: [],
           selectedId: null,
@@ -513,7 +546,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const previous = past[past.length - 1];
       set({
         config: previous,
-        layout: computeLayout(previous, get().library),
+        layout: computeLayout(previous, get().library, t()),
         past: past.slice(0, -1),
         future: [config, ...future].slice(0, HISTORY_LIMIT),
       });
@@ -526,7 +559,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const next = future[0];
       set({
         config: next,
-        layout: computeLayout(next, get().library),
+        layout: computeLayout(next, get().library, t()),
         past: [...past, config].slice(-HISTORY_LIMIT),
         future: future.slice(1),
       });
@@ -540,6 +573,21 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
       // Loggen läses först: det som hände före omladdningen hände ändå.
       set({ log: readLog() });
+
+      /*
+       * Språket: kundens val om hon gjort ett, annars det webbläsaren ber om.
+       * En tysk besökare ska inte behöva leta upp växlaren för att förstå
+       * första sidan.
+       */
+      let locale: Locale = "sv";
+      try {
+        const sparat = window.localStorage.getItem(LOCALE_KEY);
+        locale = isLocale(sparat) ? sparat : preferredLocale(navigator.languages ?? []);
+      } catch {
+        locale = preferredLocale(navigator.languages ?? []);
+      }
+      set({ locale });
+      document.documentElement.lang = locale;
 
       const params = new URLSearchParams(window.location.search);
 

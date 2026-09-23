@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters, parseMeters } from "@/lib/format";
 import { Button, Field, MirrorIcon, NumberInput, RotateIcon, Row, Tag } from "./ui";
+import { useT } from "@/lib/i18n";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
@@ -26,6 +27,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
   } = useConfigStore();
 
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
+  const t = useT();
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
@@ -33,9 +35,9 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
   return (
     <aside className="scroll-thin flex h-full w-[300px] flex-none flex-col overflow-y-auto border-l border-divider bg-white p-3">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="kicker">Inspektor</h2>
+        <h2 className="kicker">{t("inspector.title")}</h2>
         <Button variant="ghost" size="sm" onClick={toggleInspector}>
-          Fäll in ›
+          {t("inspector.collapse")}
         </Button>
       </div>
 
@@ -114,21 +116,22 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
         <div>
           <div className="kicker">
             {placement.machine.catalogueNumber && placement.machine.catalogueNumber !== "—"
-              ? `Katalog ${placement.machine.catalogueNumber} · `
+              ? `${t("inspector.catalogue")} ${placement.machine.catalogueNumber} · `
               : ""}
-            {placement.machine.sku} · {placement.aux ? "Hjälpobjekt" : `Position ${placement.pos}`}
+            {placement.machine.sku} ·{" "}
+            {placement.aux ? t("inspector.aux") : `${t("inspector.pos")} ${placement.pos}`}
           </div>
           <h3 className="mb-1 text-lg leading-tight">{placement.machine.name}</h3>
           <p className="mb-3 text-xs leading-relaxed text-muted">{placement.machine.summary}</p>
 
           <Row
-            label="Mått L×B×H"
+            label={t("inspector.dims")}
             value={`${meters(placement.size.lengthMm)} × ${meters(placement.size.widthMm)} × ${meters(placement.size.heightMm)} m`}
           />
-          <Row label="Position X, Y" value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
+          <Row label={t("inspector.position")} value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
           {item ? (
             <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
-              <span className="text-muted">Rotation</span>
+              <span className="text-muted">{t("inspector.rotation")}</span>
               <div className="flex items-center gap-1">
                 <span className="num w-[34px] text-right text-[11px] text-muted">
                   {placement.rotation}°
@@ -136,7 +139,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                 <Button
                   size="sm"
                   className="h-7 w-7 p-0"
-                  title="Vrid 90° moturs (skift + R)"
+                  title={t("inspector.turnCcw")}
                   onClick={() => turnMachine(item.instanceId, -1)}
                 >
                   <RotateIcon anticlockwise size={15} />
@@ -144,7 +147,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                 <Button
                   size="sm"
                   className="h-7 w-7 p-0"
-                  title="Vrid 90° medurs (R)"
+                  title={t("inspector.turnCw")}
                   onClick={() => turnMachine(item.instanceId, 1)}
                 >
                   <RotateIcon size={15} />
@@ -154,7 +157,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                     size="sm"
                     className="h-7 w-7 p-0"
                     active={item.mirrored}
-                    title="Spegelvänd maskinen"
+                    title={t("inspector.mirror")}
                     onClick={() => mirrorMachine(item.instanceId)}
                   >
                     <MirrorIcon size={15} />
@@ -163,12 +166,12 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </div>
             </div>
           ) : (
-            <Row label="Rotation" value={`${placement.rotation}°`} />
+            <Row label={t("inspector.rotation")} value={`${placement.rotation}°`} />
           )}
-          <Row label="Kapacitet" value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
-          <Row label="Effekt" value={`${placement.powerKw} kW`} />
+          <Row label={t("inspector.capacity")} value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
+          <Row label={t("inspector.power")} value={`${placement.powerKw} kW`} />
           <Row
-            label="Tryckluft"
+            label={t("inspector.air")}
             value={
               placement.machine.utilities.airNlPerMin > 0
                 ? `${placement.machine.utilities.airNlPerMin} Nl/min`
@@ -176,24 +179,22 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             }
           />
           <Row
-            label="Grop"
+            label={t("inspector.pit")}
             value={
               placement.machine.foundation.pitDepthMm > 0
                 ? `${placement.machine.foundation.pitDepthMm} mm`
                 : "Ingen"
             }
           />
-          <Row label="Leveranstid" value={`${placement.machine.leadTimeWeeks} v`} />
+          <Row label={t("inspector.lead")} value={`${placement.machine.leadTimeWeeks} v`} />
           {placement.machine.clearance ? (
             <Row
-              label="Maskinzon"
+              label={t("inspector.clearance")}
               value={`${meters(placement.machine.clearance.frontMm)} / ${meters(placement.machine.clearance.backMm)} / ${meters(placement.machine.clearance.leftMm)} / ${meters(placement.machine.clearance.rightMm)} m`}
             />
           ) : null}
           {placement.machine.dimensionsVerified === false ? (
-            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">
-              Måtten är uppskattade och inte kontrollerade mot ritning.
-            </p>
+            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">{t("inspector.unverified")}</p>
           ) : null}
 
           {item ? (
@@ -208,7 +209,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item && (placement.machine.variants?.length ?? 0) > 1 ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Utförande</div>
+              <div className="kicker mb-2">{t("inspector.variant")}</div>
               <div className="space-y-1">
                 {placement.machine.variants!.map((variant) => (
                   <label
@@ -234,7 +235,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Optioner</div>
+              <div className="kicker mb-2">{t("inspector.options")}</div>
               <div className="space-y-1">
                 {placement.machine.options.map((option) => (
                   <label
@@ -256,17 +257,17 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Anteckning</div>
+              <div className="kicker mb-2">{t("inspector.note")}</div>
               <textarea
                 value={item.note ?? ""}
                 onChange={(e) => setNote(item.instanceId, e.target.value)}
                 rows={3}
                 maxLength={1000}
-                placeholder="T.ex. befintlig maskin som flyttas, eller något leverantören behöver veta."
+                placeholder={t("inspector.notePlaceholder")}
                 className="w-full resize-y border border-divider bg-white px-2 py-1 text-[13px] leading-relaxed outline-none placeholder:text-muted/70 focus:border-accent"
               />
               <p className="mt-1 text-[11px] text-muted">
-                Följer med till offertunderlaget. Påverkar varken mått eller pris.
+                {t("inspector.noteHint")}
               </p>
             </div>
           ) : null}
@@ -277,7 +278,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             * ska inte räcka — priset lämnas av INKAB.
             */}
           <div className="blueprint mt-4 p-3">
-            <div className="kicker">Pris</div>
+            <div className="kicker">{t("inspector.price")}</div>
             {priceLine?.rowTotal != null ? (
               <>
                 <div className="num text-xl">{formatSek(priceLine.rowTotal)}</div>
@@ -288,9 +289,9 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </>
             ) : (
               <>
-                <div className="text-base">Lämnas av INKAB</div>
+                <div className="text-base">{t("inspector.priceOnRequest")}</div>
                 <div className="text-[11px] text-muted">
-                  Kontakta oss för offert på anläggningen.
+                  {t("inspector.priceOnRequestHint")}
                 </div>
               </>
             )}
@@ -298,7 +299,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item ? (
             <div className="mt-4 space-y-2">
-              <div className="kicker">Finjustera</div>
+              <div className="kicker">{t("inspector.nudge")}</div>
               <div className="grid grid-cols-4 gap-1">
                 {(
                   [
@@ -315,7 +316,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </div>
               <StepButton file={placement.machine.stepFile} name={placement.machine.name} role={role} />
               <Button className="w-full" variant="ghost" onClick={() => removeItem(item.instanceId)}>
-                Ta bort ur linjen
+                {t("inspector.remove")}
               </Button>
             </div>
           ) : null}
@@ -334,6 +335,7 @@ function StepButton({
   name: string;
   role: Role;
 }) {
+  const t = useT();
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!message) return;
@@ -350,12 +352,12 @@ function StepButton({
         onClick={() =>
           setMessage(
             role !== "guest"
-              ? `${file} finns inte i prototypen. I skarpt läge levereras en signerad, loggad nedladdning.`
-              : "STEP-filer kräver inloggning. Prototypen levererar inga CAD-filer.",
+              ? t("inspector.stepMissing", { file })
+              : t("inspector.stepLogin"),
           )
         }
       >
-        Ladda ner STEP
+        {t("inspector.stepDownload")}
       </Button>
       {message ? <p className="mt-1 text-[11px] leading-relaxed text-muted">{message}</p> : null}
     </div>
@@ -366,9 +368,3 @@ function formatSek(amount: number): string {
   return `${new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount)} kr`;
 }
 
-/** Portriktning i löptext, sett med flödet. */
-function dirLabel(dir: string): string {
-  return (
-    { "x+": "rakt fram", "x-": "bakåt", "y+": "åt höger", "y-": "åt vänster" }[dir] ?? dir
-  );
-}

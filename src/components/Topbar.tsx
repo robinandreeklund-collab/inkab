@@ -90,7 +90,6 @@ export function Topbar({
           value={view}
           options={[
             { value: "2d", label: "2D" },
-            { value: "3d", label: "3D" },
             { value: "model", label: "Modell" },
           ]}
           onChange={setView}

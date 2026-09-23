@@ -30,7 +30,15 @@ const RESCUE_KEY = "inkab.config.before-share";
 const LOG_KEY = "inkab.log.v1";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
-export type ViewMode = "2d" | "3d" | "model";
+/*
+ * Två vyer: ritningen och modellen.
+ *
+ * Däremellan fanns en isometrisk vy, ritad av samma SVG med maskinerna som
+ * lådor sedda snett uppifrån. Den svarade på samma fråga som modellvyn —
+ * hur står det till i rummet — men med klossar i stället för maskinerna,
+ * och den kostade en egen uppsättning projektioner genom hela ritlagret.
+ */
+export type ViewMode = "2d" | "model";
 export type Unit = "m" | "mm";
 
 type Screen = "onboarding" | "configurator" | "quote";

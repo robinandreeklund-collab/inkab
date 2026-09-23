@@ -120,9 +120,6 @@ export function AppShell() {
           setView("2d");
           break;
         case "2":
-          setView("3d");
-          break;
-        case "3":
           setView("model");
           break;
         case "v":

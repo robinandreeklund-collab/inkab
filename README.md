@@ -107,9 +107,9 @@ vänder på det** — motorerna är byggda, datan är det som saknas.
 | **Arbetstid** | Timmar för tillverkning i verkstad och montage på plats, per maskin. Summeras för anläggningen och står i offertunderlaget och CSV:n. De hålls isär för att de utförs av olika personer och planeras var för sig. |
 | **Truckgatan** | Ritas av kunden och hänger inte ihop med linjens längd. Det kan vara en hel gata längs anläggningen eller bara en hämtzon vid utlastningen, och flera zoner samtidigt. Reglerna arbetar mot de ritade zonerna. |
 | **Virkesbredd** | Anges som intervall. Regel R-304 kontrollerar att varje maskinport täcker hela spannet, inte bara ett värde. |
-| **CAD-vy** | Planvy och isometrisk 3D i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, portar, måttsättning och diagnostik förankrad i geometrin. |
+| **CAD-vy** | Planvy i SVG. Drag med snapp, rita väggar och no-go-zoner, måttband, zoom, zoner, flödespilar, måttsättning och diagnostik förankrad i geometrin. Rummet visas i modellvyn, med de riktiga maskinmodellerna. |
 | **CAD-kedja** | Välj maskinens STEP-fil i admin — den tessellereras och komprimeras **i webbläsaren**, i en web worker, och bara den färdiga GLB:n sparas. Filen lämnar aldrig datorn, och en tung konvertering kan inte fälla webbservern. **Måtten ur modellen tas över automatiskt** — modellen är ritningen, och biblioteket ska följa konstruktionen. Portarna skalas med. Går måtten inte att spara ändras ingenting och panelen säger varför. Samma konvertering finns som `scripts/step-to-glb.mjs` för filer som är för stora för webbläsarens minne — se [Stora STEP-filer](#stora-step-filer). `tests/pipeline.test.ts` och `tests/models.test.ts` kör den skarpt mot en riktig STEP vid varje testkörning. |
-| **Utföranden** | Samma maskin i olika längder — en rullbana som 3, 6 och 12 m är en maskin med tre mått, inte tre maskiner. Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Kunden väljer utförande i konfiguratorn; solvern, reglerna, priset och 3D-vyn ser bara en maskin med sina mått. Priset per utförande ligger i prisboken, aldrig i maskindatan. Utföranden slår steglös längd när en maskin har båda. |
+| **Utföranden** | Samma maskin i olika längder — en rullbana som 3, 6 och 12 m är en maskin med tre mått, inte tre maskiner. Varje utförande bär sin egen STEP-fil, och måtten kommer ur den. Kunden väljer utförande i konfiguratorn; solvern, reglerna, priset och modellvyn ser bara en maskin med sina mått. Priset per utförande ligger i prisboken, aldrig i maskindatan. Utföranden slår steglös längd när en maskin har båda. |
 | **Vyn Modell** | three.js, lat laddad. En modell per SKU, instansierad. Maskiner utan modell ritas som fotavtryck. Ritar modellen i **sin verkliga storlek** — den skalas aldrig för att fylla ut ett mått i biblioteket — och **varnar när måtten inte stämmer** — 3D blir en kontroll av datan, inte bara en bild. Säger också till när en modellfil inte gick att hämta, i stället för att tyst rita en låda. |
 | **Modellens riktning** | En STEP kommer sällan in rättvänd, men konventionen hör till CAD-systemet och inte till maskinen: en rullbana och en lättpress ser inget lika ut och ritas ändå likadant. Riktningen är därför **en inställning för hela biblioteket** (INKAB:s CAD: X tvärs, Y upp, Z i flödet) som varje ny modell tolkas med. Per maskin går den att ändra, med en 3D-förhandsgranskning som visar ändringen direkt — ingen ny konvertering behövs. |
 | **Peka ut flödet** | Följer en fil inte husets konvention behöver ingen räkna på axlar: klicka på modellen där paketen kommer in och där de går ut, så sätts både vändningen och portarna. Vridningstabellen är korskontrollerad mot den riktiga rotationsmatrisen i test. |
@@ -183,7 +183,7 @@ src/
 ├── lib/
 │   ├── types.ts          Domänmodellen
 │   ├── geometry.ts       Rotation, spegling, boxar, snitt
-│   ├── projection.ts     Isometrisk projektion och dess invers
+│   ├── projection.ts     Utsnitt med marginal
 │   ├── library.ts        Maskinbibliotek ur produktkatalogen (mått uppskattade)
 │   ├── machineSchema.ts  Validering av admin-redigerad maskindata
 │   ├── solver.ts         Layoutmotorn
@@ -289,9 +289,10 @@ valideras mot regelverket, så ett felaktigt portpar upptäcks direkt.
 
 | Tangent | Gör |
 |---|---|
-| `1` / `2` / `3` | Planvy / isometrisk vy / modellvy |
+| `1` / `2` | Planvy / modellvy |
 | `V` `W` `D` `T` `N` `M` | Markera · vägg · port · truckgata · no-go · mät |
-| `Z` / `P` | Visa zoner / portar |
+| `R` / `Skift+R` | Vrid markerat objekt 90° medurs / moturs |
+| `Z` / `P` | Visa zoner / flödespilar |
 | `F` | Fäll in inspektorn |
 | `Delete` | Ta bort markerat objekt |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Ångra / gör om |

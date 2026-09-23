@@ -161,10 +161,16 @@ describe("admin-redigerad data driver motorn", () => {
     const config = defaultConfig();
     config.line.splice(1, 0, lineItem("test-kt"));
 
-    const short = computeLayout(config, makeLibrary([...BUILTIN_MACHINES, conveyor()]));
-    const longer = computeLayout(config, makeLibrary([...BUILTIN_MACHINES, long]));
+    const at = (lib: Parameters<typeof computeLayout>[1]) =>
+      computeLayout(config, lib).placements.find((p) => p.machineId === "test-kt")!;
 
-    expect(longer.metrics.totalLengthMm - short.metrics.totalLengthMm).toBe(8000);
+    // Måttet kommer ur biblioteket, inte ur var maskinen råkar stå: med fri
+    // placering rör en längre maskin inte grannarnas lägen.
+    const short = at(makeLibrary([...BUILTIN_MACHINES, conveyor()]));
+    const longer = at(makeLibrary([...BUILTIN_MACHINES, long]));
+
+    expect(longer.size.lengthMm - short.size.lengthMm).toBe(8000);
+    expect(longer.bbox.l - short.bbox.l).toBe(8000);
   });
 
   it("en maskin som tas bort ur biblioteket ignoreras i stället för att krascha", () => {

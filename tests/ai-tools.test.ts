@@ -84,14 +84,6 @@ describe("verktygsscheman", () => {
 });
 
 describe("serverklippning ersätter schemats intervall", () => {
-  it("klipper sista transportörens längd", () => {
-    const ctx = context(defaultConfig());
-    executeTool("set_flow", { finalConveyorLengthMm: 999_999 }, ctx);
-    expect(ctx.draft.flow.finalConveyorLengthMm).toBe(40_000);
-
-    executeTool("set_flow", { finalConveyorLengthMm: 10 }, ctx);
-    expect(ctx.draft.flow.finalConveyorLengthMm).toBe(1000);
-  });
 
   it("klipper hallens mått", () => {
     const ctx = context(defaultConfig());
@@ -250,151 +242,34 @@ describe("draw_hall", () => {
 });
 
 /** Linjen byggd efter en flödesbild: tömma, fylla på, och grena. */
-describe("clear_line och grenar", () => {
-  const base = BUILTIN_MACHINES.find((m) => m.id === "rullbana-underslag")!;
-  const twoWay: Machine = {
-    ...base,
-    id: "delare",
-    ports: [
-      { ...base.ports[0], id: "in", role: "in", pos: { x: 0, y: 1000 }, dir: "x+" },
-      { ...base.ports[1], id: "ut", name: "Rakt fram", role: "out", pos: { x: 6000, y: 1000 }, dir: "x+" },
-      {
-        ...base.ports[1],
-        id: "ut-sida",
-        name: "Ut på kortsidan",
-        role: "out",
-        pos: { x: 3000, y: 2000 },
-        dir: "y+",
-        allowsDirectionChange: true,
-      },
-    ],
-  };
-  const library = makeLibrary([...BUILTIN_MACHINES, twoWay]);
-
-  it("tömmer linjen utan att röra hallen eller det ritade", () => {
+describe("clear_line", () => {
+  it("tömmer linjen", () => {
     const ctx = context(defaultConfig());
-    ctx.draft.drawn = [
-      { id: "w", kind: "wall", name: "Vägg 1", x: 0, y: 0, l: 1000, w: 300, h: 3000 },
-    ];
-    const hall = { ...ctx.draft.hall };
-    const result = executeTool("clear_line", {}, ctx) as { removed: number };
-    expect(result.removed).toBeGreaterThan(0);
+    expect(ctx.draft.line.length).toBeGreaterThan(0);
+    executeTool("clear_line", {}, ctx);
     expect(ctx.draft.line).toHaveLength(0);
-    expect(ctx.draft.drawn).toHaveLength(1);
-    expect(ctx.draft.hall).toEqual(hall);
-  });
-
-  it("lägger en maskin på en ledig utgång som en gren", () => {
-    const config = defaultConfig();
-    const ctx = context(config, library);
-    executeTool("clear_line", {}, ctx);
-    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
-      added: { instanceId: string };
-    };
-    executeTool("add_machine", { machineId: "rullbana" }, ctx);
-
-    const branch = executeTool(
-      "add_machine",
-      {
-        machineId: "rullbana",
-        branchFromInstanceId: first.added.instanceId,
-        branchOutPortId: "ut-sida",
-      },
-      ctx,
-    ) as { added: { branch?: { fromInstanceId: string; outPortId: string } } };
-
-    expect(branch.added.branch).toEqual({
-      fromInstanceId: first.added.instanceId,
-      outPortId: "ut-sida",
-    });
-  });
-
-  it("vägrar hänga två maskiner på samma utgång", () => {
-    const ctx = context(defaultConfig(), library);
-    executeTool("clear_line", {}, ctx);
-    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
-      added: { instanceId: string };
-    };
-    executeTool(
-      "add_machine",
-      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "ut-sida" },
-      ctx,
-    );
-    const again = executeTool(
-      "add_machine",
-      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "ut-sida" },
-      ctx,
-    ) as { error?: string };
-    expect(again.error).toContain("matar redan");
-  });
-
-  it("avvisar en gren på en maskin som inte står i linjen", () => {
-    const ctx = context(defaultConfig(), library);
-    const result = executeTool(
-      "add_machine",
-      { machineId: "rullbana", branchFromInstanceId: "finns-inte", branchOutPortId: "ut" },
-      ctx,
-    ) as { error?: string };
-    expect(result.error).toContain("finns-inte");
-  });
-
-  it("avvisar en utgång maskinen inte har", () => {
-    const ctx = context(defaultConfig(), library);
-    executeTool("clear_line", {}, ctx);
-    const first = executeTool("add_machine", { machineId: "delare" }, ctx) as {
-      added: { instanceId: string };
-    };
-    const result = executeTool(
-      "add_machine",
-      { machineId: "rullbana", branchFromInstanceId: first.added.instanceId, branchOutPortId: "bakut" },
-      ctx,
-    ) as { error?: string };
-    expect(result.error).toContain("Okänd utgång");
   });
 });
 
 describe("remove_machine", () => {
-  it("tar med grenen när maskinen den hänger på försvinner", () => {
-    const base = BUILTIN_MACHINES.find((m) => m.id === "rullbana-underslag")!;
-    const twoWay: Machine = {
-      ...base,
-      id: "delare",
-      ports: [
-        { ...base.ports[0], id: "in", role: "in", pos: { x: 0, y: 1000 }, dir: "x+" },
-        { ...base.ports[1], id: "ut", role: "out", pos: { x: 6000, y: 1000 }, dir: "x+" },
-        {
-          ...base.ports[1],
-          id: "ut-sida",
-          role: "out",
-          pos: { x: 3000, y: 2000 },
-          dir: "y+",
-          allowsDirectionChange: true,
-        },
-      ],
+  it("tar bort maskinen och lämnar de andra", () => {
+    const ctx = context(defaultConfig());
+    const before = ctx.draft.line.length;
+    const target = ctx.draft.line[1].instanceId;
+    const result = executeTool("remove_machine", { instanceId: target }, ctx) as {
+      removed: string;
     };
-    const ctx = context(defaultConfig(), makeLibrary([...BUILTIN_MACHINES, twoWay]));
-    executeTool("clear_line", {}, ctx);
-    const parent = executeTool("add_machine", { machineId: "delare" }, ctx) as {
-      added: { instanceId: string };
+    expect(result.removed).toBe(target);
+    expect(ctx.draft.line).toHaveLength(before - 1);
+    expect(ctx.draft.line.some((i) => i.instanceId === target)).toBe(false);
+  });
+
+  it("säger till när maskinen inte finns", () => {
+    const ctx = context(defaultConfig());
+    const result = executeTool("remove_machine", { instanceId: "finns-inte" }, ctx) as {
+      error?: string;
     };
-    const branch = executeTool(
-      "add_machine",
-      {
-        machineId: "rullbana",
-        branchFromInstanceId: parent.added.instanceId,
-        branchOutPortId: "ut-sida",
-      },
-      ctx,
-    ) as { added: { instanceId: string } };
-
-    const result = executeTool(
-      "remove_machine",
-      { instanceId: parent.added.instanceId },
-      ctx,
-    ) as { alsoRemoved: string[] };
-
-    expect(result.alsoRemoved).toContain(branch.added.instanceId);
-    expect(ctx.draft.line).toHaveLength(0);
+    expect(result.error).toContain("finns-inte");
   });
 });
 

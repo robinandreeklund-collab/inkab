@@ -214,24 +214,40 @@ export type LineItem = {
   /** Valt utförande. Utelämnas används maskinens första variant, om någon. */
   variantId?: string;
   /**
-   * Vilken utgång linjen fortsätter ur, för maskiner med flera. Utelämnas
-   * används den första.
-   */
-  outPortId?: string;
-  /**
-   * Grenrot: maskinen sitter på en annan maskins utgång i stället för på den
-   * föregående i listan. Allt som följer i listan hör till samma gren tills
-   * nästa grenrot.
+   * Var maskinen står i hallen: dess origo i millimeter.
    *
-   * Linjen är alltså ett träd, lagrat som en platt lista. Listan behåller
-   * ordningen för offert, ångra och numrering; grenarna ligger i länkarna.
+   * Positionen är kundens, inte uträknad. Maskinerna kopplades förut ihop
+   * port mot port och en solver räknade fram var var och en hamnade; det gav
+   * en enda auktoritet över placeringen, men också en anläggning som bara
+   * gick att bygga på ett sätt. Nu står maskinen där någon lagt den.
+   *
+   * Utelämnas — i en sparad konfiguration från tiden före fri placering —
+   * får posten en plats på ledig yta när layouten räknas ut.
    */
-  branch?: { fromInstanceId: string; outPortId: string };
+  pos?: Vec2;
+  /** Hur maskinen är vriden. Utelämnas står den som i katalogen. */
+  rotation?: Rotation;
+  /** Spegelvänd, för maskiner som går att få i höger- och vänsterutförande. */
+  mirrored?: boolean;
+  /**
+   * Längd i millimeter, för maskiner som kapas till mått.
+   *
+   * Låg förut i flödesfrågan "längd på sista kedjetransportören", vilket bara
+   * kunde gälla en maskin i hela anläggningen. Längden hör till maskinen.
+   */
+  lengthMm?: number;
   selectedOptions: string[];
   /** Kundens värden på maskinens parametrar. */
   parameters?: Record<string, ParameterValue>;
-  /** Manuell justering av den genererade placeringen, mm. */
-  manualOffset?: Vec2;
+  /**
+   * Kundens egen anteckning om just den här maskinen.
+   *
+   * "Befintlig, flyttas från hall 2", "kunden vill ha extra lyft här".
+   * Sådant som inte går att uttrycka i mått eller optioner men som den som
+   * läser offerten behöver veta. Den följer med till offertunderlaget och
+   * påverkar varken geometri eller pris.
+   */
+  note?: string;
 };
 
 /**
@@ -256,26 +272,10 @@ export type DrawnObject = {
 };
 
 export type Flow = {
-  /** "Kommer paketen in från: Rakt / Höger / Vänster" */
-  infeedFrom: "straight" | "right" | "left";
-  /** "Vilken sida ska pulpeten stå på" */
-  controlDeskSide: Side;
-  /** "Vilken sida ska ströfacksmagasinet stå på" */
-  stickerMagazineSide: Side;
-  /** "Från vilken sida hämtar trucken färdiga paket" */
+  /** "Från vilken sida hämtar trucken färdiga paket" — styr förslaget på truckgata. */
   truckPickupSide: Side;
-  /** "Längd på sista kedjetransportören" */
-  finalConveyorLengthMm: number;
-
-  /** Var linjen börjar i hallen. Kan dras i ritningen. */
+  /** Var den första maskinen läggs när hallen är tom. Kan dras i ritningen. */
   startPoint: Vec2;
-  /** Önskad slutpunkt för linjen. Null = ingen målpunkt angiven. */
-  endPoint: Vec2 | null;
-  /**
-   * Sätter sista kedjetransportörens längd automatiskt så att linjen slutar
-   * vid slutpunkten. Kräver att endPoint är satt.
-   */
-  fitToEndPoint: boolean;
 };
 
 export type Hall = {
@@ -404,7 +404,6 @@ export type Metrics = {
   manufacturingHours: number;
   assemblyHours: number;
   /** Avstånd mellan linjens faktiska slut och önskad slutpunkt, mm. */
-  endPointGapMm: number | null;
 };
 
 export type LayoutResult = {

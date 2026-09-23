@@ -8,15 +8,20 @@ import type { Configuration } from "@/lib/types";
 const clone = (c: Configuration): Configuration => JSON.parse(JSON.stringify(c));
 
 describe("kedjevandring", () => {
-  it("kopplar ihop utport med nästa inport utan glapp", () => {
+  it("ritar ut varje maskins portar i hallens koordinater", () => {
+    // Portarna kopplar ingenting längre — de är pilar som säger åt vilket
+    // håll maskinen tar emot och lämnar. De måste därför ligga på maskinen.
     const layout = solveLayout(defaultConfig());
-    const line = layout.placements.filter((p) => !p.aux).sort((a, b) => a.pos - b.pos);
+    const line = layout.placements.filter((p) => !p.aux);
     expect(line.length).toBeGreaterThan(2);
 
-    for (let i = 0; i < line.length - 1; i++) {
-      const out = line[i].ports.find((p) => p.role === "out")!;
-      const next = line[i + 1].ports.find((p) => p.role === "in")!;
-      expect(Math.hypot(out.pos.x - next.pos.x, out.pos.y - next.pos.y)).toBeLessThan(1);
+    for (const p of line) {
+      for (const port of p.ports) {
+        expect(port.pos.x).toBeGreaterThanOrEqual(p.bbox.x - 1);
+        expect(port.pos.x).toBeLessThanOrEqual(p.bbox.x + p.bbox.l + 1);
+        expect(port.pos.y).toBeGreaterThanOrEqual(p.bbox.y - 1);
+        expect(port.pos.y).toBeLessThanOrEqual(p.bbox.y + p.bbox.w + 1);
+      }
     }
   });
 
@@ -37,34 +42,7 @@ describe("kedjevandring", () => {
   });
 });
 
-describe("de fem flödesfrågorna påverkar geometrin", () => {
-  it("infeed från sidan utan tvärtransportör flaggas", () => {
-    const config = defaultConfig();
-    config.flow.infeedFrom = "right";
-    const layout = solveLayout(config);
-    expect(layout.neverTurnedToMainAxis).toBe(true);
-    expect(computeLayout(config).diagnostics.some((d) => d.code === "R-102")).toBe(true);
-  });
-
-  it("controlDeskSide flyttar pulpeten till motsatt sida", () => {
-    const right = solveLayout(defaultConfig());
-    const leftConfig = defaultConfig();
-    leftConfig.flow.controlDeskSide = "left";
-    const left = solveLayout(leftConfig);
-
-    const deskOf = (l: typeof right) => l.placements.find((p) => p.machineId === "manoverpulpet")!;
-    expect(deskOf(right).bbox.y).not.toBe(deskOf(left).bbox.y);
-  });
-
-  it("stickerMagazineSide flyttar magasinet", () => {
-    const a = defaultConfig();
-    const b = defaultConfig();
-    b.flow.stickerMagazineSide = "left";
-    const magA = solveLayout(a).placements.find((p) => p.machineId === "strofacksmagasin")!;
-    const magB = solveLayout(b).placements.find((p) => p.machineId === "strofacksmagasin")!;
-    expect(magA.bbox.y).toBeGreaterThan(magB.bbox.y);
-  });
-
+describe("hallen och truckgatorna", () => {
   it("truckgatan kommer från det kunden ritat, inte från linjens längd", () => {
     const config = defaultConfig();
     const before = solveLayout(config);
@@ -95,24 +73,21 @@ describe("de fem flödesfrågorna påverkar geometrin", () => {
     expect(solveLayout(config).aisles).toHaveLength(2);
   });
 
-  it("finalConveyorLengthMm ändrar både geometri och totallängd", () => {
+  it("längden sätts per maskin, inte av en flödesfråga", () => {
     const short = defaultConfig();
-    short.flow.finalConveyorLengthMm = 6000;
+    short.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm = 6000;
     const long = defaultConfig();
-    long.flow.finalConveyorLengthMm = 18000;
+    long.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm = 18000;
 
-    const shortLayout = solveLayout(short);
-    const longLayout = solveLayout(long);
-    const kt = (l: typeof shortLayout) => l.placements.find((p) => p.machineId === "kedjetransportor")!;
-
-    expect(kt(shortLayout).size.lengthMm).toBe(6000);
-    expect(kt(longLayout).size.lengthMm).toBe(18000);
-    expect(longLayout.metrics.totalLengthMm - shortLayout.metrics.totalLengthMm).toBe(12000);
+    const kt = (c: typeof short) =>
+      solveLayout(c).placements.find((p) => p.machineId === "kedjetransportor")!;
+    expect(kt(short).size.lengthMm).toBe(6000);
+    expect(kt(long).size.lengthMm).toBe(18000);
   });
 
   it("respekterar min- och maxlängd för parametriska maskiner", () => {
     const config = defaultConfig();
-    config.flow.finalConveyorLengthMm = 99000;
+    config.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm = 59000;
     const kt = solveLayout(config).placements.find((p) => p.machineId === "kedjetransportor")!;
     expect(kt.size.lengthMm).toBe(getMachine("kedjetransportor")!.parametricLength!.maxMm);
   });
@@ -148,19 +123,54 @@ describe("mätvärden", () => {
   });
 });
 
-describe("manuell justering", () => {
-  it("flyttar maskinen utan att riva resten av kedjan", () => {
+/**
+ * Fri placering.
+ *
+ * Maskinerna kopplades förut ihop port mot port och en solver räknade fram
+ * var var och en hamnade. Nu står maskinen där kunden ställt den, och att
+ * flytta en granne rör ingen annan.
+ */
+describe("fri placering", () => {
+  it("lägger maskinen exakt där positionen säger", () => {
     const config = defaultConfig();
     const target = config.line[1];
+    target.pos = { x: 20000, y: 8000 };
+    const at = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    expect(at.bbox.x).toBe(20000);
+    expect(at.bbox.y).toBe(8000);
+  });
+
+  it("låter grannarna stå kvar när en maskin flyttas", () => {
+    const config = defaultConfig();
     const before = solveLayout(config);
-    target.manualOffset = { x: 0, y: 3000 };
+    const target = config.line[1];
+    target.pos = { x: 30000, y: 15000 };
     const after = solveLayout(config);
 
-    const at = (l: typeof before, id: string) => l.placements.find((p) => p.instanceId === id)!;
-    expect(at(after, target.instanceId).bbox.y - at(before, target.instanceId).bbox.y).toBe(3000);
+    for (const p of before.placements) {
+      if (p.instanceId === target.instanceId) continue;
+      const nu = after.placements.find((q) => q.instanceId === p.instanceId)!;
+      expect(nu.bbox).toEqual(p.bbox);
+    }
+  });
 
-    const last = config.line[3];
-    expect(at(after, last.instanceId).bbox).toEqual(at(before, last.instanceId).bbox);
+  it("vrider maskinen efter sin rotation", () => {
+    const config = defaultConfig();
+    const target = config.line[0];
+    target.pos = { x: 5000, y: 5000 };
+    const rakt = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    target.rotation = 90;
+    const vriden = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    expect(vriden.bbox.l).toBeCloseTo(rakt.bbox.w, 5);
+    expect(vriden.bbox.w).toBeCloseTo(rakt.bbox.l, 5);
+  });
+
+  it("ger en post utan position en plats på ledig yta", () => {
+    const config = defaultConfig();
+    for (const item of config.line) delete item.pos;
+    const solved = solveLayout(config);
+    expect(solved.unplaced).toEqual([]);
+    expect(solved.placements.every((p) => p.bbox.x > 0)).toBe(true);
   });
 });
 
@@ -218,12 +228,12 @@ describe("maskinzonen gäller per sida", () => {
     }),
   );
 
-  it("låter maskiner i kedjan stå tätt trots bred sidozon", () => {
+  it("låter sidozonen vara utan att ändra maskinens egen box", () => {
+    // Zonen är bredare än maskinen, men maskinens kropp är maskinens mått.
     const layout = computeLayout(line(["rullbana", "rullbana", "rullbana"]), library);
-    for (let i = 1; i < layout.placements.length; i++) {
-      const before = layout.placements[i - 1];
-      const gap = layout.placements[i].bbox.x - (before.bbox.x + before.bbox.l);
-      expect(gap).toBe(0);
+    for (const p of layout.placements) {
+      expect(p.bbox.l).toBe(3000);
+      expect(p.bbox.w).toBe(1600);
     }
   });
 

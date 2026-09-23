@@ -1,8 +1,11 @@
-import { connectedPairs } from "./branches";
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
+import { translate } from "./i18n/translate";
+
+/** Textslagning på kundens språk. Se lib/i18n. */
+export type Translate = (key: string, vars?: Record<string, string | number>) => string;
 
 const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
 
@@ -17,6 +20,31 @@ const MIN_TRUCK_WIDTH_MM = 3500;
 /** Hur nära en port truckgatan ska ligga för att räknas som ansluten, mm. */
 const DOOR_REACH_MM = 1500;
 
+/**
+ * Zonen kapad vid maskinens egna ändar.
+ *
+ * En maskinzon är fritt utrymme, men inte lika åt alla håll: framåt och bakåt
+ * är den kopplingsytan — där står nästa maskin i linjen, och det är så en
+ * anläggning byggs. Åt sidorna är den åtkomst, och där är ett hinder ett
+ * hinder. Katalogen säger samma sak i siffror: fram och bak är 600–1000 mm,
+ * vänster och höger 1000–2200. Servicezonerna ligger uteslutande längs
+ * långsidorna.
+ *
+ * Förut visste solvern vilka maskiner som satt ihop port mot port och undantog
+ * dem. Med fri placering finns ingen kedja att fråga, och utan den blev varje
+ * granne ett intrång: en helt vanlig linje gav åtta fel och fyra varningar.
+ * Geometrin räcker för att skilja ändarna från sidorna.
+ */
+function sidesOnly(zone: Box, p: Placement): Box {
+  const alongX = Math.abs(p.bbox.l - p.size.lengthMm) < Math.abs(p.bbox.w - p.size.lengthMm);
+  if (alongX) {
+    const x = Math.max(zone.x, p.bbox.x);
+    return { x, y: zone.y, l: Math.max(0, Math.min(zone.x + zone.l, p.bbox.x + p.bbox.l) - x), w: zone.w };
+  }
+  const y = Math.max(zone.y, p.bbox.y);
+  return { x: zone.x, y, l: zone.l, w: Math.max(0, Math.min(zone.y + zone.w, p.bbox.y + p.bbox.w) - y) };
+}
+
 function hallBox(config: Configuration): Box {
   return { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
 }
@@ -29,58 +57,18 @@ export function runRules(
   config: Configuration,
   layout: SolveOutput,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  /*
+   * Texterna kommer utifrån, på kundens språk. Regeln räknar, den formulerar
+   * inte: en tysk kund ska inte läsa svenska fel om sin egen anläggning.
+   * Utan översättare svarar regelverket på svenska, som förut.
+   */
+  t: Translate = (key, vars) => translate("sv", key, vars),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
   const line = layout.placements.filter((p) => !p.aux).sort((a, b) => a.pos - b.pos);
   const aux = layout.placements.filter((p) => p.aux);
   const all = layout.placements;
   const hall = hallBox(config);
-
-  /* ── R-101 Portmatchning ────────────────────────────────────────────── */
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = line[i];
-    const b = line[i + 1];
-    const outPort = a.ports.find((p) => p.role === "out");
-    const inPort = b.ports.find((p) => p.role === "in");
-    if (!outPort || !inPort) continue;
-
-    if (Math.abs(outPort.levelMm - inPort.levelMm) > PORT_LEVEL_TOLERANCE_MM) {
-      out.push({
-        code: "R-101",
-        severity: "error",
-        title: "Portarna ligger på olika höjd",
-        detail: `${a.machine.name} lämnar paketet på ${outPort.levelMm} mm och ${b.machine.name} tar emot på ${inPort.levelMm} mm. Skillnaden är ${Math.abs(outPort.levelMm - inPort.levelMm)} mm.`,
-        instanceIds: [a.instanceId, b.instanceId],
-        anchor: outPort.pos,
-      });
-    }
-
-    const gap = Math.hypot(outPort.pos.x - inPort.pos.x, outPort.pos.y - inPort.pos.y);
-    if (gap > 50) {
-      out.push({
-        code: "R-101",
-        severity: "warning",
-        title: "Glapp mellan maskinerna",
-        detail: `Det är ${m(gap)} m mellan ${a.machine.name} och ${b.machine.name}. En manuell förskjutning har brutit kopplingen.`,
-        instanceIds: [a.instanceId, b.instanceId],
-        anchor: outPort.pos,
-      });
-    }
-  }
-
-  /* ── R-102 Riktningsändring saknas ──────────────────────────────────── */
-  if (layout.neverTurnedToMainAxis && line.length > 0) {
-    out.push({
-      code: "R-102",
-      severity: "error",
-      title: "Linjen vänds aldrig längs hallen",
-      detail:
-        "Paketen kommer in från sidan men ingen maskin i linjen kan vinkla flödet. Lägg till en tvärtransportör efter inmatningen.",
-      instanceIds: [line[0].instanceId],
-      anchor: boxCenter(line[0].bbox),
-      fix: { kind: "addMachine", machineId: "tt1", label: "Lägg till tvärtransportör" },
-    });
-  }
 
   /* ── R-103 Maskiner överlappar ──────────────────────────────────────── */
   for (let i = 0; i < all.length; i++) {
@@ -92,8 +80,12 @@ export function runRules(
       out.push({
         code: "R-103",
         severity: "error",
-        title: "Maskiner överlappar",
-        detail: `${a.machine.name} och ${b.machine.name} går in i varandra över ${area.toFixed(1).replace(".", ",")} m².`,
+        title: t("rule.overlap.t"),
+        detail: t("rule.overlap.d", {
+          a: a.machine.name,
+          b: b.machine.name,
+          area: area.toFixed(1).replace(".", ","),
+        }),
         instanceIds: [a.instanceId, b.instanceId],
         anchor: boxCenter(a.bbox),
       });
@@ -103,41 +95,36 @@ export function runRules(
   /* ── R-104 Servicezon blockerad ─────────────────────────────────────── */
   for (const p of all) {
     for (const zone of p.zones.filter((z) => z.type === "service")) {
+      const box = sidesOnly(zone.box, p);
       for (const other of all) {
         if (other.instanceId === p.instanceId) continue;
-        if (!boxesOverlap(zone.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
+        if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
         out.push({
           code: "R-104",
           severity: "warning",
-          title: "Servicezon blockerad",
-          detail: `${other.machine.name} står i servicezonen för ${p.machine.name}. Underhåll blir svårt att komma åt.`,
+          title: t("rule.service.t"),
+          detail: t("rule.service.d", { other: other.machine.name, machine: p.machine.name }),
           instanceIds: [p.instanceId, other.instanceId],
-          anchor: boxCenter(zone.box),
+          anchor: boxCenter(box),
         });
       }
     }
   }
 
   /* ── R-106 Maskinzonen inkräktad ────────────────────────────────────── */
-  const connected = connectedPairs(config.line);
-  const isConnected = (a: string, b: string) => connected.has([a, b].sort().join("|"));
-
   for (const p of all) {
     const clearance = p.zones.find((z) => z.type === "clearance");
     if (!clearance) continue;
+    const sides = sidesOnly(clearance.box, p);
 
     for (const other of all) {
       if (other.instanceId === p.instanceId) continue;
-      // Den inkopplade grannen står port mot port och därmed med rätta i
-      // frigången. Kopplingen läses ur linjens träd, inte ur positionsnummer:
-      // en grenrot kan ha nummer 3 och sitta på nummer 1.
-      if (!p.aux && !other.aux && isConnected(p.instanceId, other.instanceId)) continue;
-      if (!boxesOverlap(clearance.box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
+      if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "error",
-        title: "Maskinzonen är inkräktad",
-        detail: `${other.machine.name} står innanför maskinzonen kring ${p.machine.name}. Det fria utrymmet runt maskinen måste hållas.`,
+        title: t("rule.clearance.t"),
+        detail: t("rule.clearance.d", { other: other.machine.name, machine: p.machine.name }),
         instanceIds: [p.instanceId, other.instanceId],
         anchor: boxCenter(other.bbox),
       });
@@ -146,12 +133,12 @@ export function runRules(
     for (const obj of config.drawn) {
       if (obj.kind === "door" || obj.kind === "truck") continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
-      if (!boxesOverlap(clearance.box, box, TOUCH_TOLERANCE_MM)) continue;
+      if (!boxesOverlap(sides, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "error",
-        title: "Maskinzonen är inkräktad",
-        detail: `${obj.name} går in i maskinzonen kring ${p.machine.name}.`,
+        title: t("rule.clearance.t"),
+        detail: t("rule.clearanceObj.d", { obj: obj.name, machine: p.machine.name }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(box),
       });
@@ -166,8 +153,8 @@ export function runRules(
         out.push({
           code: "R-105",
           severity: "error",
-          title: "Skyddszon ligger i truckgatan",
-          detail: `Skyddszonen kring ${p.machine.name} skär ${aisle.label.toLowerCase()}. Trucken kan inte passera en aktiv skyddszon.`,
+          title: t("rule.safety.t"),
+          detail: t("rule.safety.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
           instanceIds: [p.instanceId],
           anchor: boxCenter(zone.box),
         });
@@ -181,8 +168,12 @@ export function runRules(
       out.push({
         code: "R-201",
         severity: "error",
-        title: "Truckgatan ligger utanför hallen",
-        detail: `${aisle.label} sträcker sig utanför hallens ${m(config.hall.lengthMm)} × ${m(config.hall.widthMm)} m.`,
+        title: t("rule.aisleOut.t"),
+        detail: t("rule.aisleOut.d", {
+          aisle: aisle.label,
+          l: m(config.hall.lengthMm),
+          w: m(config.hall.widthMm),
+        }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -191,8 +182,12 @@ export function runRules(
       out.push({
         code: "R-201",
         severity: "warning",
-        title: "Truckgatan är smal",
-        detail: `${aisle.label} är ${m(aisle.widthMm)} m på sitt smalaste ställe. En motviktstruck med paket behöver normalt minst ${m(MIN_TRUCK_WIDTH_MM)} m.`,
+        title: t("rule.aisleNarrow.t"),
+        detail: t("rule.aisleNarrow.d", {
+          aisle: aisle.label,
+          w: m(aisle.widthMm),
+          min: m(MIN_TRUCK_WIDTH_MM),
+        }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -204,57 +199,10 @@ export function runRules(
     out.push({
       code: "R-205",
       severity: "warning",
-      title: "Ingen truckgata eller hämtzon",
-      detail:
-        "Rita ut var trucken kör och hämtar färdiga paket. Utan den kan varken utrymme eller åtkomst kontrolleras.",
+      title: t("rule.noAisle.t"),
+      detail: t("rule.noAisle.d"),
       instanceIds: [],
       anchor: boxCenter(layout.lineBounds),
-    });
-  }
-
-  /* ── R-202 För kort buffert på sista transportören ──────────────────── */
-  const parametric = [...line].reverse().find((p) => p.machine.parametricLength);
-  if (parametric) {
-    const needed = config.product.packageLengthMm * 2;
-    if (parametric.size.lengthMm < needed) {
-      out.push({
-        code: "R-202",
-        severity: "warning",
-        title: "För kort buffert före utlastning",
-        detail: `${parametric.machine.name} är ${m(parametric.size.lengthMm)} m. För två pakets buffert behövs minst ${m(needed)} m.`,
-        instanceIds: [parametric.instanceId],
-        anchor: boxCenter(parametric.bbox),
-        fix: {
-          kind: "flow",
-          patch: { finalConveyorLengthMm: needed },
-          label: `Förläng till ${m(needed)} m`,
-        },
-      });
-    }
-  }
-
-  /* ── R-206 Längdfrågan styr ingenting ───────────────────────────────── */
-  /*
-   * "Längd på sista kedjetransportören" gäller bara en maskin som verkligen
-   * kapas till längd. Har alla transportörer i linjen uppmätt CAD-modell
-   * eller bestämda utföranden har frågan ingen verkan — och då ska det sägas,
-   * i stället för att kunden ställer in ett mått som inte händer något av.
-   */
-  const adjustable = line.find(
-    (p) => p.machine.parametricLength && !p.machine.model && !(p.machine.variants?.length ?? 0),
-  );
-  const fixedLength = line.filter((p) => p.machine.parametricLength && !adjustable);
-  if (!adjustable && fixedLength.length > 0) {
-    out.push({
-      code: "R-206",
-      severity: "info",
-      title: "Längdfrågan styr ingen maskin",
-      detail:
-        `${fixedLength.map((p) => p.machine.name).join(", ")} har mått ur CAD-modell eller ` +
-        "valt utförande, så längden kommer därifrån. Inställningen \"längd på sista " +
-        "kedjetransportören\" påverkar inget i den här linjen.",
-      instanceIds: fixedLength.map((p) => p.instanceId),
-      anchor: boxCenter(fixedLength[fixedLength.length - 1].bbox),
     });
   }
 
@@ -262,32 +210,18 @@ export function runRules(
   for (const aisle of layout.aisles) {
     for (const p of aux) {
       if (!boxesOverlap(p.bbox, aisle.box, TOUCH_TOLERANCE_MM)) continue;
-      const isDesk = p.machine.category === "control";
       out.push({
         code: "R-203",
         severity: "error",
-        title: `${p.machine.name} står i truckgatan`,
-        detail: `${p.machine.name} står i ${aisle.label.toLowerCase()}. Trucken kan inte passera.`,
+        title: t("rule.auxAisle.t", { machine: p.machine.name }),
+        detail: t("rule.auxAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
-        fix: isDesk
-          ? {
-              kind: "flow",
-              patch: { controlDeskSide: config.flow.controlDeskSide === "right" ? "left" : "right" },
-              label: "Flytta pulpeten till andra sidan",
-            }
-          : {
-              kind: "flow",
-              patch: {
-                stickerMagazineSide: config.flow.stickerMagazineSide === "right" ? "left" : "right",
-              },
-              label: "Flytta magasinet till andra sidan",
-            },
       });
     }
   }
 
-  /* ── R-204 Magasinet nås inte utan att korsa flödet ─────────────────── */
+  /* ── R-204 Magasinet nås inte utan att passera maskinerna ───────────── */
   const magazine = aux.find((p) => p.machine.category === "stickers" && p.aux);
   if (magazine && layout.aisles.length > 0 && line.length > 0) {
     // Närmaste truckzon är den trucken realistiskt kör från.
@@ -305,37 +239,13 @@ export function runRules(
       out.push({
         code: "R-204",
         severity: "warning",
-        title: "Magasinet nås inte utan att korsa flödet",
-        detail: `Trucken måste passera ${blocking.map((b) => b.machine.name).join(", ")} för att fylla ${magazine.machine.name}.`,
+        title: t("rule.magazine.t"),
+        detail: t("rule.magazine.d", {
+          blocking: blocking.map((b) => b.machine.name).join(", "),
+          magazine: magazine.machine.name,
+        }),
         instanceIds: [magazine.instanceId, ...blocking.map((b) => b.instanceId)],
         anchor: boxCenter(magazine.bbox),
-        fix: {
-          kind: "flow",
-          patch: {
-            stickerMagazineSide: config.flow.stickerMagazineSide === "right" ? "left" : "right",
-          },
-          label: "Flytta magasinet till andra sidan",
-        },
-      });
-    }
-  }
-
-  /* ── R-206 Linjen slutar inte där kunden vill ───────────────────────── */
-  if (config.flow.endPoint && layout.lineEnd) {
-    const gap = layout.metrics.endPointGapMm ?? 0;
-    if (gap > END_POINT_TOLERANCE_MM) {
-      out.push({
-        code: "R-206",
-        severity: "warning",
-        title: "Linjen slutar inte vid slutpunkten",
-        detail: config.flow.fitToEndPoint
-          ? `Linjen slutar ${m(gap)} m från slutpunkten trots automatisk anpassning. Sista transportörens längd räcker inte hela vägen — flytta slutpunkten eller lägg till en transportör.`
-          : `Linjen slutar ${m(gap)} m från slutpunkten. Slå på automatisk anpassning eller justera sista transportörens längd.`,
-        instanceIds: [],
-        anchor: layout.lineEnd,
-        fix: config.flow.fitToEndPoint
-          ? undefined
-          : { kind: "flow", patch: { fitToEndPoint: true }, label: "Anpassa längden automatiskt" },
       });
     }
   }
@@ -351,8 +261,8 @@ export function runRules(
       out.push({
         code: "R-207",
         severity: "warning",
-        title: "Truckgatan når ingen port",
-        detail: `${aisle.label} ansluter inte till någon av hallens portar. Kontrollera hur trucken tar sig in och ut.`,
+        title: t("rule.aisleDoor.t"),
+        detail: t("rule.aisleDoor.d", { aisle: aisle.label }),
         instanceIds: [],
         anchor: boxCenter(aisle.box),
       });
@@ -366,8 +276,12 @@ export function runRules(
     out.push({
       code: "R-301",
       severity: "warning",
-      title: "Kapaciteten understiger målet",
-      detail: `${p.machine.name} klarar ${p.capacity} paket/h men linjen är dimensionerad för ${config.product.targetPackagesPerHour} paket/h.`,
+      title: t("rule.capacity.t"),
+      detail: t("rule.capacity.d", {
+        machine: p.machine.name,
+        has: p.capacity,
+        target: config.product.targetPackagesPerHour,
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -379,18 +293,24 @@ export function runRules(
     const c = p.machine.capacity;
     if (c.maxWeightKg <= 0) continue;
     const checks: [string, number, [number, number]][] = [
-      ["längd", prod.packageLengthMm, c.packageLengthMm],
-      ["minsta virkesbredd", prod.packageWidthMinMm, c.packageWidthMm],
-      ["största virkesbredd", prod.packageWidthMaxMm, c.packageWidthMm],
-      ["höjd", prod.packageHeightMm, c.packageHeightMm],
+      ["product.length", prod.packageLengthMm, c.packageLengthMm],
+      ["sidebar.widthMin", prod.packageWidthMinMm, c.packageWidthMm],
+      ["sidebar.widthMax", prod.packageWidthMaxMm, c.packageWidthMm],
+      ["product.height", prod.packageHeightMm, c.packageHeightMm],
     ];
     for (const [label, value, [min, max]] of checks) {
       if (value >= min && value <= max) continue;
       out.push({
         code: "R-302",
         severity: "error",
-        title: "Paketet passar inte maskinen",
-        detail: `Paketets ${label} ${m(value)} m ligger utanför ${p.machine.name}: ${m(min)}–${m(max)} m.`,
+        title: t("rule.package.t"),
+        detail: t("rule.package.d", {
+          label: t(label).toLowerCase(),
+          value: m(value),
+          machine: p.machine.name,
+          min: m(min),
+          max: m(max),
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -404,8 +324,15 @@ export function runRules(
       out.push({
         code: "R-304",
         severity: "warning",
-        title: "Porten täcker inte hela virkesbreddsintervallet",
-        detail: `Port ${port.id} på ${p.machine.name} tar ${m(portMin)}–${m(portMax)} m, men linjen ska köra ${m(prod.packageWidthMinMm)}–${m(prod.packageWidthMaxMm)} m.`,
+        title: t("rule.portWidth.t"),
+        detail: t("rule.portWidth.d", {
+          port: port.id,
+          machine: p.machine.name,
+          portMin: m(portMin),
+          portMax: m(portMax),
+          prodMin: m(prod.packageWidthMinMm),
+          prodMax: m(prod.packageWidthMaxMm),
+        }),
         instanceIds: [p.instanceId],
         anchor: port.pos,
       });
@@ -414,8 +341,12 @@ export function runRules(
       out.push({
         code: "R-303",
         severity: "error",
-        title: "Paketet är för tungt",
-        detail: `${prod.packageWeightKg} kg överstiger ${p.machine.name}s max ${c.maxWeightKg} kg.`,
+        title: t("rule.weight.t"),
+        detail: t("rule.weight.d", {
+          kg: prod.packageWeightKg,
+          machine: p.machine.name,
+          max: c.maxWeightKg,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -428,8 +359,12 @@ export function runRules(
     out.push({
       code: "R-401",
       severity: "error",
-      title: "Maskinen hamnar utanför hallen",
-      detail: `${p.machine.name} ligger utanför hallens ${m(config.hall.lengthMm)} × ${m(config.hall.widthMm)} m.`,
+      title: t("rule.outsideHall.t"),
+      detail: t("rule.outsideHall.d", {
+        machine: p.machine.name,
+        l: m(config.hall.lengthMm),
+        w: m(config.hall.widthMm),
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -439,8 +374,12 @@ export function runRules(
     out.push({
       code: "R-402",
       severity: "error",
-      title: "Maskinen är högre än hallen",
-      detail: `${p.machine.name} är ${m(p.size.heightMm)} m hög, fri höjd är ${m(config.hall.clearHeightMm)} m.`,
+      title: t("rule.tooTall.t"),
+      detail: t("rule.tooTall.d", {
+        machine: p.machine.name,
+        h: m(p.size.heightMm),
+        clear: m(config.hall.clearHeightMm),
+      }),
       instanceIds: [p.instanceId],
       anchor: boxCenter(p.bbox),
     });
@@ -457,8 +396,8 @@ export function runRules(
       out.push({
         code: "R-403",
         severity: "error",
-        title: obj.kind === "wall" ? "Maskinen krockar med en vägg" : "Maskinen står i en no-go-zon",
-        detail: `${p.machine.name} överlappar ${obj.name}.`,
+        title: obj.kind === "wall" ? t("rule.hitWall.t") : t("rule.hitNogo.t"),
+        detail: t("rule.hitObj.d", { machine: p.machine.name, obj: obj.name }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -472,8 +411,8 @@ export function runRules(
       out.push({
         code: "R-404",
         severity: "error",
-        title: "Maskinen står i truckgatan",
-        detail: `${p.machine.name} ligger i ${aisle.label.toLowerCase()}. Flytta maskinen eller rita om zonen.`,
+        title: t("rule.inAisle.t"),
+        detail: t("rule.inAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -489,8 +428,8 @@ export function runRules(
       out.push({
         code: "R-501",
         severity: "error",
-        title: "Maskin saknas i linjen",
-        detail: `${p.machine.name} kräver ${reqMachine?.name ?? req} för att fungera.`,
+        title: t("rule.requires.t"),
+        detail: t("rule.requires.d", { machine: p.machine.name, needs: reqMachine?.name ?? req }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
         fix: { kind: "addMachine", machineId: req, label: `Lägg till ${reqMachine?.name ?? req}` },
@@ -501,36 +440,27 @@ export function runRules(
       out.push({
         code: "R-501",
         severity: "error",
-        title: "Maskinerna kan inte kombineras",
-        detail: `${p.machine.name} kan inte kombineras med ${getMachine(conflict, library)?.name ?? conflict}.`,
+        title: t("rule.conflict.t"),
+        detail: t("rule.conflict.d", {
+          machine: p.machine.name,
+          other: getMachine(conflict, library)?.name ?? conflict,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
     }
   }
 
-  /* ── R-601 Kedjan är felsorterad ────────────────────────────────────── */
-  for (let i = 0; i < line.length - 1; i++) {
-    const a = CATEGORY_ORDER.indexOf(line[i].machine.category);
-    const b = CATEGORY_ORDER.indexOf(line[i + 1].machine.category);
-    if (a <= b) continue;
-    out.push({
-      code: "R-601",
-      severity: "info",
-      title: "Ovanlig ordning i linjen",
-      detail: `${line[i].machine.name} står före ${line[i + 1].machine.name}. Kontrollera att ordningen är avsedd.`,
-      instanceIds: [line[i].instanceId, line[i + 1].instanceId],
-      anchor: boxCenter(line[i].bbox),
-    });
-  }
-
-  /* ── Maskiner som inte gick att koppla in ───────────────────────────── */
+  /* ── R-107 Maskinen finns inte i biblioteket ────────────────────────── */
   for (const u of layout.unplaced) {
     out.push({
-      code: "R-102",
+      code: "R-107",
       severity: "error",
-      title: "Maskinen kunde inte kopplas in",
-      detail: `${getMachine(u.machineId, library)?.name ?? u.machineId}: ${u.reason}`,
+      title: t("rule.unknown.t"),
+      detail: t("rule.unknown.d", {
+        machine: getMachine(u.machineId, library)?.name ?? u.machineId,
+        reason: t("rule.reasonMissing"),
+      }),
       instanceIds: [u.instanceId],
     });
   }

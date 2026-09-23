@@ -38,9 +38,16 @@ function signature(config: Configuration): string {
     product: config.product,
     line: config.line.map((item) => ({
       machineId: item.machineId,
+      // Utförande och längd är olika maskiner i allt som betyder något:
+      // mått, modell och pris. Utan dem fick en tremetersbana och en
+      // tolvmeters samma nummer.
+      variantId: item.variantId ?? null,
+      lengthMm: item.lengthMm ?? null,
       selectedOptions: [...item.selectedOptions].sort(),
       parameters: item.parameters ?? null,
-      manualOffset: item.manualOffset ?? null,
+      pos: item.pos ?? null,
+      rotation: item.rotation ?? null,
+      mirrored: item.mirrored ?? false,
     })),
     drawn: config.drawn.map((d) => {
       const { id: _id, ...rest } = d;

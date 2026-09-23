@@ -197,9 +197,16 @@ describe("utföranden och steglös längd", () => {
     const template = templateConfig("strolinje");
     const config: Configuration = {
       ...template,
-      // Hallens längdstyrning säger 12 m; utförandet säger 3 m.
-      flow: { ...template.flow, finalConveyorLengthMm: 12_000 },
-      line: [{ instanceId: "i1", machineId: "rullbana", variantId: "3m", selectedOptions: [] }],
+      // Postens egen längd säger 12 m; utförandet säger 3 m — utförandet vinner.
+      line: [
+        {
+          instanceId: "i1",
+          machineId: "rullbana",
+          variantId: "3m",
+          lengthMm: 12_000,
+          selectedOptions: [],
+        },
+      ],
     };
     expect(computeLayout(config, library).placements[0].size.lengthMm).toBe(3000);
   });
@@ -208,8 +215,7 @@ describe("utföranden och steglös längd", () => {
     const template = templateConfig("strolinje");
     const config: Configuration = {
       ...template,
-      flow: { ...template.flow, finalConveyorLengthMm: 9000 },
-      line: [{ instanceId: "i1", machineId: "rullbana", selectedOptions: [] }],
+      line: [{ instanceId: "i1", machineId: "rullbana", lengthMm: 9000, selectedOptions: [] }],
     };
     const plain = makeLibrary(BUILTIN_MACHINES);
     expect(computeLayout(config, plain).placements[0].size.lengthMm).toBe(9000);
@@ -288,10 +294,10 @@ describe("uppmätt modell slår steglös längd", () => {
     const template = templateConfig("strolinje");
     return {
       ...template,
-      flow: { ...template.flow, finalConveyorLengthMm: 12_000 },
       line: Array.from({ length: n }, (_, i) => ({
         instanceId: `i${i}`,
         machineId: "rullbana",
+        lengthMm: 12_000,
         selectedOptions: [],
       })),
     };
@@ -309,19 +315,14 @@ describe("uppmätt modell slår steglös längd", () => {
     }
   });
 
-  it("styr fortfarande en transportör utan modell", () => {
-    // Frågan ska inte sluta fungera för maskiner som verkligen kapas.
+  it("kapar fortfarande en transportör utan modell", () => {
+    // Längden hör till maskinen nu, så varje post bär sin egen. En utan
+    // angiven längd behåller katalogens mått.
     const plain = makeLibrary(BUILTIN_MACHINES);
-    const layout = computeLayout(lineOf(2), plain);
-    expect(layout.placements[1].size.lengthMm).toBe(12_000);
+    const config = lineOf(2);
+    delete config.line[0].lengthMm;
+    const layout = computeLayout(config, plain);
     expect(layout.placements[0].size.lengthMm).toBe(parametric.footprint.lengthMm);
-  });
-
-  it("säger till när längdfrågan inte styr något", () => {
-    const library = makeLibrary(
-      BUILTIN_MACHINES.map((m) => (m.id === "rullbana" ? measured : m)),
-    );
-    const codes = computeLayout(lineOf(2), library).diagnostics.map((d) => d.code);
-    expect(codes).toContain("R-206");
+    expect(layout.placements[1].size.lengthMm).toBe(12_000);
   });
 });

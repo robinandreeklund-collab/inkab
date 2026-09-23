@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { useT } from "@/lib/i18n";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
 import { ShareNotice } from "./ShareNotice";
@@ -38,6 +39,8 @@ export function AppShell() {
     selectedId,
     removeItem,
     removeDrawn,
+    turnDrawn,
+    turnMachine,
     proposalId,
   } = useConfigStore();
 
@@ -118,9 +121,6 @@ export function AppShell() {
           setView("2d");
           break;
         case "2":
-          setView("3d");
-          break;
-        case "3":
           setView("model");
           break;
         case "v":
@@ -150,6 +150,20 @@ export function AppShell() {
         case "f":
           toggleInspector();
           break;
+        case "r":
+          /*
+           * Vrida ska gå där man står. Att behöva sikta på en liten knapp i
+           * inspektorn för varje kvarts varv är ett avbrott mitt i arbetet —
+           * man tittar bort från ritningen för att ändra något man ser i den.
+           * Skift vrider åt andra hållet.
+           */
+          if (!selectedId) break;
+          event.preventDefault();
+          if (config.drawn.some((d) => d.id === selectedId)) turnDrawn(selectedId);
+          else if (config.line.some((i) => i.instanceId === selectedId)) {
+            turnMachine(selectedId, event.shiftKey ? -1 : 1);
+          }
+          break;
         case "delete":
         case "backspace":
           if (!selectedId) break;
@@ -160,6 +174,7 @@ export function AppShell() {
     },
     [
       config.drawn,
+      config.line,
       redo,
       removeDrawn,
       removeItem,
@@ -167,6 +182,8 @@ export function AppShell() {
       setTool,
       setView,
       toggleInspector,
+      turnDrawn,
+      turnMachine,
       togglePorts,
       toggleZones,
       undo,
@@ -260,23 +277,24 @@ export function AppShell() {
 
 function ToolRail() {
   const { tool, setTool, showZones, showPorts, toggleZones, togglePorts } = useConfigStore();
+  const t = useT();
 
   return (
     <div className="absolute right-3 top-3 flex flex-col gap-1">
       {(
         [
-          ["select", "Markera och flytta (V)", "m4 3 7 17 2.5-6.5L20 11z"],
-          ["wall", "Rita vägg (W)", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
-          ["door", "Rita port (D)", "M4 21V4h10v17M14 12h1M4 21h16"],
-          ["truck", "Rita truckgata (T)", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
-          ["nogo", "Rita no-go-zon (N)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
-          ["measure", "Mät avstånd (M)", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
+          ["select", "tool.select", "V", "m4 3 7 17 2.5-6.5L20 11z"],
+          ["wall", "tool.wall", "W", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
+          ["door", "tool.door", "D", "M4 21V4h10v17M14 12h1M4 21h16"],
+          ["truck", "tool.truck", "T", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
+          ["nogo", "tool.nogo", "N", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
+          ["measure", "tool.measure", "M", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
         ] as const
-      ).map(([value, title, path]) => (
+      ).map(([value, key, tangent, path]) => (
         <Button
           key={value}
           size="sm"
-          title={title}
+          title={`${t(key)} (${tangent})`}
           active={tool === value}
           onClick={() => setTool(value)}
           className="h-8 w-8 p-0"
@@ -286,12 +304,12 @@ function ToolRail() {
           </svg>
         </Button>
       ))}
-      <Button size="sm" title="Visa zoner (Z)" active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
+      <Button size="sm" title={`${t("cad.zones")} (Z)`} active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
         </svg>
       </Button>
-      <Button size="sm" title="Visa portar (P)" active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
+      <Button size="sm" title={`${t("cad.arrows")} (P)`} active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
           <circle cx="7" cy="12" r="2.5" />
           <circle cx="17" cy="12" r="2.5" />

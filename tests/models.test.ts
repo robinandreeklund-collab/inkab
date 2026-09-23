@@ -1,6 +1,12 @@
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
-import { convertStep, suggestPorts } from "@/lib/cad/stepConvert";
+import {
+  convertStep,
+  emptyResultError,
+  suggestPorts,
+  surveyMeshes,
+} from "@/lib/cad/stepConvert";
+import type { OcctMesh } from "occt-import-js";
 import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import { addYaw, flowFromPicks, snapToEdge } from "@/lib/cad/pickFlow";
@@ -495,5 +501,68 @@ describe("peka ut flödet på modellen", () => {
     const f = { lengthMm: 1600, widthMm: 3000 };
     expect(snapToEdge({ x: 700, y: 1400 }, f, "in")).toEqual({ x: 0, y: 1400 });
     expect(snapToEdge({ x: 700, y: 1400 }, f, "out")).toEqual({ x: 1600, y: 1400 });
+  });
+});
+
+/**
+ * Vad som händer när tesselleringen inte ger något.
+ *
+ * En tung sammanställning kan komma tillbaka med delar som saknar geometri —
+ * webbläsarens minne tog slut på vägen. Förr räknades de som "för små" och
+ * användaren fick beskedet att sänka gränsen för smådelar, vilket aldrig kan
+ * hjälpa: det fanns ingen geometri att behålla. Felet ska säga vad som hände.
+ */
+
+const mesh = (sizeMm: number, name = "del"): OcctMesh =>
+  ({
+    name,
+    attributes: { position: { array: [0, 0, 0, sizeMm, 0, 0, 0, sizeMm, 0] } },
+    index: { array: [0, 1, 2] },
+  }) as unknown as OcctMesh;
+
+const withoutGeometry = (): OcctMesh =>
+  ({ name: "tom", attributes: { position: { array: [] } }, index: { array: [] } }) as unknown as OcctMesh;
+
+describe("surveyMeshes", () => {
+  it("skiljer på små delar och delar utan geometri", () => {
+    const survey = surveyMeshes([mesh(400), mesh(20), withoutGeometry()], 100);
+
+    expect(survey.parts).toHaveLength(2);
+    expect(survey.kept).toHaveLength(1);
+    expect(survey.empty).toBe(1);
+  });
+
+  it("räknar en mesh utan index som tom", () => {
+    // Utan trianglar finns inget att bygga av, och byggsteget kastar kryptiskt.
+    const brokenIndex = {
+      name: "utan index",
+      attributes: { position: { array: [0, 0, 0, 500, 0, 0, 0, 500, 0] } },
+    } as unknown as OcctMesh;
+
+    const survey = surveyMeshes([brokenIndex], 100);
+    expect(survey.parts).toEqual([]);
+    expect(survey.empty).toBe(1);
+  });
+});
+
+describe("emptyResultError", () => {
+  it("tiger när det finns något att bygga", () => {
+    expect(emptyResultError(surveyMeshes([mesh(400)], 100), 100, 1_000_000)).toBeNull();
+  });
+
+  it("pekar på gränsen när delarna faktiskt var för små", () => {
+    const message = emptyResultError(surveyMeshes([mesh(20), mesh(30)], 100), 100, 1_000_000);
+    expect(message).toBe("Alla 2 delar var mindre än gränsen 100 mm. Sänk den.");
+  });
+
+  it("skyller inte på gränsen när ingen del hade geometri", () => {
+    const survey = surveyMeshes([withoutGeometry(), withoutGeometry()], 100);
+    const message = emptyResultError(survey, 100, 60_000_000);
+
+    expect(message).toContain("2 delar");
+    expect(message).toContain("60 MB");
+    expect(message).toContain("step2glb");
+    // Det var just det här rådet som skickade folk på en omöjlig jakt.
+    expect(message).not.toContain("Sänk den");
   });
 });

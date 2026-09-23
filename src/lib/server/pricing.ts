@@ -7,8 +7,18 @@ import type { Configuration } from "@/lib/types";
 
 export type Role = "guest" | "customer" | "sales" | "admin";
 
-/** Roller som får se exakta belopp. */
-export const canSeePrices = (role: Role) => role === "sales" || role === "admin";
+/**
+ * Roller som får se belopp — alla belopp.
+ *
+ * Bara admin. Priser är INKAB:s, inte kundens: den som bygger en anläggning
+ * i konfiguratorn ska se mått, kapacitet och regler, men inte vad det kostar.
+ * Ett pris lämnas av en människa, inte av en webbsida.
+ *
+ * Grinden gäller också intervallet. Ett "ungefär 2,6–3,4 Mkr" är ett pris:
+ * det räknas fram ur samma summa, röjer storleksordningen och blir ett
+ * ankare i en förhandling som ingen hos INKAB har varit med i.
+ */
+export const canSeePrices = (role: Role) => role === "admin";
 
 export type QuoteLine = {
   instanceId: string;
@@ -20,6 +30,8 @@ export type QuoteLine = {
   optionNames: string[];
   /** Kundens parametrar, som text för offertunderlaget. */
   parameterLines: string[];
+  /** Kundens egen anteckning om maskinen, när den skrivit en. */
+  note?: string;
   /** Endast i säljläge. */
   listPrice?: number;
   optionsPrice?: number;
@@ -44,8 +56,8 @@ export type PriceResult = {
     margin: number;
     marginPercent: number;
   } | null;
-  /** Alltid tillgängligt: indikativt intervall. */
-  indication: { lowSek: number; highSek: number };
+  /** Indikativt intervall. Null för alla utom admin — se canSeePrices. */
+  indication: { lowSek: number; highSek: number } | null;
   /**
    * Offertens egen justering, när den har en. Rabatten står som en egen rad —
    * ett avdrag som inte syns är inte ett avdrag utan ett annat pris.
@@ -81,7 +93,7 @@ export function priceConfiguration(
     const eff = effectiveMachine(
       machine,
       item.selectedOptions,
-      machine.parametricLength ? config.flow.finalConveyorLengthMm : undefined,
+      item.lengthMm,
       item.parameters,
       item.variantId,
     );
@@ -158,6 +170,7 @@ export function priceConfiguration(
         .map((id) => machine.options.find((o) => o.id === id)?.name)
         .filter((n): n is string => !!n),
       parameterLines,
+      ...(item.note ? { note: item.note } : {}),
       ...(showPrices ? { listPrice, optionsPrice: optionsPrice + parametersPrice, rowTotal } : {}),
     });
   });
@@ -191,21 +204,25 @@ export function priceConfiguration(
           marginPercent: grandTotal > 0 ? Math.round((margin / grandTotal) * 1000) / 10 : 0,
         }
       : null,
-    indication: {
-      // Ett avtalat totalpris är inte en indikation utan ett pris; då snävas
-      // intervallet ihop till det beloppet.
-      lowSek:
-        adjusted.fixedTotalSek !== null
-          ? grandTotal
-          : Math.round(grandTotal * priceBook.indicationSpread.low),
-      highSek:
-        adjusted.fixedTotalSek !== null
-          ? grandTotal
-          : Math.round(grandTotal * priceBook.indicationSpread.high),
-    },
-    adjustment: adjusted.applied ? adjusted : null,
+    indication: showPrices
+      ? {
+          // Ett avtalat totalpris är inte en indikation utan ett pris; då
+          // snävas intervallet ihop till det beloppet.
+          lowSek:
+            adjusted.fixedTotalSek !== null
+              ? grandTotal
+              : Math.round(grandTotal * priceBook.indicationSpread.low),
+          highSek:
+            adjusted.fixedTotalSek !== null
+              ? grandTotal
+              : Math.round(grandTotal * priceBook.indicationSpread.high),
+        }
+      : null,
+    // Justeringen bär listpris, avdrag och slutsumma. Den är lika mycket ett
+    // pris som totalen och lämnar servern bara till den som får se belopp.
+    adjustment: showPrices && adjusted.applied ? adjusted : null,
     note: showPrices
       ? `Listpris enligt ${priceBook.name}, exkl. moms. Montage och styr ingår som påslag.`
-      : "Prisindikation ±20 %, ej bindande offert.",
+      : "Pris lämnas av INKAB. Kontakta oss för offert.",
   };
 }

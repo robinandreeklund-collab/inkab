@@ -39,6 +39,19 @@ export const flowSchema = z.object({
   startPoint: vec2,
   endPoint: vec2.nullable(),
   fitToEndPoint: z.boolean(),
+  startComment: z.string().max(300).optional(),
+  endComment: z.string().max(300).optional(),
+  markers: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        role: z.enum(["start", "end"]),
+        pos: vec2,
+        comment: z.string().max(300),
+      }),
+    )
+    .max(12)
+    .optional(),
 });
 
 export const configurationSchema = z.object({

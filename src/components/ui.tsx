@@ -1,6 +1,7 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -166,4 +167,110 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
 
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="border border-dashed border-divider px-3 py-4 text-xs text-muted">{children}</p>;
+}
+
+/**
+ * Förklaring som dyker upp när man håller musen över något.
+ *
+ * Ritas i en portal med fast position: sidopanelen och ritytan klipper allt
+ * som sticker utanför dem, och en förklaring som klipps är ingen förklaring.
+ * Visas också vid tangentbordsfokus.
+ */
+export function Tip({
+  title,
+  body,
+  shortcut,
+  side = "bottom",
+  children,
+  className,
+  block = false,
+}: {
+  title?: ReactNode;
+  body?: ReactNode;
+  shortcut?: string;
+  side?: "top" | "bottom" | "left" | "right";
+  children: ReactNode;
+  className?: string;
+  /** Fyll bredden i stället för att bara omsluta innehållet. */
+  block?: boolean;
+}) {
+  const ref = useRef<HTMLSpanElement | null>(null);
+  const [rect, setRect] = useState<DOMRect | null>(null);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const show = () => {
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => {
+      if (ref.current) setRect(ref.current.getBoundingClientRect());
+    }, 250);
+  };
+  const hide = () => {
+    if (timer.current) clearTimeout(timer.current);
+    setRect(null);
+  };
+  useEffect(() => () => void (timer.current && clearTimeout(timer.current)), []);
+
+  return (
+    <span
+      ref={ref}
+      onMouseEnter={show}
+      onMouseLeave={hide}
+      onFocus={show}
+      onBlur={hide}
+      onPointerDown={hide}
+      className={cx(block ? "flex w-full" : "inline-flex", className)}
+    >
+      {children}
+      {rect && typeof document !== "undefined"
+        ? createPortal(<TipCard rect={rect} side={side} title={title} body={body} shortcut={shortcut} />, document.body)
+        : null}
+    </span>
+  );
+}
+
+const TIP_WIDTH = 248;
+const GAP = 8;
+
+export function TipCard({
+  rect,
+  side,
+  title,
+  body,
+  shortcut,
+}: {
+  rect: { left: number; top: number; right: number; bottom: number; width: number; height: number };
+  side: "top" | "bottom" | "left" | "right";
+  title?: ReactNode;
+  body?: ReactNode;
+  shortcut?: string;
+}) {
+  const style: CSSProperties = { position: "fixed", width: TIP_WIDTH, zIndex: 100 };
+  const clampX = (x: number) => Math.max(8, Math.min(window.innerWidth - TIP_WIDTH - 8, x));
+  if (side === "left") {
+    style.left = Math.max(8, rect.left - TIP_WIDTH - GAP);
+    style.top = rect.top;
+  } else if (side === "right") {
+    style.left = Math.min(window.innerWidth - TIP_WIDTH - 8, rect.right + GAP);
+    style.top = rect.top;
+  } else if (side === "top") {
+    style.left = clampX(rect.left + rect.width / 2 - TIP_WIDTH / 2);
+    style.bottom = window.innerHeight - rect.top + GAP;
+  } else {
+    style.left = clampX(rect.left + rect.width / 2 - TIP_WIDTH / 2);
+    style.top = rect.bottom + GAP;
+  }
+
+  return (
+    <div role="tooltip" style={style} className="pointer-events-none border border-steel bg-steel px-2.5 py-2 text-left text-white shadow-lg">
+      {title ? (
+        <div className="flex items-baseline justify-between gap-2 text-[13px] leading-tight">
+          <span>{title}</span>
+          {shortcut ? (
+            <kbd className="num border border-white/40 px-1 text-[10px] leading-4 text-white/80">{shortcut}</kbd>
+          ) : null}
+        </div>
+      ) : null}
+      {body ? <div className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-white/80">{body}</div> : null}
+    </div>
+  );
 }

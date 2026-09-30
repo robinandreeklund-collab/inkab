@@ -5,9 +5,11 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
-import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
+import { markerLabel, MAX_MARKERS, ROLE_HELP } from "@/lib/flowMarkers";
+import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag, Tip } from "./ui";
+import { TOOL_HELP } from "./toolHelp";
 import { MachineThumb } from "./MachineThumb";
-import type { Machine, MachineCategory, Side } from "@/lib/types";
+import type { FlowMarker, Machine, MachineCategory, Side } from "@/lib/types";
 
 const SIDE_OPTIONS: { value: Side; label: string }[] = [
   { value: "right", label: "Höger" },
@@ -33,6 +35,11 @@ export function Sidebar() {
     library,
     layout,
     setFlowPoint,
+    setFlowComment,
+    addFlowMarker,
+    updateFlowMarker,
+    removeFlowMarker,
+    activateFlowMarker,
   } = useConfigStore();
 
   const [search, setSearch] = useState("");
@@ -234,7 +241,20 @@ export function Sidebar() {
 
         {/* Start- och slutpunkt: kan också dras direkt i ritningen. */}
         <div className="mt-4 border-t border-divider pt-3">
-          <span className="kicker mb-1 block">Linjens start och slut</span>
+          <Tip
+            block
+            side="right"
+            title="Varför start och slut?"
+            body={
+              "Linjen byggs från startpunkten och sträcks mot slutpunkten. " +
+              "Skriv varför punkten ligger där — det följer med i ritningen och hjälper den som " +
+              "läser underlaget. Finns flera tänkbara lägen, lägg till alternativ och jämför."
+            }
+          >
+            <span className="kicker mb-1 block cursor-help underline decoration-dotted underline-offset-2">
+              Linjens start och slut
+            </span>
+          </Tip>
           <p className="mb-2 text-[11px] text-muted">Dra markörerna i ritningen, eller skriv måtten här.</p>
 
           <div className="mb-2 grid grid-cols-2 gap-2">
@@ -257,6 +277,13 @@ export function Sidebar() {
               />
             </Field>
           </div>
+          <CommentInput
+            label="Varför här? (start)"
+            placeholder="T.ex. paketen kommer från sågen via port A"
+            value={config.flow.startComment ?? ""}
+            help={ROLE_HELP.start}
+            onCommit={(text) => setFlowComment("start", text)}
+          />
 
           {config.flow.endPoint ? (
             <>
@@ -282,6 +309,13 @@ export function Sidebar() {
                   />
                 </Field>
               </div>
+              <CommentInput
+                label="Varför här? (slut)"
+                placeholder="T.ex. trucken hämtar vid port B"
+                value={config.flow.endComment ?? ""}
+                help={ROLE_HELP.end}
+                onCommit={(text) => setFlowComment("end", text)}
+              />
               <label className="mb-2 flex cursor-pointer items-start gap-2">
                 <input
                   type="checkbox"
@@ -319,6 +353,55 @@ export function Sidebar() {
               Linjen slutar {meters(layout.metrics.endPointGapMm)} m från slutpunkten.
             </p>
           ) : null}
+
+          {/* Alternativa punkter: lägen man vill jämföra, med motivering. */}
+          <div className="mt-3">
+            <div className="mb-1 flex items-center justify-between">
+              <Tip
+                side="right"
+                title="Alternativa punkter"
+                body={
+                  "Fler tänkbara lägen för start eller slut — t.ex. från hyvleriet i stället för sågen, " +
+                  "eller en annan port. Linjen byggs bara från den aktiva; gör ett alternativ aktivt för att jämföra."
+                }
+              >
+                <span className="kicker cursor-help underline decoration-dotted underline-offset-2">Alternativ</span>
+              </Tip>
+              <span className="kicker">{config.flow.markers?.length ?? 0} st</span>
+            </div>
+            {(config.flow.markers ?? []).map((marker) => (
+              <MarkerRow
+                key={marker.id}
+                label={markerLabel(config.flow, marker)}
+                marker={marker}
+                onComment={(comment) => updateFlowMarker(marker.id, { comment })}
+                onActivate={() => activateFlowMarker(marker.id)}
+                onRemove={() => removeFlowMarker(marker.id)}
+              />
+            ))}
+            <div className="grid grid-cols-2 gap-1">
+              <Tip block title="Lägg till alternativ start" body={ROLE_HELP.start}>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
+                  onClick={() => addFlowMarker("start")}
+                >
+                  + Start
+                </Button>
+              </Tip>
+              <Tip block title="Lägg till alternativt slut" body={ROLE_HELP.end}>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
+                  onClick={() => addFlowMarker("end")}
+                >
+                  + Slut
+                </Button>
+              </Tip>
+            </div>
+          </div>
         </div>
 
         {/* Virkesbredd som intervall — maskinernas portar måste täcka hela spannet. */}
@@ -393,44 +476,34 @@ export function Sidebar() {
           ))}
         </div>
 
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">
+          Du kan också dra i hallens kant eller hörn direkt i ritningen.
+        </p>
+
         <span className="kicker mb-1 block">Ritverktyg</span>
         <div className="grid grid-cols-3 gap-1">
-          {(
-            [
-              ["select", "Markera"],
-              ["wall", "Vägg"],
-              ["door", "Port"],
-              ["truck", "Truckgata"],
-              ["nogo", "No-go"],
-              ["measure", "Mät"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
+          {(["select", "wall", "door", "truck", "nogo", "measure"] as const).map((value) => (
+            <Tip
               key={value}
-              onClick={() => setTool(value)}
-              className={`border px-2 py-1 text-xs transition-colors ${
-                tool === value
-                  ? "border-accent bg-accent text-white"
-                  : "border-divider bg-white hover:border-accent"
-              }`}
+              block
+              title={TOOL_HELP[value].title}
+              body={TOOL_HELP[value].body}
+              shortcut={TOOL_HELP[value].shortcut}
             >
-              {label}
-            </button>
+              <button
+                onClick={() => setTool(value)}
+                className={`w-full border px-2 py-1 text-xs transition-colors ${
+                  tool === value
+                    ? "border-accent bg-accent text-white"
+                    : "border-divider bg-white hover:border-accent"
+                }`}
+              >
+                {TOOL_HELP[value].label}
+              </button>
+            </Tip>
           ))}
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted">
-          {tool === "select"
-            ? "Dra maskiner och zoner i vyn. Snapp 250 mm."
-            : tool === "wall"
-              ? "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir 300 mm tjock."
-              : tool === "door"
-                ? "Dra där porten sitter, i x- eller y-led. Låses till närmaste axel."
-                : tool === "truck"
-                  ? "Dra en rektangel där trucken kör eller hämtar. Kan vara en hel gata eller bara en hämtzon."
-                  : tool === "nogo"
-                    ? "Dra en rektangel för att spärra en yta."
-                    : "Dra mellan två punkter för att mäta avståndet."}
-        </p>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">{TOOL_HELP[tool].hint}</p>
 
         <div className="mt-2 flex flex-wrap gap-1">
           <Button
@@ -507,6 +580,94 @@ export function Sidebar() {
         </p>
       </section>
     </aside>
+  );
+}
+
+/** Kommentarfält som sparar när man lämnar det, så att varje tecken inte blir ett ångra-steg. */
+function CommentInput({
+  label,
+  placeholder,
+  value,
+  help,
+  onCommit,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  help: string;
+  onCommit: (text: string) => void;
+}) {
+  return (
+    <label className="mb-2 block">
+      <Tip block side="right" title={label} body={help}>
+        <span className="kicker mb-1 block">{label}</span>
+      </Tip>
+      <input
+        key={value}
+        defaultValue={value}
+        placeholder={placeholder}
+        maxLength={300}
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim() !== value) onCommit(e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-full border border-divider bg-white px-2 py-1 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
+      />
+    </label>
+  );
+}
+
+function MarkerRow({
+  label,
+  marker,
+  onComment,
+  onActivate,
+  onRemove,
+}: {
+  label: string;
+  marker: FlowMarker;
+  onComment: (comment: string) => void;
+  onActivate: () => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="mb-1.5 border border-dashed border-divider p-1.5">
+      <div className="mb-1 flex items-center gap-2">
+        <span className={`kicker ${marker.role === "start" ? "text-accent" : "text-steel"}`}>{label}</span>
+        <span className="num text-[11px] text-muted">
+          {meters(marker.pos.x)} × {meters(marker.pos.y)} m
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          <Tip
+            side="right"
+            title="Gör aktiv"
+            body={`Bygger linjen ${marker.role === "start" ? "från" : "mot"} den här punkten. Den som var aktiv blir kvar som alternativ.`}
+          >
+            <button onClick={onActivate} className="kicker border border-divider px-1 hover:border-accent hover:text-accent">
+              Aktivera
+            </button>
+          </Tip>
+          <button onClick={onRemove} className="text-muted hover:text-danger" aria-label="Ta bort">
+            ×
+          </button>
+        </span>
+      </div>
+      <input
+        key={marker.comment}
+        defaultValue={marker.comment}
+        placeholder="Varför? T.ex. om gaveln byggs om"
+        maxLength={300}
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim() !== marker.comment) onComment(e.currentTarget.value.trim());
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-full border border-divider bg-white px-2 py-0.5 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
+      />
+    </div>
   );
 }
 

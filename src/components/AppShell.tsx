@@ -15,7 +15,9 @@ import { QuoteView } from "./QuoteView";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
-import { Button } from "./ui";
+import { GettingStarted } from "./GettingStarted";
+import { Button, Tip } from "./ui";
+import { TOOL_HELP } from "./toolHelp";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 import type { SessionUser } from "./AuthDialog";
 
@@ -114,6 +116,9 @@ export function AppShell() {
       }
 
       switch (event.key.toLowerCase()) {
+        case "escape":
+          setTool("select");
+          break;
         case "1":
           setView("2d");
           break;
@@ -232,6 +237,7 @@ export function AppShell() {
           <div className="relative min-h-0 flex-1">
             <ShareNotice />
             {view === "model" ? <ModelView /> : <CadView />}
+            {view === "model" ? null : <GettingStarted />}
             <DraftJobWatcher />
             <DiagnosticsPanel />
             <AiPanel />
@@ -265,39 +271,60 @@ function ToolRail() {
     <div className="absolute right-3 top-3 flex flex-col gap-1">
       {(
         [
-          ["select", "Markera och flytta (V)", "m4 3 7 17 2.5-6.5L20 11z"],
-          ["wall", "Rita vägg (W)", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
-          ["door", "Rita port (D)", "M4 21V4h10v17M14 12h1M4 21h16"],
-          ["truck", "Rita truckgata (T)", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
-          ["nogo", "Rita no-go-zon (N)", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
-          ["measure", "Mät avstånd (M)", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
+          ["select", "m4 3 7 17 2.5-6.5L20 11z"],
+          ["wall", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
+          ["door", "M4 21V4h10v17M14 12h1M4 21h16"],
+          ["truck", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
+          ["nogo", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
+          ["measure", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
         ] as const
-      ).map(([value, title, path]) => (
-        <Button
+      ).map(([value, path]) => (
+        <Tip
           key={value}
-          size="sm"
-          title={title}
-          active={tool === value}
-          onClick={() => setTool(value)}
-          className="h-8 w-8 p-0"
+          side="left"
+          title={TOOL_HELP[value].title}
+          body={TOOL_HELP[value].body}
+          shortcut={TOOL_HELP[value].shortcut}
         >
+          <Button
+            size="sm"
+            active={tool === value}
+            onClick={() => setTool(value)}
+            className="h-8 w-8 p-0"
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <path d={path} />
+            </svg>
+            <span className="sr-only">{TOOL_HELP[value].title}</span>
+          </Button>
+        </Tip>
+      ))}
+      <Tip
+        side="left"
+        title="Visa zoner"
+        body="Maskinernas service- och säkerhetszoner. Ytor som måste hållas fria runt varje maskin."
+        shortcut="Z"
+      >
+        <Button size="sm" active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d={path} />
+            <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
           </svg>
         </Button>
-      ))}
-      <Button size="sm" title="Visa zoner (Z)" active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
-        </svg>
-      </Button>
-      <Button size="sm" title="Visa portar (P)" active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <circle cx="7" cy="12" r="2.5" />
-          <circle cx="17" cy="12" r="2.5" />
-          <path d="M9.5 12h5" />
-        </svg>
-      </Button>
+      </Tip>
+      <Tip
+        side="left"
+        title="Visa maskinportar"
+        body="Var paketen går in i och ut ur varje maskin. Ljusblå är ingång, mörk är utgång."
+        shortcut="P"
+      >
+        <Button size="sm" active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="7" cy="12" r="2.5" />
+            <circle cx="17" cy="12" r="2.5" />
+            <path d="M9.5 12h5" />
+          </svg>
+        </Button>
+      </Tip>
     </div>
   );
 }

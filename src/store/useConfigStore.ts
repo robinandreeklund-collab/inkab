@@ -5,12 +5,14 @@ import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
+import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
   Configuration,
   DrawnObject,
   Flow,
+  FlowMarker,
   LayoutResult,
   Machine,
   ParameterValue,
@@ -27,6 +29,8 @@ const STORAGE_KEY = "inkab.config.v1";
 const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
+/** Om kom-igång-guiden är stängd. Per webbläsare, inte per projekt. */
+const GUIDE_KEY = "inkab.guide.v1";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
 export type ViewMode = "2d" | "3d" | "model";
@@ -79,6 +83,8 @@ type State = {
    * gren i stället för att läggas sist.
    */
   branchTarget: { instanceId: string; outPortId: string } | null;
+  /** Kom-igång-guiden i ritytan. Öppen tills någon stänger den. */
+  guideOpen: boolean;
 };
 
 type Actions = {
@@ -92,6 +98,7 @@ type Actions = {
   toggleDiagnostics: (open?: boolean) => void;
   toggleZones: () => void;
   togglePorts: () => void;
+  toggleGuide: (open?: boolean) => void;
 
   setLibrary: (machines: Machine[]) => void;
   /** Skriver en rad i projektloggen. */
@@ -103,6 +110,12 @@ type Actions = {
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
   setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
+  setFlowComment: (which: "start" | "end", comment: string) => void;
+  addFlowMarker: (role: FlowMarker["role"]) => void;
+  updateFlowMarker: (id: string, patch: Partial<Omit<FlowMarker, "id">>) => void;
+  removeFlowMarker: (id: string) => void;
+  /** Gör ett alternativ till den punkt linjen byggs från eller mot. */
+  activateFlowMarker: (id: string) => void;
   addMachine: (machineId: string, atIndex?: number) => void;
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
@@ -232,6 +245,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     log: [],
     proposalId: null,
     branchTarget: null,
+    guideOpen: true,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -249,6 +263,15 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
+    toggleGuide: (open) => {
+      const guideOpen = open ?? !get().guideOpen;
+      set({ guideOpen });
+      try {
+        window.localStorage.setItem(GUIDE_KEY, guideOpen ? "open" : "closed");
+      } catch {
+        /* guiden öppnas igen nästa gång — inget går förlorat */
+      }
+    },
 
     note: (kind, text, detail) => note(logEntry(kind, text, detail)),
     setProposalId: (proposalId) => set({ proposalId }),
@@ -301,6 +324,25 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           d.flow.endPoint = point;
         }
       }),
+
+    setFlowComment: (which, comment) =>
+      get().update((d) => {
+        const text = comment.trim() || undefined;
+        if (which === "start") d.flow.startComment = text;
+        else d.flow.endComment = text;
+      }),
+
+    addFlowMarker: (role) => get().update((d) => void addMarker(d.flow, role)),
+
+    updateFlowMarker: (id, patch) =>
+      get().update((d) => {
+        const marker = d.flow.markers?.find((m) => m.id === id);
+        if (marker) Object.assign(marker, patch);
+      }),
+
+    removeFlowMarker: (id) => get().update((d) => removeMarker(d.flow, id)),
+
+    activateFlowMarker: (id) => get().update((d) => activateMarker(d.flow, id)),
 
     addMachine: (machineId, atIndex) => {
       const machine = getMachine(machineId, get().library);
@@ -474,6 +516,11 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
       // Loggen läses först: det som hände före omladdningen hände ändå.
       set({ log: readLog() });
+      try {
+        if (window.localStorage.getItem(GUIDE_KEY) === "closed") set({ guideOpen: false });
+      } catch {
+        /* utan lagring visas guiden — det är det säkra hållet */
+      }
 
       const params = new URLSearchParams(window.location.search);
 

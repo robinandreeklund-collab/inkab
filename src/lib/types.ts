@@ -276,6 +276,25 @@ export type Flow = {
    * vid slutpunkten. Kräver att endPoint är satt.
    */
   fitToEndPoint: boolean;
+
+  /** Varför linjen börjar och slutar just där. Visas i ritningen och offerten. */
+  startComment?: string;
+  endComment?: string;
+  /**
+   * Alternativa start- och slutpunkter. Linjen byggs från startPoint till
+   * endPoint; de här är lägen man vill ha kvar att jämföra med — "från
+   * hyvleriet", "via port B om gaveln byggs om" — var och en med sin
+   * motivering. En alternativ punkt kan göras till den aktiva.
+   */
+  markers?: FlowMarker[];
+};
+
+/** En alternativ start- eller slutpunkt, med kommentar om varför. */
+export type FlowMarker = {
+  id: string;
+  role: "start" | "end";
+  pos: Vec2;
+  comment: string;
 };
 
 export type Hall = {

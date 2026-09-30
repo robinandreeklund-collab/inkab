@@ -4,10 +4,21 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
-import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
+import {
+  closeCorners,
+  doorClearance,
+  fitDoorToWall,
+  followHallEdges,
+  hallWalls,
+  snapToWalls,
+  WALL_THICKNESS_MM,
+} from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
-import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
+import { markerLabel, ROLE_HELP } from "@/lib/flowMarkers";
+import type { Box, DrawnObject, DrawnKind, Flow, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
+import { TipCard } from "./ui";
+import { TOOL_HELP } from "./toolHelp";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -24,7 +35,35 @@ type PlanarView = Exclude<ViewMode, "model">;
 
 type Measure = { from: Vec2; to: Vec2 } | null;
 
+type TipHandlers = (
+  title: string,
+  body?: string,
+) => {
+  onPointerEnter: (e: React.PointerEvent) => void;
+  onPointerMove: (e: React.PointerEvent) => void;
+  onPointerLeave: () => void;
+};
+
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
+/** Hallens mått snappar grövre än maskinerna: halvmeter räcker för en lokal. */
+const HALL_SNAP_MM = 500;
+/** Samma gränser som serverns schema. */
+const HALL_LIMITS = { lengthMm: [5000, 300000], widthMm: [5000, 150000] } as const;
+
+/** Förklaring som visas intill muspekaren när man håller den över något i ritningen. */
+type Hover = { title: string; body?: string; x: number; y: number } | null;
+
+/** Ett ritat objekt som dras: visas på sin nya plats men sparas först när man släpper. */
+type Moving = { id: string; box: Box } | null;
+
+/** Hallen medan man drar i dess kant. */
+type HallDrag = { lengthMm: number; widthMm: number } | null;
+
+/** Väggar en port kan sitta i: de ritade och hallens egna kanter. */
+const doorWalls = (walls: DrawnObject[], hall: { lengthMm: number; widthMm: number }) => [
+  ...walls,
+  ...hallWalls(hall),
+];
 
 /**
  * Väggar och portar låses till närmaste axel så att de alltid blir raka —
@@ -71,9 +110,14 @@ function draftBox(
  * väggen de ritades på. Utan det blir en port en ruta på golvet och ett hörn
  * ett hål på en halv väggtjocklek.
  */
-function finishDraft(kind: DrawnKind, box: Box, walls: DrawnObject[]): Box {
+function finishDraft(
+  kind: DrawnKind,
+  box: Box,
+  walls: DrawnObject[],
+  hall: { lengthMm: number; widthMm: number },
+): Box {
   if (kind === "wall") return closeCorners(box, walls);
-  if (kind === "door") return fitDoorToWall(box, walls) ?? box;
+  if (kind === "door") return fitDoorToWall(box, doorWalls(walls, hall)) ?? box;
   return box;
 }
 
@@ -84,13 +128,17 @@ export function CadView() {
     view,
     tool,
     selectedId,
+    guideOpen,
     showZones,
     showPorts,
     select,
     nudge,
     addDrawn,
+    updateDrawn,
     setTool,
     setFlowPoint,
+    updateFlowMarker,
+    update,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -99,29 +147,39 @@ export function CadView() {
   const [measure, setMeasure] = useState<Measure>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Vec2>({ x: 0, y: 0 });
+  const [hover, setHover] = useState<Hover>(null);
+  const [moving, setMoving] = useState<Moving>(null);
+  const [hallDrag, setHallDrag] = useState<HallDrag>(null);
 
-  const hallBox: Box = { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
+  const hall = hallDrag ? { ...config.hall, ...hallDrag } : config.hall;
+  const hallBox: Box = { x: 0, y: 0, l: hall.lengthMm, w: hall.widthMm };
+  // Vyn räknas på den sparade hallen, inte på den som dras: annars skalar
+  // ritningen om under musen och kanten springer ifrån pekaren.
   const contentBox: Box = useMemo(() => {
-    const boxes = [hallBox, layout.bounds];
+    const boxes = [{ x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm }, layout.bounds];
     for (const d of config.drawn) boxes.push({ x: d.x, y: d.y, l: d.l, w: d.w });
     const minX = Math.min(...boxes.map((b) => b.x));
     const minY = Math.min(...boxes.map((b) => b.y));
     const maxX = Math.max(...boxes.map((b) => b.x + b.l));
     const maxY = Math.max(...boxes.map((b) => b.y + b.w));
     return { x: minX, y: minY, l: maxX - minX, w: maxY - minY };
-  }, [hallBox.l, hallBox.w, layout.bounds, config.drawn]);
+  }, [config.hall.lengthMm, config.hall.widthMm, layout.bounds, config.drawn]);
 
   const maxHeight = Math.max(config.hall.clearHeightMm, ...layout.placements.map((p) => p.size.heightMm), 1);
 
   const viewBox = useMemo(() => {
-    const base =
+    const padded =
       view === "2d" ? padBox(contentBox, PAD_MM) : padBox(isoBounds(contentBox, maxHeight), PAD_MM);
+    // Guiden ligger över ritningens vänstra del. Ge den plats i stället för att
+    // låta den täcka startpunkten.
+    const guideRoom = guideOpen ? padded.l * 0.3 : 0;
+    const base = { ...padded, x: padded.x - guideRoom, l: padded.l + guideRoom };
     const cx = base.x + base.l / 2 + pan.x;
     const cy = base.y + base.w / 2 + pan.y;
     const l = base.l / zoom;
     const w = base.w / zoom;
     return { x: cx - l / 2, y: cy - w / 2, l, w };
-  }, [contentBox, view, maxHeight, zoom, pan]);
+  }, [contentBox, view, maxHeight, zoom, pan, guideOpen]);
 
   /** Skärmkoordinat → världskoordinat (mm), via SVG:ns egen transform. */
   const toWorld = useCallback(
@@ -139,6 +197,20 @@ export function CadView() {
   const strokeUnit = viewBox.l / 900;
   /** Befintliga väggar, som nya väggar och portar fäster mot. */
   const walls = config.drawn.filter((d) => d.kind === "wall");
+
+  /** Det ritade, med objektet som dras på sin tillfälliga plats och portarna i hallens kant följande kanten. */
+  const drawn = followHallEdges(
+    moving ? config.drawn.map((d) => (d.id === moving.id ? { ...d, ...moving.box } : d)) : config.drawn,
+    config.hall,
+    hall,
+  );
+
+  /** Visar en förklaring vid muspekaren. Används av allt i ritningen som har något att säga. */
+  const tip = (title: string, body?: string) => ({
+    onPointerEnter: (e: React.PointerEvent) => setHover({ title, body, x: e.clientX, y: e.clientY }),
+    onPointerMove: (e: React.PointerEvent) => setHover({ title, body, x: e.clientX, y: e.clientY }),
+    onPointerLeave: () => setHover(null),
+  });
 
   /* ── Drag av maskin ──────────────────────────────────────────────────── */
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
@@ -168,16 +240,110 @@ export function CadView() {
   };
 
   /* ── Dra start- och slutpunkt ────────────────────────────────────────── */
-  const dragFlowPoint = (which: "startPoint" | "endPoint", event: React.PointerEvent) => {
+  const dragFlowPoint = (which: "startPoint" | "endPoint" | { marker: string }, event: React.PointerEvent) => {
     event.stopPropagation();
     if (tool !== "select") return;
+    setHover(null);
     const move = (e: PointerEvent) => {
       const p = toWorld(e);
-      if (p) setFlowPoint(which, { x: snap(p.x), y: snap(p.y) });
+      if (!p) return;
+      const point = { x: snap(p.x), y: snap(p.y) };
+      if (typeof which === "string") setFlowPoint(which, point);
+      else updateFlowMarker(which.marker, { pos: point });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /* ── Dra ritade objekt ───────────────────────────────────────────────── */
+  /**
+   * Väggar och zoner flyttas fritt. En port glider längs väggen den sitter i
+   * och kan hoppa över till en annan vägg eller till hallens kant — den blir
+   * aldrig en lös ruta på golvet så länge det finns en vägg i närheten.
+   * Ändringen sparas när man släpper, så att ett drag blir ett steg att ångra.
+   */
+  const startMoveDrawn = (object: DrawnObject, event: React.PointerEvent) => {
+    event.stopPropagation();
+    select(object.id);
+    if (tool !== "select") return;
+    const start = toWorld(event);
+    if (!start) return;
+    setHover(null);
+
+    const original: Box = { x: object.x, y: object.y, l: object.l, w: object.w };
+    const others = walls.filter((w) => w.id !== object.id);
+    let latest: Box | null = null;
+
+    const move = (e: PointerEvent) => {
+      const now = toWorld(e);
+      if (!now) return;
+      const dx = snap(now.x - start.x);
+      const dy = snap(now.y - start.y);
+      let box: Box = { ...original, x: original.x + dx, y: original.y + dy };
+      if (object.kind === "door") {
+        // Portens mitt följer musen; väggen bestämmer resten.
+        const alongX = original.l >= original.w;
+        const width = alongX ? original.l : original.w;
+        const centre = { x: original.x + original.l / 2 + (now.x - start.x), y: original.y + original.w / 2 + (now.y - start.y) };
+        const guess: Box = alongX
+          ? { x: snap(centre.x - width / 2), y: centre.y - 250, l: width, w: 500 }
+          : { x: centre.x - 250, y: snap(centre.y - width / 2), l: 500, w: width };
+        box = fitDoorToWall(guess, doorWalls(others, config.hall), 1500) ?? box;
+      }
+      latest = box;
+      setMoving({ id: object.id, box });
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setMoving(null);
+      const box = latest as Box | null;
+      if (box && (box.x !== original.x || box.y !== original.y || box.l !== original.l || box.w !== original.w)) {
+        updateDrawn(object.id, {
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          l: Math.round(box.l),
+          w: Math.round(box.w),
+        });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /* ── Ändra hallens yta ───────────────────────────────────────────────── */
+  const startHallResize = (edge: "x" | "y" | "xy", event: React.PointerEvent) => {
+    event.stopPropagation();
+    if (tool !== "select") return;
+    setHover(null);
+    const clamp = (v: number, [lo, hi]: readonly [number, number]) =>
+      Math.min(hi, Math.max(lo, Math.round(v / HALL_SNAP_MM) * HALL_SNAP_MM));
+    let latest = { lengthMm: config.hall.lengthMm, widthMm: config.hall.widthMm };
+
+    const move = (e: PointerEvent) => {
+      const now = toWorld(e);
+      if (!now) return;
+      latest = {
+        lengthMm: edge === "y" ? config.hall.lengthMm : clamp(now.x, HALL_LIMITS.lengthMm),
+        widthMm: edge === "x" ? config.hall.widthMm : clamp(now.y, HALL_LIMITS.widthMm),
+      };
+      setHallDrag(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setHallDrag(null);
+      if (latest.lengthMm !== config.hall.lengthMm || latest.widthMm !== config.hall.widthMm) {
+        update((d) => {
+          d.drawn = followHallEdges(d.drawn, d.hall, latest);
+          d.hall.lengthMm = latest.lengthMm;
+          d.hall.widthMm = latest.widthMm;
+        });
+      }
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -208,33 +374,41 @@ export function CadView() {
     }
 
     const kind = tool;
+    let latest: NonNullable<Draft> | null = null;
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
       if (!now) return;
-      setDraft({ kind, box: draftBox(kind, start, now, walls) });
+      const raw = draftBox(kind, start, now, walls);
+      // En port visas där den kommer att hamna — i väggen — redan medan man drar,
+      // så att avstånden till hörnen stämmer med resultatet.
+      const box =
+        kind === "door" && raw.l >= 200 && raw.w >= 100
+          ? (fitDoorToWall(raw, doorWalls(walls, config.hall)) ?? raw)
+          : raw;
+      latest = { kind, box };
+      setDraft(latest);
     };
 
     const up = () => {
-      setDraft((current) => {
-        if (current && current.box.l >= 200 && current.box.w >= 100) {
-          const box = finishDraft(current.kind, current.box, walls);
-          const object: DrawnObject = {
-            id: `${current.kind}-${Date.now().toString(36)}`,
-            kind: current.kind,
-            name: nextName(current.kind, config.drawn),
-            x: Math.round(box.x),
-            y: Math.round(box.y),
-            l: Math.round(box.l),
-            w: Math.round(box.w),
-            h: current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
-          };
-          addDrawn(object);
-          setTool("select");
-        }
-        return null;
-      });
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      setDraft(null);
+      const current = latest as NonNullable<Draft> | null;
+      if (current && current.box.l >= 200 && current.box.w >= 100) {
+        const box = current.kind === "door" ? current.box : finishDraft(current.kind, current.box, walls, config.hall);
+        const object: DrawnObject = {
+          id: `${current.kind}-${Date.now().toString(36)}`,
+          kind: current.kind,
+          name: nextName(current.kind, config.drawn),
+          x: Math.round(box.x),
+          y: Math.round(box.y),
+          l: Math.round(box.l),
+          w: Math.round(box.w),
+          h: current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
+        };
+        addDrawn(object);
+        setTool("select");
+      }
     };
 
     window.addEventListener("pointermove", move);
@@ -272,8 +446,34 @@ export function CadView() {
     (a, b) => isoBox(a.bbox, a.size.heightMm).depth - isoBox(b.bbox, b.size.heightMm).depth,
   );
 
-  const cursor =
-    tool === "select" ? "default" : tool === "measure" ? "crosshair" : "crosshair";
+  const cursor = tool === "select" ? "default" : "crosshair";
+
+  /**
+   * Portavstånd: för porten som ritas, dras eller är markerad. Mätt till
+   * närmaste vägg på vardera sidan längs väggen den sitter i.
+   */
+  const doors = drawn.filter((d) => d.kind === "door");
+  const measuredId = draft?.kind === "door" ? null : (moving?.id ?? selectedId);
+  const measuredDoor: Box | null =
+    draft?.kind === "door"
+      ? draft.box
+      : (() => {
+          const id = moving?.id ?? selectedId;
+          const door = doors.find((d) => d.id === id);
+          return door ? { x: door.x, y: door.y, l: door.l, w: door.w } : null;
+        })();
+  const clearance = measuredDoor
+    ? doorClearance(
+        measuredDoor,
+        doorWalls(
+          drawn.filter((d) => d.kind === "wall"),
+          hall,
+        ),
+        doors
+          .filter((d) => d.id !== measuredId)
+          .map((d) => ({ x: d.x, y: d.y, l: d.l, w: d.w })),
+      )
+    : null;
 
   return (
     <div className="relative h-full w-full overflow-hidden bg-paper">
@@ -325,8 +525,13 @@ export function CadView() {
           <Plan2D
             hallBox={hallBox}
             config={config}
+            drawn={drawn}
+            hall={hall}
             layout={layout}
-            onSelectDrawn={select}
+            onDrawnDown={startMoveDrawn}
+            onHallResize={startHallResize}
+            tip={tip}
+            tool={tool}
             showZones={showZones}
             showPorts={showPorts}
             strokeUnit={strokeUnit}
@@ -351,17 +556,37 @@ export function CadView() {
 
         {draft ? <DraftShape draft={draft} view={planarView} strokeUnit={strokeUnit} /> : null}
 
+        {clearance && planarView === "2d" ? (
+          <DoorDimensions clearance={clearance} strokeUnit={strokeUnit} />
+        ) : null}
+
         <FlowMarkers
-          start={config.flow.startPoint}
-          end={config.flow.endPoint}
-          lineEnd={layout.metrics.endPointGapMm !== null ? config.flow.endPoint : null}
+          flow={config.flow}
           view={planarView}
           strokeUnit={strokeUnit}
           onDrag={dragFlowPoint}
+          tip={tip}
         />
 
         {measure ? <MeasureLine measure={measure} view={planarView} strokeUnit={strokeUnit} /> : null}
       </svg>
+
+      {hover ? (
+        <TipCard
+          rect={{ left: hover.x, right: hover.x, top: hover.y, bottom: hover.y + 12, width: 0, height: 12 }}
+          side="bottom"
+          title={hover.title}
+          body={hover.body}
+        />
+      ) : null}
+
+      {tool !== "select" ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 border border-accent bg-white px-3 py-1.5 text-xs shadow-sm">
+          <span className="kicker text-accent">{TOOL_HELP[tool].title}</span>
+          <span>{TOOL_HELP[tool].hint}</span>
+          <kbd className="num border border-divider px-1 text-[10px] text-muted">Esc</kbd>
+        </div>
+      ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
         <span className="kicker bg-paper/80 px-1">
@@ -383,6 +608,8 @@ export function CadView() {
 function Plan2D({
   hallBox,
   config,
+  drawn,
+  hall,
   layout,
   showZones,
   showPorts,
@@ -391,11 +618,20 @@ function Plan2D({
   strokeFor,
   labelFor,
   onMachineDown,
-  onSelectDrawn,
+  onDrawnDown,
+  onHallResize,
+  tip,
+  tool,
   selectedId,
 }: {
   hallBox: Box;
   config: ReturnType<typeof useConfigStore.getState>["config"];
+  drawn: DrawnObject[];
+  hall: { lengthMm: number; widthMm: number; clearHeightMm: number };
+  onDrawnDown: (object: DrawnObject, e: React.PointerEvent) => void;
+  onHallResize: (edge: "x" | "y" | "xy", e: React.PointerEvent) => void;
+  tip: TipHandlers;
+  tool: Tool;
   layout: ReturnType<typeof useConfigStore.getState>["layout"];
   showZones: boolean;
   showPorts: boolean;
@@ -404,10 +640,14 @@ function Plan2D({
   strokeFor: (p: Placement) => string;
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
-  onSelectDrawn: (id: string) => void;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
+  const handle = strokeUnit * 7;
+  const hallTip = tip(
+    "Ändra hallens yta",
+    "Dra i kanten eller hörnet. Måttet visas medan du drar, och allt kan också skrivas in exakt under Hall och zoner.",
+  );
 
   return (
     <g>
@@ -430,17 +670,87 @@ function Plan2D({
         fillOpacity="0.55"
         className="num"
       >
-        HALL {meters(config.hall.lengthMm)} × {meters(config.hall.widthMm)} m · fri höjd{" "}
-        {meters(config.hall.clearHeightMm)} m
+        HALL {meters(hall.lengthMm)} × {meters(hall.widthMm)} m · fri höjd{" "}
+        {meters(hall.clearHeightMm)} m
       </text>
 
-      {config.drawn.map((d) => (
+      {/* Hallens kanter: dra för att ändra ytan direkt i ritningen. Under det
+          ritade, så att en port i kanten går att ta tag i. */}
+      {tool === "select" ? (
+        <g>
+          <rect
+            x={hallBox.l - handle}
+            y={0}
+            width={handle * 2}
+            height={hallBox.w}
+            fill="transparent"
+            style={{ cursor: "ew-resize" }}
+            onPointerDown={(e) => onHallResize("x", e)}
+            {...hallTip}
+          />
+          <rect
+            x={0}
+            y={hallBox.w - handle}
+            width={hallBox.l}
+            height={handle * 2}
+            fill="transparent"
+            style={{ cursor: "ns-resize" }}
+            onPointerDown={(e) => onHallResize("y", e)}
+            {...hallTip}
+          />
+          {(
+            [
+              ["x", hallBox.l, hallBox.w / 2, "ew-resize"],
+              ["y", hallBox.l / 2, hallBox.w, "ns-resize"],
+              ["xy", hallBox.l, hallBox.w, "nwse-resize"],
+            ] as const
+          ).map(([edge, x, y, cursor]) => (
+            <rect
+              key={edge}
+              x={x - handle}
+              y={y - handle}
+              width={handle * 2}
+              height={handle * 2}
+              fill="#ffffff"
+              stroke="#5980a6"
+              strokeWidth={strokeUnit * 1.6}
+              style={{ cursor }}
+              onPointerDown={(e) => onHallResize(edge, e)}
+              {...hallTip}
+            />
+          ))}
+          <text
+            x={hallBox.l / 2}
+            y={hallBox.w + handle + strokeUnit * 16}
+            textAnchor="middle"
+            fontSize={strokeUnit * 13}
+            fill="#5980a6"
+            className="num"
+            pointerEvents="none"
+          >
+            {meters(hall.lengthMm)} m
+          </text>
+          <text
+            x={hallBox.l + handle + strokeUnit * 6}
+            y={hallBox.w / 2 + strokeUnit * 22}
+            fontSize={strokeUnit * 13}
+            fill="#5980a6"
+            className="num"
+            pointerEvents="none"
+          >
+            {meters(hall.widthMm)} m
+          </text>
+        </g>
+      ) : null}
+
+      {drawn.map((d) => (
         <DrawnShape
           key={d.id}
           object={d}
           selected={d.id === selectedId}
           strokeUnit={strokeUnit}
-          onSelect={onSelectDrawn}
+          onDown={onDrawnDown}
+          tip={tip}
         />
       ))}
 
@@ -751,16 +1061,25 @@ function DiagnosticBadges({
 }
 
 /** Ett ritat objekt i planvyn. Varje typ har sitt eget uttryck. */
+const DRAWN_TIP: Record<DrawnKind, string> = {
+  wall: "Dra för att flytta. Markera för att ändra längd, höjd eller ta bort.",
+  door: "Dra längs väggen för att flytta porten — avståndet till väggarna på båda sidor visas medan du drar.",
+  truck: "Truckens yta. Maskiner hålls borta härifrån. Dra för att flytta.",
+  nogo: "Här får inget stå. Regelverket varnar om en maskin hamnar här. Dra för att flytta.",
+};
+
 function DrawnShape({
   object,
   selected,
   strokeUnit,
-  onSelect,
+  onDown,
+  tip,
 }: {
   object: DrawnObject;
   selected: boolean;
   strokeUnit: number;
-  onSelect: (id: string) => void;
+  onDown: (object: DrawnObject, e: React.PointerEvent) => void;
+  tip: TipHandlers;
 }) {
   const style = {
     wall: { fill: "#d4d4d7", stroke: "#1d1f20", dash: undefined as string | undefined },
@@ -783,11 +1102,9 @@ function DrawnShape({
 
   return (
     <g
-      style={{ cursor: "pointer" }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        onSelect(object.id);
-      }}
+      style={{ cursor: "move" }}
+      onPointerDown={(e) => onDown(object, e)}
+      {...tip(object.name, DRAWN_TIP[object.kind])}
     >
       <rect
         x={object.x}
@@ -913,82 +1230,161 @@ function DraftShape({
   );
 }
 
-/** Start- och slutpunkt som dragbara markörer i ritningen. */
+/**
+ * Start- och slutpunkter som dragbara markörer i ritningen. Den aktiva
+ * punkten är fylld; alternativen är ihåliga och numrerade. Kommentaren — varför
+ * punkten ligger där — visas när man håller musen över den.
+ */
 function FlowMarkers({
-  start,
-  end,
+  flow,
   view,
   strokeUnit,
   onDrag,
+  tip,
 }: {
-  start: Vec2;
-  end: Vec2 | null;
-  lineEnd: Vec2 | null;
+  flow: Flow;
   view: PlanarView;
   strokeUnit: number;
-  onDrag: (which: "startPoint" | "endPoint", event: React.PointerEvent) => void;
+  onDrag: (which: "startPoint" | "endPoint" | { marker: string }, event: React.PointerEvent) => void;
+  tip: TipHandlers;
 }) {
   const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
-  const a = project(start);
   const r = strokeUnit * 9;
 
-  return (
-    <g>
+  const marker = (
+    key: string,
+    role: "start" | "end",
+    pos: Vec2,
+    label: string,
+    comment: string | undefined,
+    active: boolean,
+    which: "startPoint" | "endPoint" | { marker: string },
+  ) => {
+    const p = project(pos);
+    const colour = role === "start" ? "#5980a6" : "#1d2d3d";
+    const body =
+      (comment ? `“${comment}”\n\n` : "") +
+      (active ? ROLE_HELP[role] : "Alternativ punkt. Gör den aktiv i sidopanelen för att bygga linjen härifrån.") +
+      " Dra för att flytta.";
+    return (
       <g
+        key={key}
         style={{ cursor: "grab" }}
-        onPointerDown={(e) => onDrag("startPoint", e)}
+        onPointerDown={(e) => onDrag(which, e)}
+        {...tip(comment ? `${label} · ${comment}` : label, body)}
       >
-        <circle cx={a.x} cy={a.y} r={r} fill="#5980a6" fillOpacity="0.18" stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
-        <circle cx={a.x} cy={a.y} r={strokeUnit * 2.4} fill="#5980a6" />
+        <circle
+          cx={p.x}
+          cy={p.y}
+          r={r}
+          fill={active ? colour : "#ffffff"}
+          fillOpacity={active ? 0.18 : 0.9}
+          stroke={colour}
+          strokeWidth={strokeUnit * 1.6}
+          strokeDasharray={active ? undefined : `${strokeUnit * 3} ${strokeUnit * 2}`}
+        />
+        {role === "start" ? (
+          <circle cx={p.x} cy={p.y} r={strokeUnit * 2.4} fill={colour} />
+        ) : (
+          <path d={`M${p.x - r} ${p.y}h${r * 2}M${p.x} ${p.y - r}v${r * 2}`} stroke={colour} strokeWidth={strokeUnit * 1.4} />
+        )}
         <text
-          x={a.x}
-          y={a.y - r - strokeUnit * 4}
+          x={p.x}
+          y={p.y - r - strokeUnit * 4}
           textAnchor="middle"
           fontSize={strokeUnit * 12}
-          fill="#5980a6"
+          fill={colour}
           className="num"
           pointerEvents="none"
         >
-          START
+          {label.toUpperCase()}
+        </text>
+        {comment ? (
+          <text
+            x={p.x}
+            y={p.y + r + strokeUnit * 13}
+            textAnchor="middle"
+            fontSize={strokeUnit * 10}
+            fill={colour}
+            fillOpacity="0.8"
+            pointerEvents="none"
+          >
+            {comment.length > 28 ? `${comment.slice(0, 27)}…` : comment}
+          </text>
+        ) : null}
+      </g>
+    );
+  };
+
+  return (
+    <g>
+      {(flow.markers ?? []).map((m) =>
+        marker(m.id, m.role, m.pos, markerLabel(flow, m), m.comment, false, { marker: m.id }),
+      )}
+      {marker("start", "start", flow.startPoint, "Start", flow.startComment, true, "startPoint")}
+      {flow.endPoint ? marker("end", "end", flow.endPoint, "Slut", flow.endComment, true, "endPoint") : null}
+    </g>
+  );
+}
+
+/**
+ * Portens fria mått till närmaste vägg åt båda håll, utritat som måttlinjer
+ * längs väggen. Uppdateras medan porten ritas eller dras.
+ */
+function DoorDimensions({
+  clearance,
+  strokeUnit,
+}: {
+  clearance: NonNullable<ReturnType<typeof doorClearance>>;
+  strokeUnit: number;
+}) {
+  const { alongX, lineAt, from, to, before, after } = clearance;
+  const offset = WALL_THICKNESS_MM + strokeUnit * 22;
+  const tick = strokeUnit * 6;
+
+  const dimension = (a: number, b: number, value: number, key: string) => {
+    if (value <= 0) return null;
+    const mid = (a + b) / 2;
+    const at = lineAt - offset;
+    const p = (along: number, across: number) => (alongX ? { x: along, y: across } : { x: across, y: along });
+    const s = p(a, at);
+    const e = p(b, at);
+    const label = p(mid, at);
+    const w = strokeUnit * 46;
+    const h = strokeUnit * 18;
+    return (
+      <g key={key}>
+        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke="#5980a6" strokeWidth={strokeUnit * 1.2} />
+        {[s, e].map((q, i) => (
+          <line
+            key={i}
+            x1={alongX ? q.x : q.x - tick}
+            y1={alongX ? q.y - tick : q.y}
+            x2={alongX ? q.x : q.x + tick}
+            y2={alongX ? q.y + tick : q.y}
+            stroke="#5980a6"
+            strokeWidth={strokeUnit * 1.2}
+          />
+        ))}
+        <rect x={label.x - w / 2} y={label.y - h / 2} width={w} height={h} fill="#5980a6" />
+        <text
+          x={label.x}
+          y={label.y + strokeUnit * 4.5}
+          textAnchor="middle"
+          fontSize={strokeUnit * 12}
+          fill="#ffffff"
+          className="num"
+        >
+          {meters(value, 2)} m
         </text>
       </g>
+    );
+  };
 
-      {end ? (
-        <g style={{ cursor: "grab" }} onPointerDown={(e) => onDrag("endPoint", e)}>
-          {(() => {
-            const b = project(end);
-            return (
-              <>
-                <circle
-                  cx={b.x}
-                  cy={b.y}
-                  r={r}
-                  fill="#1d2d3d"
-                  fillOpacity="0.12"
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.6}
-                />
-                <path
-                  d={`M${b.x - r} ${b.y}h${r * 2}M${b.x} ${b.y - r}v${r * 2}`}
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.4}
-                />
-                <text
-                  x={b.x}
-                  y={b.y - r - strokeUnit * 4}
-                  textAnchor="middle"
-                  fontSize={strokeUnit * 12}
-                  fill="#1d2d3d"
-                  className="num"
-                  pointerEvents="none"
-                >
-                  SLUT
-                </text>
-              </>
-            );
-          })()}
-        </g>
-      ) : null}
+  return (
+    <g pointerEvents="none">
+      {dimension(from - before, from, before, "before")}
+      {dimension(to, to + after, after, "after")}
     </g>
   );
 }

@@ -286,7 +286,7 @@ function FlowLine({
         className="num"
         fontSize={u * 16}
       >
-        Inmatning
+        {config.flow.startComment ? `Inmatning · ${config.flow.startComment}` : "Inmatning"}
       </text>
       {config.flow.endPoint ? (
         <text
@@ -297,7 +297,7 @@ function FlowLine({
           className="num"
           fontSize={u * 16}
         >
-          Avlämning
+          {config.flow.endComment ? `Avlämning · ${config.flow.endComment}` : "Avlämning"}
         </text>
       ) : null}
     </g>

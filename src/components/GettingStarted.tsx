@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
-import { DEFAULT_HALL, TEMPLATES, templateConfig } from "@/lib/templates";
+import { DEFAULT_HALL } from "@/lib/templates";
+import { useT } from "@/lib/i18n";
 import { Button, cx, NumberInput, Tip } from "./ui";
-import { TOOL_HELP } from "./toolHelp";
+import { toolHelp } from "./toolHelp";
 import type { Tool } from "@/store/useConfigStore";
 
 /**
@@ -14,9 +15,9 @@ import type { Tool } from "@/store/useConfigStore";
  *
  * Den som öppnar ritytan för första gången ska inte behöva gissa var man
  * börjar. Guiden visar stegen i den ordning de är lättast att göra — lokalen
- * först, sedan det som redan finns i den, sedan flödet och sist maskinerna —
- * och bockar av dem själv utifrån vad som faktiskt finns i ritningen. Nästa
- * steg är utfällt och säger varför det behövs.
+ * först, sedan det som redan finns i den, sedan var paketen går in och ut och
+ * sist maskinerna — och bockar av dem själv utifrån vad som faktiskt finns i
+ * ritningen. Nästa steg är utfällt och säger varför det behövs.
  *
  * Inget steg är tvingande. Den som hellre börjar med maskinerna gör det, och
  * guiden hoppar dit.
@@ -28,7 +29,7 @@ type Step = {
   why: string;
   done: boolean;
   /** Det som går att göra direkt i steget. */
-  body: React.ReactNode;
+  body: ReactNode;
 };
 
 export function GettingStarted() {
@@ -41,43 +42,45 @@ export function GettingStarted() {
     tool,
     update,
     addDrawn,
-    setFlowPoint,
     addFlowMarker,
-    load,
     setScreen,
   } = useConfigStore();
+  const t = useT();
   /** Steg som kunden själv har bockat av — hallen har alltid ett mått, och alla lokaler har inte portar. */
   const [confirmed, setConfirmed] = useState<Record<string, boolean>>({});
   const [openId, setOpenId] = useState<string | null>(null);
+  const confirm = (id: string) => setConfirmed((c) => ({ ...c, [id]: true }));
 
   if (!guideOpen) {
     return (
       <div className="absolute bottom-10 left-3 z-10">
-        <Tip title="Kom igång" body="Visa stegen för att rita lokalen och bygga linjen." side="top">
+        <Tip title={t("guide.kicker")} body={t("guide.openTip")} side="top">
           <Button size="sm" onClick={() => toggleGuide(true)} className="shadow-sm">
-            <span aria-hidden>?</span> Kom igång
+            <span aria-hidden>?</span> {t("guide.kicker")}
           </Button>
         </Tip>
       </div>
     );
   }
 
-  const drawn = config.drawn;
-  const has = (kind: string) => drawn.some((d) => d.kind === kind);
+  const has = (kind: string) => config.drawn.some((d) => d.kind === kind);
 
-  const toolButton = (value: Tool) => (
-    <Tip title={TOOL_HELP[value].title} body={TOOL_HELP[value].body} shortcut={TOOL_HELP[value].shortcut}>
-      <Button size="sm" active={tool === value} onClick={() => setTool(value)}>
-        {TOOL_HELP[value].label}
-      </Button>
-    </Tip>
-  );
+  const toolButton = (value: Tool) => {
+    const help = toolHelp(t, value);
+    return (
+      <Tip title={help.title} body={help.body} shortcut={help.shortcut}>
+        <Button size="sm" active={tool === value} onClick={() => setTool(value)}>
+          {help.label}
+        </Button>
+      </Tip>
+    );
+  };
 
   const steps: Step[] = [
     {
       id: "hall",
-      title: "Ställ in hallens yta",
-      why: "Allt annat mäts mot lokalen: var väggarna går, hur lång linjen får bli och om trucken kommer runt.",
+      title: t("guide.hall.title"),
+      why: t("guide.hall.why"),
       done:
         !!confirmed.hall ||
         config.hall.lengthMm !== DEFAULT_HALL.lengthMm ||
@@ -87,13 +90,13 @@ export function GettingStarted() {
           <div className="mb-2 grid grid-cols-3 gap-1.5">
             {(
               [
-                ["Längd", "lengthMm", 5000],
-                ["Bredd", "widthMm", 5000],
-                ["Höjd", "clearHeightMm", 2000],
+                ["sidebar.length", "lengthMm", 5000],
+                ["sidebar.width", "widthMm", 5000],
+                ["sidebar.height", "clearHeightMm", 2000],
               ] as const
             ).map(([label, key, min]) => (
               <label key={key} className="block">
-                <span className="kicker mb-0.5 block">{label} m</span>
+                <span className="kicker mb-0.5 block">{t(label)} m</span>
                 <NumberInput
                   value={meters(config.hall[key])}
                   onCommit={(raw) => {
@@ -104,31 +107,26 @@ export function GettingStarted() {
               </label>
             ))}
           </div>
-          <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Eller dra i hallens högra kant, nederkant eller hörn direkt i ritningen.
-          </p>
-          <Button size="sm" variant="primary" onClick={() => setConfirmed((c) => ({ ...c, hall: true }))}>
-            Måtten stämmer
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">{t("guide.hall.drag")}</p>
+          <Button size="sm" variant="primary" onClick={() => confirm("hall")}>
+            {t("guide.hall.ok")}
           </Button>
         </>
       ),
     },
     {
       id: "doors",
-      title: "Rita in portarna",
-      why: "Portarna är där trucken kör in och ut. De styr var linjen kan börja och sluta.",
+      title: t("guide.doors.title"),
+      why: t("guide.doors.why"),
       done: has("door") || !!confirmed.doors,
       body: (
         <>
-          <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Dra längs hallens kant eller en vägg. Avståndet till närmaste vägg på båda sidor visas
-            medan du drar, och när du flyttar porten efteråt.
-          </p>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">{t("guide.doors.body")}</p>
           <div className="flex flex-wrap gap-1">
             {toolButton("door")}
             {toolButton("wall")}
-            <Button size="sm" variant="ghost" onClick={() => setConfirmed((c) => ({ ...c, doors: true }))}>
-              Inga portar
+            <Button size="sm" variant="ghost" onClick={() => confirm("doors")}>
+              {t("guide.doors.none")}
             </Button>
           </div>
         </>
@@ -136,8 +134,8 @@ export function GettingStarted() {
     },
     {
       id: "zones",
-      title: "Markera no-go- och truckzoner",
-      why: "Pelare, trappor och elcentraler får inte byggas över, och trucken behöver sin gata. Regelverket kontrollerar båda.",
+      title: t("guide.zones.title"),
+      why: t("guide.zones.why"),
       done: has("nogo") || has("truck") || !!confirmed.zones,
       body: (
         <>
@@ -146,10 +144,7 @@ export function GettingStarted() {
             {toolButton("truck")}
           </div>
           <div className="flex flex-wrap gap-1">
-            <Tip
-              title="Föreslå hämtzon"
-              body="Lägger en hämtzon vid linjens utlastning, på den sida trucken hämtar från. Flytta eller ändra den efteråt."
-            >
+            <Tip title={t("guide.zones.pickup")} body={t("guide.zones.pickupTip")}>
               <Button
                 size="sm"
                 onClick={() => {
@@ -157,11 +152,11 @@ export function GettingStarted() {
                   addDrawn({ id: `truck-${Date.now().toString(36)}`, kind: "truck", name: "Hämtzon", ...zone, h: 0 });
                 }}
               >
-                + Hämtzon
+                {t("guide.zones.pickup")}
               </Button>
             </Tip>
-            <Button size="sm" variant="ghost" onClick={() => setConfirmed((c) => ({ ...c, zones: true }))}>
-              Behövs inte
+            <Button size="sm" variant="ghost" onClick={() => confirm("zones")}>
+              {t("guide.zones.none")}
             </Button>
           </div>
         </>
@@ -169,35 +164,25 @@ export function GettingStarted() {
     },
     {
       id: "points",
-      title: "Sätt start och slut",
-      why: "Linjen byggs från startpunkten — där paketen kommer in — mot slutpunkten, där de lämnas.",
-      done: !!config.flow.endPoint || (config.flow.markers?.length ?? 0) > 0 || !!confirmed.points,
+      title: t("guide.points.title"),
+      why: t("guide.points.why"),
+      done: !!config.flow.startComment || (config.flow.markers?.length ?? 0) > 0 || !!confirmed.points,
       body: (
         <>
-          <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Dra START och SLUT i ritningen. Finns det flera tänkbara lägen, lägg till alternativ och
-            skriv varför — de kan göras aktiva senare.
-          </p>
+          <p className="mb-2 text-[11px] leading-relaxed text-muted">{t("guide.points.body")}</p>
           <div className="flex flex-wrap gap-1">
-            {!config.flow.endPoint ? (
-              <Button
-                size="sm"
-                variant="primary"
-                onClick={() =>
-                  setFlowPoint("endPoint", {
-                    x: Math.max(0, layout.bounds.x + layout.bounds.l),
-                    y: config.flow.startPoint.y,
-                  })
-                }
-              >
-                Sätt slutpunkt
+            <Tip title={t("points.addStartTip")} body={t("points.startHelp")}>
+              <Button size="sm" onClick={() => addFlowMarker("start")}>
+                {t("points.addStart")}
               </Button>
-            ) : null}
-            <Button size="sm" onClick={() => addFlowMarker("start")}>
-              + Alternativ start
-            </Button>
-            <Button size="sm" onClick={() => addFlowMarker("end")}>
-              + Alternativt slut
+            </Tip>
+            <Tip title={t("points.addEndTip")} body={t("points.endHelp")}>
+              <Button size="sm" onClick={() => addFlowMarker("end")}>
+                {t("points.addEnd")}
+              </Button>
+            </Tip>
+            <Button size="sm" variant="ghost" onClick={() => confirm("points")}>
+              {t("guide.points.ok")}
             </Button>
           </div>
         </>
@@ -205,45 +190,19 @@ export function GettingStarted() {
     },
     {
       id: "machines",
-      title: "Välj maskiner",
-      why: "Maskinerna placeras i ordning från startpunkten. Klicka i listan till vänster, eller börja från en mall.",
+      title: t("guide.machines.title"),
+      why: t("guide.machines.why"),
       done: config.line.length > 0,
-      body: (
-        <>
-          <p className="mb-2 text-[11px] leading-relaxed text-muted">
-            Klicka på en maskin under <b>1 · Maskiner</b> till vänster så läggs den sist i linjen.
-          </p>
-          <div className="flex flex-col gap-1">
-            {TEMPLATES.slice(0, 2).map((template) => (
-              <Tip key={template.id} title={template.name} body={template.description} side="right" block>
-                <Button
-                  size="sm"
-                  className="w-full justify-start"
-                  onClick={() => {
-                    // Mallens maskiner, men lokalen och punkterna som redan ritats.
-                    const next = templateConfig(template.id);
-                    next.hall = config.hall;
-                    next.drawn = config.drawn;
-                    next.flow = { ...next.flow, ...pickPoints(config.flow) };
-                    load(next, { note: `Lade in mallen ${template.name}` });
-                  }}
-                >
-                  Mall: {template.name}
-                </Button>
-              </Tip>
-            ))}
-          </div>
-        </>
-      ),
+      body: null,
     },
     {
       id: "quote",
-      title: "Ta fram offertunderlaget",
-      why: "Pris, ritning och maskinlista i ett dokument som går att dela.",
+      title: t("guide.quote.title"),
+      why: t("guide.quote.why"),
       done: false,
       body: (
         <Button size="sm" variant="primary" onClick={() => setScreen("quote")}>
-          Sammanställ offertunderlag
+          {t("guide.quote.go")}
         </Button>
       ),
     },
@@ -257,14 +216,12 @@ export function GettingStarted() {
     <div className="blueprint absolute left-3 top-3 z-10 w-[300px] bg-white shadow-lg">
       <div className="flex items-center justify-between border-b border-divider px-3 py-2">
         <div>
-          <div className="kicker">Kom igång</div>
-          <div className="text-sm">
-            {doneCount} av {steps.length} steg klara
-          </div>
+          <div className="kicker">{t("guide.kicker")}</div>
+          <div className="text-sm">{t("guide.progress", { done: doneCount, total: steps.length })}</div>
         </div>
-        <Tip title="Stäng guiden" body="Den kan öppnas igen med knappen Kom igång nere till vänster." side="left">
+        <Tip title={t("guide.close")} body={t("guide.closeTip")} side="left">
           <Button variant="ghost" size="sm" onClick={() => toggleGuide(false)}>
-            Stäng
+            {t("guide.close")}
           </Button>
         </Tip>
       </div>
@@ -281,7 +238,7 @@ export function GettingStarted() {
               <Tip
                 block
                 side="right"
-                title={isNext ? `Nästa steg: ${step.title}` : step.title}
+                title={isNext ? t("guide.nextStep", { title: step.title }) : step.title}
                 body={step.why}
               >
                 <button
@@ -305,7 +262,7 @@ export function GettingStarted() {
                     {step.done ? "✓" : index + 1}
                   </span>
                   <span className={cx("min-w-0 flex-1", step.done && "text-muted")}>{step.title}</span>
-                  {isNext ? <span className="kicker text-accent">Nästa</span> : null}
+                  {isNext ? <span className="kicker text-accent">{t("guide.next")}</span> : null}
                 </button>
               </Tip>
               {isOpen ? (
@@ -320,16 +277,4 @@ export function GettingStarted() {
       </ol>
     </div>
   );
-}
-
-/** Start, slut och alternativen följer med när en mall läggs in över det man ritat. */
-function pickPoints(flow: ReturnType<typeof useConfigStore.getState>["config"]["flow"]) {
-  return {
-    startPoint: flow.startPoint,
-    endPoint: flow.endPoint,
-    startComment: flow.startComment,
-    endComment: flow.endComment,
-    markers: flow.markers,
-    fitToEndPoint: flow.fitToEndPoint,
-  };
 }

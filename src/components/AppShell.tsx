@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { useT } from "@/lib/i18n";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
 import { ShareNotice } from "./ShareNotice";
@@ -17,7 +18,7 @@ import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
 import { GettingStarted } from "./GettingStarted";
 import { Button, Tip } from "./ui";
-import { TOOL_HELP } from "./toolHelp";
+import { toolHelp } from "./toolHelp";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 import type { SessionUser } from "./AuthDialog";
 
@@ -40,6 +41,8 @@ export function AppShell() {
     selectedId,
     removeItem,
     removeDrawn,
+    turnDrawn,
+    turnMachine,
     proposalId,
   } = useConfigStore();
 
@@ -123,9 +126,6 @@ export function AppShell() {
           setView("2d");
           break;
         case "2":
-          setView("3d");
-          break;
-        case "3":
           setView("model");
           break;
         case "v":
@@ -155,6 +155,20 @@ export function AppShell() {
         case "f":
           toggleInspector();
           break;
+        case "r":
+          /*
+           * Vrida ska gå där man står. Att behöva sikta på en liten knapp i
+           * inspektorn för varje kvarts varv är ett avbrott mitt i arbetet —
+           * man tittar bort från ritningen för att ändra något man ser i den.
+           * Skift vrider åt andra hållet.
+           */
+          if (!selectedId) break;
+          event.preventDefault();
+          if (config.drawn.some((d) => d.id === selectedId)) turnDrawn(selectedId);
+          else if (config.line.some((i) => i.instanceId === selectedId)) {
+            turnMachine(selectedId, event.shiftKey ? -1 : 1);
+          }
+          break;
         case "delete":
         case "backspace":
           if (!selectedId) break;
@@ -165,6 +179,7 @@ export function AppShell() {
     },
     [
       config.drawn,
+      config.line,
       redo,
       removeDrawn,
       removeItem,
@@ -172,6 +187,8 @@ export function AppShell() {
       setTool,
       setView,
       toggleInspector,
+      turnDrawn,
+      turnMachine,
       togglePorts,
       toggleZones,
       undo,
@@ -266,6 +283,7 @@ export function AppShell() {
 
 function ToolRail() {
   const { tool, setTool, showZones, showPorts, toggleZones, togglePorts } = useConfigStore();
+  const t = useT();
 
   return (
     <div className="absolute right-3 top-3 flex flex-col gap-1">
@@ -278,45 +296,27 @@ function ToolRail() {
           ["nogo", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
           ["measure", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
         ] as const
-      ).map(([value, path]) => (
-        <Tip
-          key={value}
-          side="left"
-          title={TOOL_HELP[value].title}
-          body={TOOL_HELP[value].body}
-          shortcut={TOOL_HELP[value].shortcut}
-        >
-          <Button
-            size="sm"
-            active={tool === value}
-            onClick={() => setTool(value)}
-            className="h-8 w-8 p-0"
-          >
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-              <path d={path} />
-            </svg>
-            <span className="sr-only">{TOOL_HELP[value].title}</span>
-          </Button>
-        </Tip>
-      ))}
-      <Tip
-        side="left"
-        title="Visa zoner"
-        body="Maskinernas service- och säkerhetszoner. Ytor som måste hållas fria runt varje maskin."
-        shortcut="Z"
-      >
+      ).map(([value, path]) => {
+        const help = toolHelp(t, value);
+        return (
+          <Tip key={value} side="left" title={help.title} body={help.body} shortcut={help.shortcut}>
+            <Button size="sm" active={tool === value} onClick={() => setTool(value)} className="h-8 w-8 p-0">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d={path} />
+              </svg>
+              <span className="sr-only">{help.title}</span>
+            </Button>
+          </Tip>
+        );
+      })}
+      <Tip side="left" title={t("cad.zones")} body={t("tip.zones.body")} shortcut="Z">
         <Button size="sm" active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
           </svg>
         </Button>
       </Tip>
-      <Tip
-        side="left"
-        title="Visa maskinportar"
-        body="Var paketen går in i och ut ur varje maskin. Ljusblå är ingång, mörk är utgång."
-        shortcut="P"
-      >
+      <Tip side="left" title={t("cad.arrows")} body={t("tip.arrows.body")} shortcut="P">
         <Button size="sm" active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
             <circle cx="7" cy="12" r="2.5" />

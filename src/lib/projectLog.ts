@@ -139,8 +139,8 @@ export function describeChange(
     return logEntry(
       "flow",
       afterMarkers > beforeMarkers
-        ? "Lade till en alternativ start- eller slutpunkt"
-        : "Tog bort en alternativ start- eller slutpunkt",
+        ? "Lade till en start- eller slutpunkt"
+        : "Tog bort en start- eller slutpunkt",
     );
   }
 
@@ -149,23 +149,13 @@ export function describeChange(
 
 /**
  * Punkterna flyttas med musen och kommentarerna skrivs tecken för tecken —
- * varje steg vore en rad i loggen. De får egna rader ovan när det behövs.
+ * varje steg vore en rad i loggen. Att en punkt läggs till eller tas bort får
+ * en egen rad ovan.
  */
-const POINT_KEYS = new Set<keyof Configuration["flow"]>([
-  "startPoint",
-  "endPoint",
-  "startComment",
-  "endComment",
-  "markers",
-]);
+const POINT_KEYS = new Set<keyof Configuration["flow"]>(["startPoint", "startComment", "markers"]);
 
 const FLOW_LABEL: Partial<Record<keyof Configuration["flow"], string>> = {
-  infeedFrom: "Paketen kommer in",
-  controlDeskSide: "Pulpetens sida",
-  stickerMagazineSide: "Ströfacksmagasinets sida",
   truckPickupSide: "Truckens hämtsida",
-  finalConveyorLengthMm: "Sista transportörens längd",
-  fitToEndPoint: "Passa in mot slutpunkt",
 };
 
 const VALUE_LABEL: Record<string, string> = {

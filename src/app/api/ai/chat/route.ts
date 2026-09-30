@@ -19,6 +19,8 @@ const bodySchema = z.object({
     .max(20)
     .default([]),
   attachments: z.array(attachmentSchema).max(MAX_ATTACHMENTS).default([]),
+  // Språket kunden läser sajten på. Assistenten svarar på samma.
+  locale: z.enum(["sv", "en", "de"]).default("sv"),
 });
 
 const encoder = new TextEncoder();
@@ -64,7 +66,11 @@ export async function POST(request: Request) {
 
   // Utan nyckel degraderar assistenten till regelmotorns egna förslag.
   if (!provider) {
-    const { text, suggestions } = ruleBasedSuggestions(config as Configuration, library);
+    const { text, suggestions } = ruleBasedSuggestions(
+      config as Configuration,
+      library,
+      parsed.data.locale,
+    );
     const prefix = attachments.length
       ? "Jag kan inte läsa bifogade filer utan att assistenten är påslagen — " +
         "ingen modellnyckel är satt på servern. Här är vad regelmotorn ser i stället.\n\n"
@@ -101,6 +107,7 @@ export async function POST(request: Request) {
         history,
         attachments,
         role,
+        locale: parsed.data.locale,
         library,
         priceBook,
         provider,

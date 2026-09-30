@@ -5,16 +5,15 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
-import { markerLabel, MAX_MARKERS, ROLE_HELP } from "@/lib/flowMarkers";
+import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
 import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag, Tip } from "./ui";
-import { TOOL_HELP } from "./toolHelp";
+import { toolHelp } from "./toolHelp";
 import { MachineThumb } from "./MachineThumb";
+import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { useT } from "@/lib/i18n";
 import type { FlowMarker, Machine, MachineCategory, Side } from "@/lib/types";
 
-const SIDE_OPTIONS: { value: Side; label: string }[] = [
-  { value: "right", label: "Höger" },
-  { value: "left", label: "Vänster" },
-];
+
 
 export function Sidebar() {
   const {
@@ -34,13 +33,19 @@ export function Sidebar() {
     setScreen,
     library,
     layout,
-    setFlowPoint,
-    setFlowComment,
+    setStartPoint,
+    setStartComment,
     addFlowMarker,
     updateFlowMarker,
     removeFlowMarker,
     activateFlowMarker,
+    setDraggingMachine,
   } = useConfigStore();
+  const t = useT();
+  const SIDE_OPTIONS: { value: Side; label: string }[] = [
+    { value: "right", label: t("side.right") },
+    { value: "left", label: t("side.left") },
+  ];
 
   const [search, setSearch] = useState("");
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -61,14 +66,16 @@ export function Sidebar() {
     <aside className="scroll-thin flex h-full w-[280px] flex-none flex-col overflow-y-auto border-r border-divider bg-white">
       {/* ① Maskiner */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={1} title="Maskiner" />
+        <SectionHeading index={1} title={t("sidebar.machines")} />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Sök maskin…"
+          placeholder={t("sidebar.search")}
           className="mb-2 w-full border border-divider px-2 py-1 text-sm outline-none focus:border-accent"
         />
-        <p className="mb-2 text-[11px] text-muted">Klicka för att lägga sist i linjen.</p>
+        <p className="mb-2 text-[11px] text-muted">
+          {t("sidebar.addHint")}
+        </p>
 
         <div className="space-y-3">
           {Object.entries(grouped).map(([category, machines]) => (
@@ -78,8 +85,22 @@ export function Sidebar() {
                 {machines.map((machine) => (
                   <button
                     key={machine.id}
+                    draggable
+                    /*
+                     * Dra maskinen dit den ska, eller klicka för att lägga
+                     * den på ledig yta. Klicket är kvar: det är snabbare när
+                     * man ändå tänker flytta den sedan.
+                     */
+                    onDragStart={(e) => {
+                      setDraggingMachine(machine.id);
+                      e.dataTransfer.setData(MACHINE_DRAG_TYPE, machine.id);
+                      // Kladden vill annars ha machineId som text i fältet.
+                      e.dataTransfer.setData("text/plain", machine.name);
+                      e.dataTransfer.effectAllowed = "copy";
+                    }}
+                    onDragEnd={() => setDraggingMachine(null)}
                     onClick={() => addMachine(machine.id)}
-                    className="blueprint flex w-full items-start gap-2 bg-white p-2 text-left hover:border-accent"
+                    className="blueprint flex w-full cursor-grab items-start gap-2 bg-white p-2 text-left hover:border-accent active:cursor-grabbing"
                   >
                     <MachineThumb machine={machine} className="mt-0.5 h-8 w-11" />
                     <div className="min-w-0">
@@ -101,7 +122,7 @@ export function Sidebar() {
               </div>
             </div>
           ))}
-          {Object.keys(grouped).length === 0 ? <Empty>Ingen maskin matchar sökningen.</Empty> : null}
+          {Object.keys(grouped).length === 0 ? <Empty>{t("sidebar.noMatch")}</Empty> : null}
         </div>
       </section>
 
@@ -109,11 +130,11 @@ export function Sidebar() {
       <section className="border-b border-divider p-3">
         <SectionHeading
           index={2}
-          title="Linjen"
-          action={<span className="kicker">{config.line.length} st</span>}
+          title={t("sidebar.line")}
+          action={<span className="kicker">{t("sidebar.count", { count: config.line.length })}</span>}
         />
         {config.line.length === 0 ? (
-          <Empty>Linjen är tom. Lägg till en maskin ovanför.</Empty>
+          <Empty>{t("sidebar.lineEmpty")}</Empty>
         ) : (
           <div className="border border-divider">
             {config.line.map((item, index) => {
@@ -159,220 +180,75 @@ export function Sidebar() {
         )}
       </section>
 
-      {/* ③ Flöde — de fem frågorna */}
+      {/* ③ Hallen och trucken */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={3} title="Flöde" />
+        <SectionHeading index={3} title={t("sidebar.flow")} />
 
-        <div className="mb-3">
-          <span className="kicker mb-1 block">Paketen kommer in</span>
-          <div className="grid grid-cols-3 gap-1">
-            {(
-              [
-                { value: "straight", label: "Rakt", path: "M4 11h22M22 6l5 5-5 5" },
-                { value: "right", label: "Höger", path: "M8 3v8h18M22 6l5 5-5 5" },
-                { value: "left", label: "Vänster", path: "M8 19v-8h18M22 6l5 5-5 5" },
-              ] as const
-            ).map((option) => (
-              <button
-                key={option.value}
-                onClick={() => setFlow({ infeedFrom: option.value })}
-                className={`blueprint flex flex-col items-center gap-1 py-2 text-[11px] ${
-                  config.flow.infeedFrom === option.value
-                    ? "border-accent bg-accent text-white"
-                    : "bg-white hover:border-accent"
-                }`}
-              >
-                <svg width="30" height="20" viewBox="0 0 30 22" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <path d={option.path} />
-                </svg>
-                {option.label}
-              </button>
-            ))}
-          </div>
-        </div>
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">{t("sidebar.flowHint")}</p>
 
         <div className="space-y-3">
           <div>
-            <span className="kicker mb-1 block">Pulpetens sida</span>
+            <span className="kicker mb-1 block">{t("sidebar.truckPickup")}</span>
             <Segmented
-              ariaLabel="Pulpetens sida"
-              value={config.flow.controlDeskSide}
-              options={SIDE_OPTIONS}
-              onChange={(v) => setFlow({ controlDeskSide: v })}
-            />
-          </div>
-
-          {/* Frågan ställs bara när en truckströläggare finns i linjen. */}
-          {hasStickerStacker ? (
-            <div>
-              <span className="kicker mb-1 block">Ströfacksmagasinets sida</span>
-              <Segmented
-                ariaLabel="Ströfacksmagasinets sida"
-                value={config.flow.stickerMagazineSide}
-                options={SIDE_OPTIONS}
-                onChange={(v) => setFlow({ stickerMagazineSide: v })}
-              />
-            </div>
-          ) : null}
-
-          <div>
-            <span className="kicker mb-1 block">Trucken hämtar från</span>
-            <Segmented
-              ariaLabel="Trucken hämtar från"
+              ariaLabel={t("sidebar.truckPickup")}
               value={config.flow.truckPickupSide}
               options={SIDE_OPTIONS}
               onChange={(v) => setFlow({ truckPickupSide: v })}
             />
           </div>
 
-          <Field label="Sista kedjetransportörens längd">
-            <NumberInput
-              value={meters(config.flow.finalConveyorLengthMm)}
-              suffix="m"
-              min={1}
-              max={40}
-              onCommit={(raw) => {
-                const mm = parseMeters(raw);
-                if (mm !== null) setFlow({ finalConveyorLengthMm: Math.min(40000, Math.max(1000, mm)) });
-              }}
-            />
-          </Field>
-        </div>
-
-        {/* Start- och slutpunkt: kan också dras direkt i ritningen. */}
-        <div className="mt-4 border-t border-divider pt-3">
-          <Tip
-            block
-            side="right"
-            title="Varför start och slut?"
-            body={
-              "Linjen byggs från startpunkten och sträcks mot slutpunkten. " +
-              "Skriv varför punkten ligger där — det följer med i ritningen och hjälper den som " +
-              "läser underlaget. Finns flera tänkbara lägen, lägg till alternativ och jämför."
-            }
-          >
-            <span className="kicker mb-1 block cursor-help underline decoration-dotted underline-offset-2">
-              Linjens start och slut
-            </span>
-          </Tip>
-          <p className="mb-2 text-[11px] text-muted">Dra markörerna i ritningen, eller skriv måtten här.</p>
-
-          <div className="mb-2 grid grid-cols-2 gap-2">
-            <Field label="Start X">
-              <NumberInput
-                value={meters(config.flow.startPoint.x)}
-                onCommit={(raw) => {
-                  const mm = parseMeters(raw);
-                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, x: mm });
-                }}
-              />
-            </Field>
-            <Field label="Start Y">
-              <NumberInput
-                value={meters(config.flow.startPoint.y)}
-                onCommit={(raw) => {
-                  const mm = parseMeters(raw);
-                  if (mm !== null) setFlowPoint("startPoint", { ...config.flow.startPoint, y: mm });
-                }}
-              />
-            </Field>
-          </div>
-          <CommentInput
-            label="Varför här? (start)"
-            placeholder="T.ex. paketen kommer från sågen via port A"
-            value={config.flow.startComment ?? ""}
-            help={ROLE_HELP.start}
-            onCommit={(text) => setFlowComment("start", text)}
-          />
-
-          {config.flow.endPoint ? (
-            <>
-              <div className="mb-2 grid grid-cols-2 gap-2">
-                <Field label="Slut X">
-                  <NumberInput
-                    value={meters(config.flow.endPoint.x)}
-                    onCommit={(raw) => {
-                      const mm = parseMeters(raw);
-                      if (mm !== null && config.flow.endPoint)
-                        setFlowPoint("endPoint", { ...config.flow.endPoint, x: mm });
-                    }}
-                  />
-                </Field>
-                <Field label="Slut Y">
-                  <NumberInput
-                    value={meters(config.flow.endPoint.y)}
-                    onCommit={(raw) => {
-                      const mm = parseMeters(raw);
-                      if (mm !== null && config.flow.endPoint)
-                        setFlowPoint("endPoint", { ...config.flow.endPoint, y: mm });
-                    }}
-                  />
-                </Field>
-              </div>
-              <CommentInput
-                label="Varför här? (slut)"
-                placeholder="T.ex. trucken hämtar vid port B"
-                value={config.flow.endComment ?? ""}
-                help={ROLE_HELP.end}
-                onCommit={(text) => setFlowComment("end", text)}
-              />
-              <label className="mb-2 flex cursor-pointer items-start gap-2">
-                <input
-                  type="checkbox"
-                  checked={config.flow.fitToEndPoint}
-                  onChange={(e) => setFlow({ fitToEndPoint: e.target.checked })}
-                  className="mt-0.5 accent-accent"
-                />
-                <span>
-                  <span className="text-[13px]">Anpassa längden automatiskt</span>
-                  <span className="block text-[11px] leading-relaxed text-muted">
-                    Sätter sista kedjetransportörens längd så att linjen slutar i punkten.
-                  </span>
-                </span>
-              </label>
-              <Button size="sm" variant="ghost" onClick={() => setFlowPoint("endPoint", null)}>
-                Ta bort slutpunkt
-              </Button>
-            </>
-          ) : (
-            <Button
-              size="sm"
-              className="w-full"
-              onClick={() =>
-                setFlowPoint("endPoint", {
-                  x: Math.max(0, layout.bounds.x + layout.bounds.l),
-                  y: config.flow.startPoint.y,
-                })
-              }
-            >
-              Sätt slutpunkt
-            </Button>
-          )}
-          {layout.metrics.endPointGapMm !== null ? (
-            <p className="mt-2 text-[11px] text-muted">
-              Linjen slutar {meters(layout.metrics.endPointGapMm)} m från slutpunkten.
+          <div>
+            <Tip block side="right" title={t("points.title")} body={t("points.why")}>
+              <span className="kicker mb-1 block cursor-help underline decoration-dotted underline-offset-2">
+                {t("sidebar.newMachinesAt")}
+              </span>
+            </Tip>
+            <p className="mb-2 text-[11px] text-muted">
+              {t("sidebar.startPointHint")}
             </p>
-          ) : null}
+            <div className="grid grid-cols-2 gap-2">
+              <Field label={t("sidebar.startX")}>
+                <NumberInput
+                  value={meters(config.flow.startPoint.x)}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) setStartPoint({ ...config.flow.startPoint, x: mm });
+                  }}
+                />
+              </Field>
+              <Field label={t("sidebar.startY")}>
+                <NumberInput
+                  value={meters(config.flow.startPoint.y)}
+                  onCommit={(raw) => {
+                    const mm = parseMeters(raw);
+                    if (mm !== null) setStartPoint({ ...config.flow.startPoint, y: mm });
+                  }}
+                />
+              </Field>
+            </div>
+            <CommentInput
+              label={t("points.why.label")}
+              placeholder={t("points.startPlaceholder")}
+              value={config.flow.startComment ?? ""}
+              help={t("points.startHelp")}
+              onCommit={setStartComment}
+            />
+          </div>
 
-          {/* Alternativa punkter: lägen man vill jämföra, med motivering. */}
-          <div className="mt-3">
+          {/* Fler start- och slutpunkter, med motivering. */}
+          <div>
             <div className="mb-1 flex items-center justify-between">
-              <Tip
-                side="right"
-                title="Alternativa punkter"
-                body={
-                  "Fler tänkbara lägen för start eller slut — t.ex. från hyvleriet i stället för sågen, " +
-                  "eller en annan port. Linjen byggs bara från den aktiva; gör ett alternativ aktivt för att jämföra."
-                }
-              >
-                <span className="kicker cursor-help underline decoration-dotted underline-offset-2">Alternativ</span>
+              <Tip side="right" title={t("points.more")} body={t("points.moreTip")}>
+                <span className="kicker cursor-help underline decoration-dotted underline-offset-2">
+                  {t("points.more")}
+                </span>
               </Tip>
               <span className="kicker">{config.flow.markers?.length ?? 0} st</span>
             </div>
             {(config.flow.markers ?? []).map((marker) => (
               <MarkerRow
                 key={marker.id}
-                label={markerLabel(config.flow, marker)}
+                label={`${t(marker.role === "start" ? "points.start" : "points.end")} ${markerNumber(config.flow, marker)}`}
                 marker={marker}
                 onComment={(comment) => updateFlowMarker(marker.id, { comment })}
                 onActivate={() => activateFlowMarker(marker.id)}
@@ -380,24 +256,24 @@ export function Sidebar() {
               />
             ))}
             <div className="grid grid-cols-2 gap-1">
-              <Tip block title="Lägg till alternativ start" body={ROLE_HELP.start}>
+              <Tip block title={t("points.addStartTip")} body={t("points.startHelp")}>
                 <Button
                   size="sm"
                   className="w-full"
                   disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
                   onClick={() => addFlowMarker("start")}
                 >
-                  + Start
+                  {t("points.addStart")}
                 </Button>
               </Tip>
-              <Tip block title="Lägg till alternativt slut" body={ROLE_HELP.end}>
+              <Tip block title={t("points.addEndTip")} body={t("points.endHelp")}>
                 <Button
                   size="sm"
                   className="w-full"
                   disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
                   onClick={() => addFlowMarker("end")}
                 >
-                  + Slut
+                  {t("points.addEnd")}
                 </Button>
               </Tip>
             </div>
@@ -408,7 +284,7 @@ export function Sidebar() {
         <div className="mt-4 border-t border-divider pt-3">
           <span className="kicker mb-1 block">Virke</span>
           <div className="mb-2 grid grid-cols-2 gap-2">
-            <Field label="Minsta virkesbredd">
+            <Field label={t("sidebar.widthMin")}>
               <NumberInput
                 value={meters(config.product.packageWidthMinMm)}
                 onCommit={(raw) => {
@@ -417,7 +293,7 @@ export function Sidebar() {
                 }}
               />
             </Field>
-            <Field label="Största virkesbredd">
+            <Field label={t("sidebar.widthMax")}>
               <NumberInput
                 value={meters(config.product.packageWidthMaxMm)}
                 onCommit={(raw) => {
@@ -428,7 +304,7 @@ export function Sidebar() {
             </Field>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="Paketlängd">
+            <Field label={t("sidebar.packageLength")}>
               <NumberInput
                 value={meters(config.product.packageLengthMm)}
                 onCommit={(raw) => {
@@ -437,7 +313,7 @@ export function Sidebar() {
                 }}
               />
             </Field>
-            <Field label="Målkapacitet">
+            <Field label={t("sidebar.target")}>
               <NumberInput
                 value={String(config.product.targetPackagesPerHour)}
                 suffix="pkt/h"
@@ -455,16 +331,16 @@ export function Sidebar() {
 
       {/* ④ Hall och zoner */}
       <section className="border-b border-divider p-3">
-        <SectionHeading index={4} title="Hall och zoner" />
+        <SectionHeading index={4} title={t("sidebar.hall")} />
         <div className="mb-3 grid grid-cols-3 gap-2">
           {(
             [
-              ["Längd", "lengthMm"],
-              ["Bredd", "widthMm"],
-              ["Höjd", "clearHeightMm"],
+              ["sidebar.length", "lengthMm"],
+              ["sidebar.width", "widthMm"],
+              ["sidebar.height", "clearHeightMm"],
             ] as const
           ).map(([label, key]) => (
-            <Field key={key} label={`${label} m`}>
+            <Field key={key} label={`${t(label)} m`}>
               <NumberInput
                 value={meters(config.hall[key])}
                 onCommit={(raw) => {
@@ -476,34 +352,41 @@ export function Sidebar() {
           ))}
         </div>
 
-        <p className="mb-3 text-[11px] leading-relaxed text-muted">
-          Du kan också dra i hallens kant eller hörn direkt i ritningen.
-        </p>
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">{t("guide.hall.drag")}</p>
 
-        <span className="kicker mb-1 block">Ritverktyg</span>
+        <span className="kicker mb-1 block">{t("sidebar.tools")}</span>
         <div className="grid grid-cols-3 gap-1">
-          {(["select", "wall", "door", "truck", "nogo", "measure"] as const).map((value) => (
-            <Tip
-              key={value}
-              block
-              title={TOOL_HELP[value].title}
-              body={TOOL_HELP[value].body}
-              shortcut={TOOL_HELP[value].shortcut}
-            >
-              <button
-                onClick={() => setTool(value)}
-                className={`w-full border px-2 py-1 text-xs transition-colors ${
-                  tool === value
-                    ? "border-accent bg-accent text-white"
-                    : "border-divider bg-white hover:border-accent"
-                }`}
-              >
-                {TOOL_HELP[value].label}
-              </button>
-            </Tip>
-          ))}
+          {(["select", "wall", "door", "truck", "nogo", "measure"] as const).map((value) => {
+            const help = toolHelp(t, value);
+            return (
+              <Tip key={value} block title={help.title} body={help.body} shortcut={help.shortcut}>
+                <button
+                  onClick={() => setTool(value)}
+                  className={`w-full border px-2 py-1 text-xs transition-colors ${
+                    tool === value
+                      ? "border-accent bg-accent text-white"
+                      : "border-divider bg-white hover:border-accent"
+                  }`}
+                >
+                  {help.label}
+                </button>
+              </Tip>
+            );
+          })}
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted">{TOOL_HELP[tool].hint}</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          {tool === "select"
+            ? t("sidebar.drawHint", { mm: 250 })
+            : tool === "wall"
+              ? t("tool.wallHint", { mm: 300 })
+              : tool === "door"
+                ? t("tool.doorHint")
+                : tool === "truck"
+                  ? t("tool.truckHint")
+                  : tool === "nogo"
+                    ? t("tool.nogoHint")
+                    : t("tool.measureHint")}
+        </p>
 
         <div className="mt-2 flex flex-wrap gap-1">
           <Button
@@ -567,7 +450,7 @@ export function Sidebar() {
 
       {/* ⑤ Offert */}
       <section className="p-3">
-        <SectionHeading index={5} title="Offert" />
+        <SectionHeading index={5} title={t("sidebar.quote")} />
         <div className="space-y-2">
           <Button variant="primary" className="w-full" onClick={() => setScreen("quote")}>
             Sammanställ offertunderlag
@@ -580,6 +463,44 @@ export function Sidebar() {
         </p>
       </section>
     </aside>
+  );
+}
+
+function ShareButton() {
+  const t = useT();
+  const config = useConfigStore((s) => s.config);
+  const note = useConfigStore((s) => s.note);
+  const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
+
+  const share = async () => {
+    const { shareUrl } = await import("@/lib/share");
+    const { url, long } = await shareUrl(config, window.location.origin, window.location.pathname);
+    note("share", "Skapade en delningslänk");
+    try {
+      await navigator.clipboard.writeText(url);
+      setState(long ? "long" : "copied");
+      setTimeout(() => setState("idle"), long ? 8000 : 2000);
+    } catch {
+      // Utklippet kräver säker kontext och kan nekas. Då får man länken ändå.
+      window.prompt(t("sidebar.shareCopy"), url);
+      setState("idle");
+    }
+  };
+
+  return (
+    <div>
+      <Button className="w-full" onClick={share}>
+        {state === "idle" || state === "failed" ? t("sidebar.share") : t("sidebar.shareCopied")}
+      </Button>
+      {state === "long" ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-warn">{t("sidebar.shareLong")}</p>
+      ) : (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">
+          Hela konfigurationen ligger i länken. Inget sparas på servern, och mottagaren
+          behöver inget konto.
+        </p>
+      )}
+    </div>
   );
 }
 
@@ -632,6 +553,7 @@ function MarkerRow({
   onActivate: () => void;
   onRemove: () => void;
 }) {
+  const t = useT();
   return (
     <div className="mb-1.5 border border-dashed border-divider p-1.5">
       <div className="mb-1 flex items-center gap-2">
@@ -640,15 +562,13 @@ function MarkerRow({
           {meters(marker.pos.x)} × {meters(marker.pos.y)} m
         </span>
         <span className="ml-auto flex items-center gap-1">
-          <Tip
-            side="right"
-            title="Gör aktiv"
-            body={`Bygger linjen ${marker.role === "start" ? "från" : "mot"} den här punkten. Den som var aktiv blir kvar som alternativ.`}
-          >
-            <button onClick={onActivate} className="kicker border border-divider px-1 hover:border-accent hover:text-accent">
-              Aktivera
-            </button>
-          </Tip>
+          {marker.role === "start" ? (
+            <Tip side="right" title={t("points.activate")} body={t("points.activateTip")}>
+              <button onClick={onActivate} className="kicker border border-divider px-1 hover:border-accent hover:text-accent">
+                {t("points.activate")}
+              </button>
+            </Tip>
+          ) : null}
           <button onClick={onRemove} className="text-muted hover:text-danger" aria-label="Ta bort">
             ×
           </button>
@@ -657,7 +577,7 @@ function MarkerRow({
       <input
         key={marker.comment}
         defaultValue={marker.comment}
-        placeholder="Varför? T.ex. om gaveln byggs om"
+        placeholder={t("points.placeholder")}
         maxLength={300}
         onBlur={(e) => {
           if (e.currentTarget.value.trim() !== marker.comment) onComment(e.currentTarget.value.trim());
@@ -667,46 +587,6 @@ function MarkerRow({
         }}
         className="w-full border border-divider bg-white px-2 py-0.5 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
       />
-    </div>
-  );
-}
-
-function ShareButton() {
-  const config = useConfigStore((s) => s.config);
-  const note = useConfigStore((s) => s.note);
-  const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
-
-  const share = async () => {
-    const { shareUrl } = await import("@/lib/share");
-    const { url, long } = await shareUrl(config, window.location.origin, window.location.pathname);
-    note("share", "Skapade en delningslänk");
-    try {
-      await navigator.clipboard.writeText(url);
-      setState(long ? "long" : "copied");
-      setTimeout(() => setState("idle"), long ? 8000 : 2000);
-    } catch {
-      // Utklippet kräver säker kontext och kan nekas. Då får man länken ändå.
-      window.prompt("Kopiera länken:", url);
-      setState("idle");
-    }
-  };
-
-  return (
-    <div>
-      <Button className="w-full" onClick={share}>
-        {state === "idle" || state === "failed" ? "Kopiera delningslänk" : "Länk kopierad"}
-      </Button>
-      {state === "long" ? (
-        <p className="mt-1 text-[11px] leading-relaxed text-warn">
-          Länken blev lång. Skicka den som klickbar länk — vissa e-postklienter bryter
-          långa adresser och då går den inte att öppna.
-        </p>
-      ) : (
-        <p className="mt-1 text-[11px] leading-relaxed text-muted">
-          Hela konfigurationen ligger i länken. Inget sparas på servern, och mottagaren
-          behöver inget konto.
-        </p>
-      )}
     </div>
   );
 }

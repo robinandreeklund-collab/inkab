@@ -50,7 +50,7 @@ export async function PUT(request: Request) {
   // Provkörning: ett bibliotek som får motorn att kasta får inte sparas.
   try {
     const library = makeLibrary(document.machines as Machine[]);
-    computeLayout(templateConfig("strolinje"), library);
+    computeLayout(templateConfig("strolinje", library), library);
   } catch (error) {
     return NextResponse.json(
       {
@@ -63,9 +63,24 @@ export async function PUT(request: Request) {
     );
   }
 
+  /*
+   * Vad servern hade innan vi skrev. Utan databas glömmer den allt vid en
+   * omstart och faller tillbaka på repots utgångsläge — och det syns bara
+   * som en tidsstämpel som hoppat bakåt. Admin-vyn jämför med sin egen
+   * senaste sparning och kan säga att omstarten har hänt.
+   */
+  const before = await readDocument();
+  const previousUpdatedAt = before.updatedAt ?? null;
+
   const result = await writeDocument(document, "admin");
   const status = await storeStatus();
-  return NextResponse.json({ ok: true, persisted: result.persisted, reason: result.reason, status });
+  return NextResponse.json({
+    ok: true,
+    persisted: result.persisted,
+    reason: result.reason,
+    previousUpdatedAt,
+    status,
+  });
 }
 
 /** Återställer till det versionshanterade utgångsläget. */

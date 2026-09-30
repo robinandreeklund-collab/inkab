@@ -169,6 +169,8 @@ export async function runAssistant(input: {
   effort?: "low" | "medium" | "high";
   /** Leverantör att köra mot. Utelämnas för admins val. */
   provider?: ResolvedProvider;
+  /** Språket kunden läser sajten på. Assistenten svarar på samma. */
+  locale?: string;
   onEvent?: (event: AssistantEvent) => void;
 }): Promise<AssistantRun> {
   const attachments = input.attachments ?? [];
@@ -317,7 +319,7 @@ export async function runAssistant(input: {
         ...(provider.traits.effort
           ? { output_config: { effort: input.effort ?? "medium" } }
           : {}),
-        system: providerSystem(input.library, provider),
+        system: providerSystem(input.library, provider, input.locale),
         tools: providerTools(input.library, provider),
         messages,
       });
@@ -575,8 +577,12 @@ export async function runAssistant(input: {
  * validering göra jobbet — den finns ändå, för strict går inte att lita på
  * blint heller.
  */
-export function providerSystem(library: MachineLibrary, provider: ResolvedProvider) {
-  const system = buildSystem(library);
+export function providerSystem(
+  library: MachineLibrary,
+  provider: ResolvedProvider,
+  locale = "sv",
+) {
+  const system = buildSystem(library, locale);
   if (provider.traits.promptCache) return system;
   return system.map(({ cache_control: _cache, ...rest }) => rest);
 }

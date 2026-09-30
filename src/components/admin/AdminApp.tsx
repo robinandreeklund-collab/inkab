@@ -80,6 +80,10 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
   /** Felen ligger högst upp i huvudytan; är man nedskrollad syns de inte. */
   const issuesRef = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [bundling, setBundling] = useState(false);
+  /** Tidsstämpeln servern gav oss när vi sparade sist, för att märka omstarter. */
+  const savedAt = useRef<string | null>(null);
+  const [serverForgot, setServerForgot] = useState(false);
   const fileInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
@@ -125,9 +129,11 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
    * inte hämtas från servern förrän man sparat. Läs dem direkt ur dokumentet.
    */
   const localAssetSrc = useCallback(
-    (assetId: string) => {
-      const asset = doc?.assets?.find((a) => a.id === assetId);
-      return asset ? `data:${asset.mime};base64,${asset.data}` : null;
+    (entry: string) => {
+      const asset = doc?.assets?.find((a) => a.id === entry);
+      if (asset) return `data:${asset.mime};base64,${asset.data}`;
+      // Bilder som packats ut som filer i repot pekas ut med sökväg.
+      return entry.startsWith("/") ? entry : null;
     },
     [doc],
   );
@@ -142,8 +148,9 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     return map;
   }, [doc]);
 
-  const save = async () => {
-    if (!doc) return;
+  /** Sparar och säger om det gick. Exporten behöver veta. */
+  const save = async (): Promise<boolean> => {
+    if (!doc) return false;
     setSaving(true);
     setIssues([]);
     setMessage(null);
@@ -159,7 +166,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
       requestAnimationFrame(() =>
         issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
       );
-      return;
+      return false;
     }
 
     const response = await fetch("/api/admin/library", {
@@ -175,16 +182,26 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
       requestAnimationFrame(() =>
         issuesRef.current?.scrollIntoView({ behavior: "smooth", block: "center" }),
       );
-      return;
+      return false;
     }
 
     setDirty(false);
     setStatus(data.status);
+
+    /*
+     * Hade servern glömt vår förra sparning? Utan databas nollställs den vid
+     * varje omstart och deploy, och då är det arbetskopian i den här fliken
+     * som är den enda som minns. Skrivningen ovan la tillbaka allt — men
+     * användaren ska få veta att det hände.
+     */
+    setServerForgot(!!savedAt.current && data.previousUpdatedAt !== savedAt.current);
+    savedAt.current = data.status?.updatedAt ?? null;
     setMessage(
       data.persisted
         ? "Sparat i databasen."
         : `Sparat för den här serverinstansen. ${data.reason ?? ""} Exportera JSON och committa den för att behålla ändringarna.`,
     );
+    return true;
   };
 
   const exportJson = () => {
@@ -196,6 +213,69 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
     link.download = "library.json";
     link.click();
     URL.revokeObjectURL(url);
+  };
+
+  /**
+   * Demo-paketet: biblioteket och de uppladdade modellerna som repofiler.
+   *
+   * Utan databas dör modellerna med serverprocessen. Paketet är vägen runt
+   * det som inte kostar något: packa upp i reporoten, committa, och demon ser
+   * likadan ut efter varje omstart.
+   */
+  const exportBundle = async () => {
+    setBundling(true);
+    try {
+      /*
+       * Paketet byggs ur det servern har, inte ur arbetskopian — så vi lägger
+       * dit arbetskopian först. Alltid, inte bara vid osparade ändringar: utan
+       * databas tappar servern allt vid en omstart, och en instans på
+       * gratisplanen somnar in efter en kvarts stillhet. Fliken kan alltså se
+       * bilder som servern har glömt, och då hade paketet blivit utan dem utan
+       * att någon sa något.
+       */
+      if (!(await save())) {
+        setMessage("Ändringarna gick inte att spara, så paketet byggdes inte. Se felen ovan.");
+        return;
+      }
+
+      const response = await fetch("/api/admin/bundle");
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        setMessage(data.error ?? "Paketet kunde inte byggas.");
+        return;
+      }
+
+      const summary = JSON.parse(
+        decodeURIComponent(response.headers.get("X-Bundle-Summary") ?? "%7B%7D"),
+      ) as { models?: number; missing?: number; images?: number };
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const name = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "inkab-demo.zip";
+
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = name;
+      link.click();
+      URL.revokeObjectURL(url);
+
+      const models = summary.models ?? 0;
+      const missing = summary.missing ?? 0;
+      const images = summary.images ?? 0;
+      setMessage(
+        `Paketet innehåller biblioteket, ${models} ${models === 1 ? "modell" : "modeller"} och ` +
+          `${images} ${images === 1 ? "produktbild" : "produktbilder"}. ` +
+          "Packa upp det i reporoten, committa data/ och public/models/ och pusha — " +
+          "då överlever demon omstarter utan databas." +
+          (missing > 0
+            ? ` ${missing} modellhänvisning${missing === 1 ? "" : "ar"} pekar på filer som ` +
+              "fallit ur serverns minne; ladda upp dem igen. Se LASMIG.md i arkivet."
+            : ""),
+      );
+    } catch {
+      setMessage("Paketet kunde inte hämtas.");
+    } finally {
+      setBundling(false);
+    }
   };
 
   const importJson = async (file: File) => {
@@ -262,6 +342,14 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
           <Button size="sm" onClick={exportJson}>
             Exportera JSON
           </Button>
+          <Button
+            size="sm"
+            onClick={exportBundle}
+            disabled={bundling}
+            title="Biblioteket och modellerna som filer att committa"
+          >
+            {bundling ? "Packar…" : "Exportera demo-paket"}
+          </Button>
           <Button size="sm" variant="ghost" onClick={reset}>
             Återställ
           </Button>
@@ -286,7 +374,7 @@ export function AdminApp({ currentUserId, currentUserName }: { currentUserId: st
         </div>
       </header>
 
-      <StatusBanner status={status} />
+      <StatusBanner status={status} serverForgot={serverForgot} />
 
       <div className="flex min-h-0 flex-1">
         <nav className="scroll-thin w-[260px] flex-none overflow-y-auto border-r border-divider bg-white">
@@ -510,7 +598,13 @@ function CadStatus({ machines }: { machines: Machine[] }) {
   );
 }
 
-function StatusBanner({ status }: { status: StoreStatus | null }) {
+function StatusBanner({
+  status,
+  serverForgot,
+}: {
+  status: StoreStatus | null;
+  serverForgot: boolean;
+}) {
   if (!status) return null;
 
   const tone = status.persistent ? "border-accent text-accent" : "border-warn text-warn";
@@ -521,7 +615,7 @@ function StatusBanner({ status }: { status: StoreStatus | null }) {
         <strong>Lagring:</strong>{" "}
         {status.persistent
           ? "Postgres. Ändringar överlever omstart och deploy."
-          : "Endast minne. Ändringar försvinner när servern startar om — exportera JSON och committa den."}
+          : "Endast minne. Ändringar försvinner när servern startar om — exportera demo-paketet och committa det."}
       </span>
       <span className="text-muted">Utgångsläge: {status.seedSource}</span>
       {status.updatedAt ? (
@@ -531,6 +625,12 @@ function StatusBanner({ status }: { status: StoreStatus | null }) {
       ) : null}
       {status.degradedReason ? (
         <span className="text-danger">Databasfel: {status.degradedReason}</span>
+      ) : null}
+      {serverForgot ? (
+        <span className="text-danger">
+          Servern hade startat om och tappat det du sparat tidigare. Den här fliken hade kvar
+          allt, och nu är det sparat igen — exportera demo-paketet och committa det.
+        </span>
       ) : null}
     </div>
   );

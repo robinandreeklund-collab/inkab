@@ -45,8 +45,8 @@ export const HALL_INSET_MM = 2000;
 const AUX_COLLISION_TOLERANCE_MM = 100;
 /** Hur långt ett hjälpobjekt får glida i sidled för att hitta fri plats. */
 const AUX_MAX_SLIDE_STEPS = 12;
-/** Fritt utrymme som hålls mellan maskiner efter en riktningsändring, mm. */
-const TURN_CLEARANCE_MM = 400;
+/** Avstånd mellan maskiner som läggs ut på rad utan angiven plats, mm. */
+const PLACEMENT_GAP_MM = 800;
 /** Antal försök att skjuta fram markören förbi redan placerade maskiner. */
 const MAX_CLEARANCE_ATTEMPTS = 8;
 
@@ -156,7 +156,14 @@ export function effectiveMachine(
    */
   const hasVariants = (base.variants?.length ?? 0) > 0;
 
-  if (machine.parametricLength && overrideLengthMm != null && !hasVariants) {
+  /*
+   * En uppmätt CAD-modell har den längd den har. Att sträcka en tre meter
+   * lång rullbana till tolv vore att rita något som inte finns, och det
+   * syntes: modellen skalades upp fyra gånger så att rullarna blev enorma.
+   * Kontrollen låg förut i solvern, som valde ut vilken maskin längden
+   * gällde. Längden är maskinens egen nu, så kontrollen hör hemma här.
+   */
+  if (machine.parametricLength && overrideLengthMm != null && !hasVariants && !machine.model) {
     lengthMm = Math.min(
       machine.parametricLength.maxMm,
       Math.max(machine.parametricLength.minMm, Math.round(overrideLengthMm)),
@@ -211,310 +218,97 @@ function scaledZones(m: EffectiveMachine) {
   return clearance ? [...zones, clearance] : zones;
 }
 
-type Cursor = { point: Vec2; dir: Dir };
-
 /** Linjens startpunkt, med ett rimligt utgångsläge om kunden inte flyttat den. */
+/** Var den första maskinen hamnar när hallen är tom. */
 export function defaultStartPoint(config: Configuration): Vec2 {
-  switch (config.flow.infeedFrom) {
-    case "right":
-      return { x: HALL_INSET_MM, y: config.hall.widthMm - HALL_INSET_MM };
-    case "left":
-      return { x: HALL_INSET_MM, y: HALL_INSET_MM };
-    default:
-      return { x: HALL_INSET_MM, y: Math.round(config.hall.widthMm / 2) };
-  }
+  return {
+    x: HALL_INSET_MM,
+    y: Math.round(config.hall.widthMm / 2),
+  };
 }
-
-function startCursor(config: Configuration): Cursor {
-  const point = config.flow.startPoint ?? defaultStartPoint(config);
-  switch (config.flow.infeedFrom) {
-    // Paketen kommer in från högersidan (+Y) och färdas alltså mot −Y.
-    case "right":
-      return { point, dir: "y-" };
-    case "left":
-      return { point, dir: "y+" };
-    default:
-      return { point, dir: "x+" };
-  }
-}
-
-/** Hur bra en resulterande flödesriktning är; huvudlinjen ska gå längs hallen. */
-function dirScore(d: Dir): number {
-  if (d === "x+") return 2;
-  if (d === "x-") return 0;
-  return 1;
-}
-
-type FitCandidate = { rotation: Rotation; mirrored: boolean; outDir: Dir; score: number };
 
 /**
- * Utgången linjen fortsätter ur.
+ * Placerar en maskin där den står.
  *
- * En maskin kan ha flera: en rullbana lämnar paketet rakt fram eller ut på
- * kortsidan. Vilken som används är ett val per maskin i linjen, inte en
- * egenskap hos maskinen — samma rullbana kan sitta rakt i ett flöde och
- * vinkla i ett annat. Utan val gäller den första, så maskiner med en enda
- * utgång fungerar precis som förut.
+ * Positionen är kundens. Förut räknades den fram: maskinerna kopplades ihop
+ * port mot port och en solver vandrade kedjan framåt. Det gav en anläggning
+ * som bara gick att bygga på ett sätt, och en placering som hoppade så fort
+ * något ändrades längre upp i kedjan. Nu står maskinen där någon lagt den,
+ * och portarna är bara en ritning av vad maskinen klarar.
  */
-export function pickOutPort<T extends { id: string; role: "in" | "out" }>(
-  ports: T[],
-  outPortId?: string,
-): T | undefined {
-  const outs = ports.filter((p) => p.role === "out");
-  return outs.find((p) => p.id === outPortId) ?? outs[0];
-}
-
-/** Väljer rotation och speglingsläge så att inporten möter flödet. */
-function fitMachine(
-  m: EffectiveMachine,
-  cursor: Cursor,
-  preferMirrored: boolean,
-  outPortId?: string,
-): { rotation: Rotation; mirrored: boolean } | null {
-  const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in");
-  const outPort = pickOutPort(ports, outPortId);
-  if (!inPort || !outPort) return null;
-
-  const mirrorStates = m.mirrorable ? [preferMirrored, !preferMirrored] : [false];
-  const candidates: FitCandidate[] = [];
-
-  for (const mirrored of mirrorStates) {
-    for (const rotation of ROTATIONS) {
-      if (transformDir(inPort.dir, { rotation, mirrored }) !== cursor.dir) continue;
-      const outDir = transformDir(outPort.dir, { rotation, mirrored });
-      // Föredra det speglingsläge kunden valt när båda ger samma flödesriktning.
-      const preferenceBonus = mirrored === preferMirrored ? 0.5 : 0;
-      candidates.push({ rotation, mirrored, outDir, score: dirScore(outDir) + preferenceBonus });
-    }
-  }
-
-  if (candidates.length === 0) return null;
-  candidates.sort((a, b) => b.score - a.score);
-  return { rotation: candidates[0].rotation, mirrored: candidates[0].mirrored };
-}
-
-
-/** Boxen utvidgad med maskinens frigång. Riktningsoberoende — vi tar den
- *  största sidan så att zonen respekteras oavsett hur maskinen roterats. */
-/**
- * Hur långt markören måste flyttas längs `dir` för att `box` ska gå fri från
- * redan placerade maskiner. Behövs framför allt efter en riktningsändring, då
- * kedjan annars kan svänga rakt in i maskinen den nyss lämnade.
- */
-function clearanceShift(box: Box, others: Box[], dir: Dir, clearance: number): number {
-  const blocking = others.filter((o) => boxesOverlap(box, o, TOUCH_EPSILON_MM));
-  if (blocking.length === 0) return 0;
-
-  switch (dir) {
-    case "x+":
-      return Math.max(...blocking.map((o) => o.x + o.l + clearance - box.x));
-    case "x-":
-      return Math.max(...blocking.map((o) => box.x + box.l + clearance - o.x));
-    case "y+":
-      return Math.max(...blocking.map((o) => o.y + o.w + clearance - box.y));
-    case "y-":
-      return Math.max(...blocking.map((o) => box.y + box.w + clearance - o.y));
-  }
-}
-
-function placeOne(
+function placeAt(
   item: LineItem,
   m: EffectiveMachine,
   pos: number,
-  cursor: Cursor,
-  preferMirrored: boolean,
-): {
-  placement: Placement;
-  idealBbox: Box;
-  idealClearBox: Box;
-  idealPorts: PlacedPort[];
-  next: Cursor;
-} | null {
-  const fit = fitMachine(m, cursor, preferMirrored, item.outPortId);
-  if (!fit) return null;
-
-  const ports = scaledPorts(m);
-  const inPort = ports.find((p) => p.role === "in")!;
-  const outPort = pickOutPort(ports, item.outPortId)!;
-  const opts = { rotation: fit.rotation, mirrored: fit.mirrored, widthMm: m.effWidthMm };
-
-  // origo väljs så att inporten hamnar exakt på markörens punkt
-  const inOffset = rotatePoint(
-    fit.mirrored ? { x: inPort.pos.x, y: m.effWidthMm - inPort.pos.y } : inPort.pos,
-    fit.rotation,
-  );
-  const origin: Vec2 = {
-    x: Math.round(cursor.point.x - inOffset.x),
-    y: Math.round(cursor.point.y - inOffset.y),
-  };
-
-  const manual = item.manualOffset ?? { x: 0, y: 0 };
-  const placedOrigin: Vec2 = { x: origin.x + manual.x, y: origin.y + manual.y };
-  const full = { ...opts, origin: placedOrigin };
-
-  const bbox = boxToWorld({ x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm }, full);
-
-  const placedPorts: PlacedPort[] = ports.map((p) => ({
-    id: p.id,
-    role: p.role,
-    pos: toWorld(p.pos, full),
-    dir: transformDir(p.dir, opts),
-    levelMm: p.levelMm,
-  }));
-
-  const placement: Placement = {
-    instanceId: item.instanceId,
-    machineId: m.id,
-    machine: m,
-    pos,
-    aux: false,
-    origin: placedOrigin,
-    rotation: fit.rotation,
-    mirrored: fit.mirrored,
-    size: { lengthMm: m.effLengthMm, widthMm: m.effWidthMm, heightMm: m.effHeightMm },
-    bbox,
-    ports: placedPorts,
-    zones: scaledZones(m).map((z) => ({ type: z.type, label: z.label, box: boxToWorld(z.box, full) })),
-    capacity: m.effCapacity,
-    powerKw: m.effPowerKw,
-  };
-
-  // Markören förs vidare från den ideala (ojusterade) utporten så att en manuell
-  // förskjutning av en maskin inte river hela resten av kedjan.
-  const outOffset = rotatePoint(
-    fit.mirrored ? { x: outPort.pos.x, y: m.effWidthMm - outPort.pos.y } : outPort.pos,
-    fit.rotation,
-  );
-  const next: Cursor = {
-    point: { x: Math.round(origin.x + outOffset.x), y: Math.round(origin.y + outOffset.y) },
-    dir: transformDir(outPort.dir, opts),
-  };
-
-  // Idealboxen är placeringen utan manuell förskjutning. Kedjan och frigången
-  // räknas alltid på den, så att en flyttad maskin inte drar med sig resten.
-  const idealBbox = boxToWorld(
-    { x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm },
-    { ...opts, origin },
-  );
-
-  /*
-   * Maskinzonen i världen, sida för sida.
-   *
-   * Den räknades tidigare som en kvadratisk marginal med det största av de
-   * fyra måtten åt alla håll. En maskin med 0,8 m åt sidorna fick då 0,8 m
-   * framåt också, fast fram är 0,4 — och det knuffade nästnästa maskin i
-   * kedjan en halvmeter bort utan att något i gränssnittet kunde förklara
-   * varför. Hela poängen med fyra mått är att de får skilja sig, så zonen
-   * byggs i maskinens eget system och vrids ut i världen på samma sätt som
-   * de ritade zonerna.
-   */
-  const clearLocal = clearanceZone(m)?.box ?? { x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm };
-  const idealClearBox = boxToWorld(clearLocal, { ...opts, origin });
-
-  // Grenar utgår från de ideala portlägena av samma skäl som kedjan gör det:
-  // en manuellt flyttad maskin ska inte dra med sig det som hänger på den.
-  const ideal = { ...opts, origin };
-  const idealPorts: PlacedPort[] = ports.map((p) => ({
-    id: p.id,
-    role: p.role,
-    pos: toWorld(p.pos, ideal),
-    dir: transformDir(p.dir, opts),
-    levelMm: p.levelMm,
-  }));
-
-  return { placement, idealBbox, idealClearBox, idealPorts, next };
-}
-
-/**
- * Placerar ett hjälpobjekt bredvid sin ankarmaskin på vald sida. Om platsen är
- * upptagen glider objektet i sidled längs linjen tills det står fritt — samma
- * sida och samma avstånd behålls, bara läget längs linjen justeras.
- */
-function placeAux(
-  item: LineItem,
-  m: EffectiveMachine,
-  anchor: Placement | null,
-  anchorDir: Dir,
-  side: Side,
-  fallback: Vec2,
-  occupied: Placement[],
+  origin: Vec2,
 ): Placement {
-  const l = m.effLengthMm;
-  const w = m.effWidthMm;
-  let origin: Vec2 = { ...fallback };
-  let slideAxis: "x" | "y" = "x";
-
-  if (anchor) {
-    const r = rightOf(anchorDir);
-    const s: Vec2 = side === "right" ? r : { x: -r.x, y: -r.y };
-    // Hjälpobjektet läggs utanför ankarmaskinens maskinzon, inte bara utanför
-    // dess kropp — annars hamnar pulpeten inne i det fria utrymmet.
-    const a = anchor.zones.find((z) => z.type === "clearance")?.box ?? anchor.bbox;
-    const cx = a.x + a.l / 2;
-    const cy = a.y + a.w / 2;
-
-    if (s.y !== 0) {
-      slideAxis = "x";
-      origin = {
-        x: Math.round(cx - l / 2),
-        y: Math.round(s.y > 0 ? a.y + a.w + AUX_GAP_MM : a.y - AUX_GAP_MM - w),
-      };
-    } else {
-      slideAxis = "y";
-      origin = {
-        x: Math.round(s.x > 0 ? a.x + a.l + AUX_GAP_MM : a.x - AUX_GAP_MM - l),
-        y: Math.round(cy - w / 2),
-      };
-    }
-  }
-
-  const manual = item.manualOffset ?? { x: 0, y: 0 };
-  const manuallyMoved = manual.x !== 0 || manual.y !== 0;
-
-  // Undvik krock med redan placerade objekt genom att glida längs linjen.
-  if (!manuallyMoved && occupied.length > 0) {
-    const extent = slideAxis === "x" ? l : w;
-    const step = extent + AUX_GAP_MM;
-    const free = (candidate: Vec2) => {
-      const box: Box = { x: candidate.x, y: candidate.y, l, w };
-      return !occupied.some((p) => boxesOverlap(box, p.bbox, AUX_COLLISION_TOLERANCE_MM));
-    };
-    if (!free(origin)) {
-      const base = { ...origin };
-      for (let i = 1; i <= AUX_MAX_SLIDE_STEPS; i++) {
-        const offsets = [i * step, -i * step];
-        const found = offsets
-          .map((d) => (slideAxis === "x" ? { x: base.x + d, y: base.y } : { x: base.x, y: base.y + d }))
-          .find(free);
-        if (found) {
-          origin = found;
-          break;
-        }
-      }
-    }
-  }
-
-  origin = { x: origin.x + manual.x, y: origin.y + manual.y };
-  const full = { origin, rotation: 0 as Rotation, mirrored: false, widthMm: w };
-  const bbox: Box = { x: origin.x, y: origin.y, l, w };
+  const rotation = item.rotation ?? 0;
+  const mirrored = item.mirrored ?? false;
+  const opts = { rotation, mirrored, widthMm: m.effWidthMm };
+  const full = { ...opts, origin };
 
   return {
     instanceId: item.instanceId,
     machineId: m.id,
     machine: m,
-    pos: 0,
-    aux: true,
+    pos,
+    aux: !!m.aux,
     origin,
-    rotation: 0,
-    mirrored: false,
-    size: { lengthMm: l, widthMm: w, heightMm: m.effHeightMm },
-    bbox,
-    ports: [],
+    rotation,
+    mirrored,
+    size: { lengthMm: m.effLengthMm, widthMm: m.effWidthMm, heightMm: m.effHeightMm },
+    bbox: boxToWorld({ x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm }, full),
+    ports: scaledPorts(m).map((port) => ({
+      id: port.id,
+      role: port.role,
+      pos: toWorld(port.pos, full),
+      dir: transformDir(port.dir, opts),
+      levelMm: port.levelMm,
+    })),
     zones: scaledZones(m).map((z) => ({ type: z.type, label: z.label, box: boxToWorld(z.box, full) })),
-    capacity: 0,
+    capacity: m.effCapacity,
     powerKw: m.effPowerKw,
   };
+}
+
+/**
+ * En ledig plats åt en maskin som saknar position.
+ *
+ * Gäller två fall: en konfiguration sparad före fri placering, och en maskin
+ * som läggs till utan att någon pekat ut var. Den läggs till höger om det som
+ * redan står — och när raden når hallens gavel börjar en ny rad under.
+ *
+ * Inte för att det är rätt plats, utan för att den ska synas och gå att dra
+ * dit den ska. Utanför hallen är ingen plats: där syns den knappt, och
+ * regel R-401 anmärker på den direkt.
+ */
+export function freeSpot(
+  taken: Box[],
+  size: { l: number; w: number },
+  start: Vec2,
+  hall?: { lengthMm: number; widthMm: number },
+): Vec2 {
+  if (taken.length === 0) return { x: start.x, y: Math.round(start.y - size.w / 2) };
+
+  const right = Math.max(...taken.map((b) => b.x + b.l));
+  const x = Math.round(right + PLACEMENT_GAP_MM);
+  const y = Math.round(start.y - size.w / 2);
+  if (!hall || x + size.l <= hall.lengthMm) return { x, y };
+
+  // Raden är full: börja om vid hallens vänsterkant, under det som står.
+  const bottom = Math.max(...taken.map((b) => b.y + b.w));
+  return { x: HALL_INSET_MM, y: Math.round(bottom + PLACEMENT_GAP_MM) };
+}
+
+/**
+ * Ytan en maskin gör anspråk på: kroppen plus maskinzonen om den har någon.
+ *
+ * Raden mäts mot den, inte mot kroppen. Annars hamnar nästa maskin inne i
+ * maskinzonen — vilket regel R-106 med rätta anmärker på direkt när en tom
+ * mall öppnas.
+ */
+export function claimedBox(p: Placement): Box {
+  return p.zones.find((z) => z.type === "clearance")?.box ?? p.bbox;
 }
 
 /**
@@ -570,12 +364,7 @@ export function suggestTruckZone(
   };
 }
 
-function computeMetrics(
-  placements: Placement[],
-  aisles: Aisle[],
-  bounds: Box,
-  endPointGapMm: number | null,
-): Metrics {
+function computeMetrics(placements: Placement[], aisles: Aisle[], bounds: Box): Metrics {
   const line = placements.filter((p) => !p.aux);
   const withCapacity = line.filter((p) => p.capacity > 0);
   const bottleneckPlacement = withCapacity.reduce<Placement | null>(
@@ -609,284 +398,99 @@ function computeMetrics(
      */
     manufacturingHours: placements.reduce((h, p) => h + (p.machine.manufacturingHours ?? 0), 0),
     assemblyHours: placements.reduce((h, p) => h + (p.machine.assemblyHours ?? 0), 0),
-    endPointGapMm,
   };
 }
 
 export type SolveOutput = Omit<LayoutResult, "diagnostics"> & {
-  /** Enbart produktionskedjans omslutande box, utan hjälpobjekt. */
+  /** Maskinernas omslutande box, utan hjälpobjekt. */
   lineBounds: Box;
-  /** Maskiner som inte gick att koppla in i kedjan. */
+  /** Maskiner i konfigurationen som inte finns i biblioteket. */
   unplaced: { instanceId: string; machineId: string; reason: string }[];
-  /** Flödesriktning ut ur sista maskinen. */
-  outDir: Dir;
-  /** Sant om kedjan aldrig vändes tillbaka till hallens längdriktning. */
-  neverTurnedToMainAxis: boolean;
-  /** Där linjen faktiskt slutar — sista utportens läge. */
-  lineEnd: Vec2 | null;
-  /** Längden som sista parametriska maskinen fick, efter eventuell anpassning. */
-  finalConveyorLengthMm: number;
 };
 
 /**
- * Deterministisk layoutgenerering. Samma konfiguration ger alltid samma
- * geometri — inga slumpmässiga eller modellgenererade placeringar.
- */
-type ChainResult = {
-  placements: Placement[];
-  unplaced: SolveOutput["unplaced"];
-  cursor: Cursor;
-  turnedToMainAxis: boolean;
-};
-
-/**
- * Bygger linjen — som är ett träd, inte en kedja.
+ * Bygger layouten ur konfigurationen.
  *
- * En maskin kan ha flera utgångar, och på var och en kan det hänga en gren.
- * Listan är platt och behåller sin ordning; grenarna ligger i länkarna. En
- * post med `branch` startar en gren på en tidigare maskins utgång, och allt
- * som följer i listan hör till samma gren tills nästa grenrot.
- *
- * Grenarna löses i listans ordning, så en gren kan alltid utgå från en maskin
- * som redan är placerad. Alla grenar delar samma hinderlista, så en gren
- * lägger sig fritt från huvudlinjen i stället för rakt igenom den.
+ * Ren funktion: samma konfiguration ger alltid exakt samma geometri, på
+ * klienten och på servern. Den räknar inte längre ut VAR maskinerna ska stå
+ * — det bestämmer den som bygger — utan bara vad de upptar: kropp, portar
+ * och zoner i hallens koordinater.
  */
-function walkChain(
-  config: Configuration,
-  lineItems: { item: LineItem; machine: Machine }[],
-  parametricIndex: number,
-  finalLengthMm: number,
-  preferMirrored: boolean,
-): ChainResult {
-  const placements: Placement[] = [];
-  const unplaced: SolveOutput["unplaced"] = [];
-  /** Placerad geometri, delad av alla grenar. */
-  const placed: { instanceId: string; bbox: Box; clear: Box; ports: PlacedPort[] }[] = [];
-
-  let cursor = startCursor(config);
-  let turnedToMainAxis = cursor.dir === "x+";
-  /** Maskinen nästa post kopplas till, port mot port. */
-  let connectedTo: string | null = null;
-  /** Markören där huvudlinjen slutade, som är den slutpunkten gäller. */
-  let mainCursor: Cursor | null = null;
-  let inMain = true;
-
-  lineItems.forEach(({ item, machine }, index) => {
-    if (item.branch) {
-      // Grenrot: hoppa till den utpekade utgången på en redan placerad maskin.
-      if (inMain) mainCursor = cursor;
-      inMain = false;
-
-      const parent = placed.find((p) => p.instanceId === item.branch!.fromInstanceId);
-      const port = parent?.ports.find(
-        (p) => p.role === "out" && p.id === item.branch!.outPortId,
-      );
-      if (!parent || !port) {
-        unplaced.push({
-          instanceId: item.instanceId,
-          machineId: machine.id,
-          reason: parent
-            ? `Utgången "${item.branch.outPortId}" finns inte på maskinen grenen utgår från.`
-            : "Maskinen grenen utgår från ligger inte före den i linjen.",
-        });
-        return;
-      }
-      cursor = { point: port.pos, dir: port.dir };
-      connectedTo = parent.instanceId;
-    }
-
-    const eff = effectiveMachine(
-      machine,
-      item.selectedOptions,
-      index === parametricIndex ? finalLengthMm : undefined,
-      item.parameters,
-      item.variantId,
-    );
-
-    let result = placeOne(item, eff, index + 1, cursor, preferMirrored);
-    if (!result) {
-      unplaced.push({
-        instanceId: item.instanceId,
-        machineId: machine.id,
-        reason: "Ingen port matchar det inkommande flödet.",
-      });
-      return;
-    }
-
-    /*
-     * Skjut fram markören tills maskinen står fri. Tidigare maskiner räknas
-     * med sin maskinzon — utom den den kopplas till, som är inkopplad port mot
-     * port och därför med rätta står i frigången framåt.
-     */
-    const blockers = placed.map((p) => (p.instanceId === connectedTo ? p.bbox : p.clear));
-    for (let attempt = 0; attempt < MAX_CLEARANCE_ATTEMPTS; attempt++) {
-      const shift = clearanceShift(result.idealBbox, blockers, cursor.dir, TURN_CLEARANCE_MM);
-      if (shift <= 0) break;
-      const v = DIR_VEC[cursor.dir];
-      cursor = {
-        dir: cursor.dir,
-        point: {
-          x: Math.round(cursor.point.x + v.x * shift),
-          y: Math.round(cursor.point.y + v.y * shift),
-        },
-      };
-      const retry = placeOne(item, eff, index + 1, cursor, preferMirrored);
-      if (!retry) break;
-      result = retry;
-    }
-
-    placements.push(result.placement);
-    placed.push({
-      instanceId: item.instanceId,
-      bbox: result.idealBbox,
-      clear: result.idealClearBox,
-      ports: result.idealPorts,
-    });
-    cursor = result.next;
-    connectedTo = item.instanceId;
-    if (inMain && cursor.dir === "x+") turnedToMainAxis = true;
-  });
-
-  return {
-    placements,
-    unplaced,
-    // Slutpunkten gäller huvudlinjen; en gren slutar där den slutar.
-    cursor: mainCursor ?? cursor,
-    turnedToMainAxis,
-  };
-}
-
 export function solveLayout(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
 ): SolveOutput {
-  const preferMirrored = config.flow.controlDeskSide === "left";
+  const start = config.flow.startPoint ?? defaultStartPoint(config);
+  const placements: Placement[] = [];
+  const unplaced: SolveOutput["unplaced"] = [];
 
   const resolved = config.line
     .map((item) => ({ item, machine: getMachine(item.machineId, library) }))
-    .filter((r): r is { item: LineItem; machine: Machine } => !!r.machine);
+    .filter((r) => {
+      if (r.machine) return true;
+      unplaced.push({
+        instanceId: r.item.instanceId,
+        machineId: r.item.machineId,
+        reason: "Maskinen finns inte i biblioteket.",
+      });
+      return false;
+    }) as { item: LineItem; machine: Machine }[];
 
-  const lineItems = resolved.filter((r) => !r.machine.aux);
-  const auxItems = resolved.filter((r) => r.machine.aux);
+  let pos = 0;
+  const numbered = resolved.map(({ item, machine }) => {
+    if (!machine.aux) pos += 1;
+    return {
+      item,
+      eff: effectiveMachine(
+        machine,
+        item.selectedOptions,
+        item.lengthMm,
+        item.parameters,
+        item.variantId,
+      ),
+      pos: machine.aux ? 0 : pos,
+    };
+  });
 
   /*
-   * Sista transportmaskinen med parametrisk längd styrs av flödesfrågan —
-   * men bara om maskinen faktiskt går att kapa till längd.
+   * Två svep: först de som har en position, sedan de som saknar en.
    *
-   * En maskin med uppmätt CAD-modell har den längd den har. Att sträcka en
-   * tre meter lång rullbana till tolv vore att rita något som inte finns, och
-   * det syntes: modellen skalades upp fyra gånger så att rullarna blev
-   * enorma. Samma sak för utföranden — där är längderna redan bestämda.
+   * En post utan position är antingen sparad före fri placering eller nyss
+   * tillagd utan att någon pekat ut var. Den ska hamna på ledig yta — och
+   * ledig betyder fri från ALLT som står i hallen, också det som kommer
+   * senare i listan. Ett enda svep skulle bara se bakåt och lägga den rakt
+   * ovanpå en maskin längre ner.
    */
-  const parametricIndex = (() => {
-    for (let i = lineItems.length - 1; i >= 0; i--) {
-      const m = lineItems[i].machine;
-      if (m.parametricLength && !m.model && !(m.variants?.length ?? 0)) return i;
-    }
-    return -1;
-  })();
-
-  let finalLengthMm = config.flow.finalConveyorLengthMm;
-  let chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
-
-  /*
-   * Ska linjen sluta i en angiven punkt sätts den parametriska maskinens längd
-   * så att sista utporten hamnar där. Slutsegmentet är rakt, så en enda
-   * korrigering räcker — men vi kör om kedjan för att få exakt geometri.
-   */
-  if (config.flow.fitToEndPoint && config.flow.endPoint && parametricIndex >= 0) {
-    const limits = lineItems[parametricIndex].machine.parametricLength;
-    const v = DIR_VEC[chain.cursor.dir];
-    const delta =
-      (config.flow.endPoint.x - chain.cursor.point.x) * v.x +
-      (config.flow.endPoint.y - chain.cursor.point.y) * v.y;
-
-    const wanted = Math.round(finalLengthMm + delta);
-    const clamped = limits
-      ? Math.min(limits.maxMm, Math.max(limits.minMm, wanted))
-      : Math.max(500, wanted);
-
-    if (clamped !== finalLengthMm) {
-      finalLengthMm = clamped;
-      chain = walkChain(config, lineItems, parametricIndex, finalLengthMm, preferMirrored);
-    }
+  for (const { item, eff, pos } of numbered) {
+    if (item.pos) placements.push(placeAt(item, eff, pos, item.pos));
+  }
+  for (const { item, eff, pos } of numbered) {
+    if (item.pos) continue;
+    const origin = freeSpot(
+      placements.map(claimedBox),
+      { l: eff.effLengthMm, w: eff.effWidthMm },
+      start,
+      config.hall,
+    );
+    placements.push(placeAt(item, eff, pos, origin));
   }
 
-  const placements = [...chain.placements];
+  // Tillbaka till listans ordning: den styr numrering, offert och remsa.
+  const order = new Map(config.line.map((i, at) => [i.instanceId, at]));
+  placements.sort((a, b) => (order.get(a.instanceId) ?? 0) - (order.get(b.instanceId) ?? 0));
+
   const linePlacements = placements.filter((p) => !p.aux);
   const lineBounds = unionBox(linePlacements.map((p) => p.bbox));
-
-  // Hjälpobjekt placeras relativt sin ankarmaskin.
-  for (const { item, machine } of auxItems) {
-    const eff = effectiveMachine(
-      machine,
-      item.selectedOptions,
-      undefined,
-      item.parameters,
-      item.variantId,
-    );
-    let anchor: Placement | null = null;
-
-    if (machine.anchorFor) {
-      anchor = linePlacements.find((p) => p.machineId === machine.anchorFor) ?? null;
-    }
-    if (!anchor && machine.category === "control") {
-      anchor = linePlacements.reduce<Placement | null>(
-        (best, p) =>
-          best === null || (p.machine.operatorPriority ?? 0) > (best.machine.operatorPriority ?? 0)
-            ? p
-            : best,
-        null,
-      );
-    }
-    anchor = anchor ?? linePlacements[linePlacements.length - 1] ?? null;
-
-    const anchorItem = lineItems.find((l) => l.item.instanceId === anchor?.instanceId);
-    const anchorDir =
-      (anchor ? pickOutPort(anchor.ports, anchorItem?.item.outPortId)?.dir : undefined) ??
-      chain.cursor.dir;
-    const side: Side =
-      machine.category === "control" ? config.flow.controlDeskSide : config.flow.stickerMagazineSide;
-
-    placements.push(
-      placeAux(
-        item,
-        eff,
-        anchor,
-        anchorDir,
-        side,
-        { x: lineBounds.x, y: lineBounds.y + lineBounds.w + AUX_GAP_MM },
-        placements,
-      ),
-    );
-  }
-
   const bounds = unionBox(placements.map((p) => p.bbox));
-  const outDir = chain.cursor.dir;
   const aisles = drawnAisles(config);
-
-  const lineEnd = linePlacements.length ? chain.cursor.point : null;
-  const endPointGapMm =
-    config.flow.endPoint && lineEnd
-      ? Math.round(
-          Math.hypot(
-            config.flow.endPoint.x - lineEnd.x,
-            config.flow.endPoint.y - lineEnd.y,
-          ),
-        )
-      : null;
 
   return {
     placements,
     aisles,
     bounds,
     lineBounds,
-    metrics: computeMetrics(placements, aisles, bounds, endPointGapMm),
-    unplaced: chain.unplaced,
-    outDir,
-    neverTurnedToMainAxis: !chain.turnedToMainAxis,
-    lineEnd,
-    finalConveyorLengthMm: finalLengthMm,
+    metrics: computeMetrics(placements, aisles, bounds),
+    unplaced,
   };
 }
 

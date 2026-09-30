@@ -1,5 +1,6 @@
 "use client";
 
+import { imageSrc } from "@/lib/imageAsset";
 import type { Machine } from "@/lib/types";
 
 /**
@@ -20,7 +21,7 @@ export function MachineThumb({
   resolveSrc?: (assetId: string) => string | null;
 }) {
   const image = machine.images?.[0];
-  const src = image ? (resolveSrc ? resolveSrc(image) : `/api/library/asset/${image}`) : null;
+  const src = image ? (resolveSrc ? resolveSrc(image) : imageSrc(image)) : null;
 
   if (src) {
     return (

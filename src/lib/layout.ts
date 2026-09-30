@@ -1,5 +1,5 @@
 import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
-import { runRules } from "./rules";
+import { runRules, type Translate } from "./rules";
 import { solveLayout } from "./solver";
 import type { Configuration, LayoutResult } from "./types";
 
@@ -10,9 +10,11 @@ import type { Configuration, LayoutResult } from "./types";
 export function computeLayout(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  /** Diagnostiken på kundens språk. Utelämnad svarar regelverket på svenska. */
+  t?: Translate,
 ): LayoutResult {
   const solved = solveLayout(config, library);
-  const diagnostics = runRules(config, solved, library);
+  const diagnostics = runRules(config, solved, library, t);
   return {
     placements: solved.placements,
     aisles: solved.aisles,

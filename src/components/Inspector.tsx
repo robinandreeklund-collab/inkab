@@ -3,10 +3,10 @@
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { meters, parseMeters } from "@/lib/format";
-import { Button, Field, NumberInput, Row, Tag } from "./ui";
+import { Button, Field, MirrorIcon, NumberInput, RotateIcon, Row, Tag } from "./ui";
+import { useT } from "@/lib/i18n";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
-import { usedOutPorts } from "@/lib/branches";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
@@ -17,32 +17,27 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
     toggleInspector,
     toggleOption,
     setVariant,
-    setOutPort,
-    setBranchTarget,
-    branchTarget,
+    turnMachine,
+    setNote,
+    mirrorMachine,
     removeItem,
     removeDrawn,
     updateDrawn,
-    resetOffset,
     nudge,
   } = useConfigStore();
 
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
+  const t = useT();
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
-  /** Utgångar som redan har något kopplat till sig. */
-  const used =
-    item && placement
-      ? usedOutPorts(config.line, item.instanceId, placement.machine)
-      : new Set<string>();
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (
     <aside className="scroll-thin flex h-full w-[300px] flex-none flex-col overflow-y-auto border-l border-divider bg-white p-3">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="kicker">Inspektor</h2>
+        <h2 className="kicker">{t("inspector.title")}</h2>
         <Button variant="ghost" size="sm" onClick={toggleInspector}>
-          Fäll in ›
+          {t("inspector.collapse")}
         </Button>
       </div>
 
@@ -121,23 +116,62 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
         <div>
           <div className="kicker">
             {placement.machine.catalogueNumber && placement.machine.catalogueNumber !== "—"
-              ? `Katalog ${placement.machine.catalogueNumber} · `
+              ? `${t("inspector.catalogue")} ${placement.machine.catalogueNumber} · `
               : ""}
-            {placement.machine.sku} · {placement.aux ? "Hjälpobjekt" : `Position ${placement.pos}`}
+            {placement.machine.sku} ·{" "}
+            {placement.aux ? t("inspector.aux") : `${t("inspector.pos")} ${placement.pos}`}
           </div>
           <h3 className="mb-1 text-lg leading-tight">{placement.machine.name}</h3>
           <p className="mb-3 text-xs leading-relaxed text-muted">{placement.machine.summary}</p>
 
           <Row
-            label="Mått L×B×H"
+            label={t("inspector.dims")}
             value={`${meters(placement.size.lengthMm)} × ${meters(placement.size.widthMm)} × ${meters(placement.size.heightMm)} m`}
           />
-          <Row label="Position X, Y" value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
-          <Row label="Rotation" value={`${placement.rotation}°${placement.mirrored ? " · speglad" : ""}`} />
-          <Row label="Kapacitet" value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
-          <Row label="Effekt" value={`${placement.powerKw} kW`} />
+          <Row label={t("inspector.position")} value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
+          {item ? (
+            <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
+              <span className="text-muted">{t("inspector.rotation")}</span>
+              <div className="flex items-center gap-1">
+                <span className="num w-[34px] text-right text-[11px] text-muted">
+                  {placement.rotation}°
+                </span>
+                <Button
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  title={t("inspector.turnCcw")}
+                  onClick={() => turnMachine(item.instanceId, -1)}
+                >
+                  <RotateIcon anticlockwise size={15} />
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  title={t("inspector.turnCw")}
+                  onClick={() => turnMachine(item.instanceId, 1)}
+                >
+                  <RotateIcon size={15} />
+                </Button>
+                {placement.machine.mirrorable ? (
+                  <Button
+                    size="sm"
+                    className="h-7 w-7 p-0"
+                    active={item.mirrored}
+                    title={t("inspector.mirror")}
+                    onClick={() => mirrorMachine(item.instanceId)}
+                  >
+                    <MirrorIcon size={15} />
+                  </Button>
+                ) : null}
+              </div>
+            </div>
+          ) : (
+            <Row label={t("inspector.rotation")} value={`${placement.rotation}°`} />
+          )}
+          <Row label={t("inspector.capacity")} value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
+          <Row label={t("inspector.power")} value={`${placement.powerKw} kW`} />
           <Row
-            label="Tryckluft"
+            label={t("inspector.air")}
             value={
               placement.machine.utilities.airNlPerMin > 0
                 ? `${placement.machine.utilities.airNlPerMin} Nl/min`
@@ -145,24 +179,22 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             }
           />
           <Row
-            label="Grop"
+            label={t("inspector.pit")}
             value={
               placement.machine.foundation.pitDepthMm > 0
                 ? `${placement.machine.foundation.pitDepthMm} mm`
                 : "Ingen"
             }
           />
-          <Row label="Leveranstid" value={`${placement.machine.leadTimeWeeks} v`} />
+          <Row label={t("inspector.lead")} value={`${placement.machine.leadTimeWeeks} v`} />
           {placement.machine.clearance ? (
             <Row
-              label="Maskinzon"
+              label={t("inspector.clearance")}
               value={`${meters(placement.machine.clearance.frontMm)} / ${meters(placement.machine.clearance.backMm)} / ${meters(placement.machine.clearance.leftMm)} / ${meters(placement.machine.clearance.rightMm)} m`}
             />
           ) : null}
           {placement.machine.dimensionsVerified === false ? (
-            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">
-              Måtten är uppskattade och inte kontrollerade mot ritning.
-            </p>
+            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">{t("inspector.unverified")}</p>
           ) : null}
 
           {item ? (
@@ -177,7 +209,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
 
           {item && (placement.machine.variants?.length ?? 0) > 1 ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Utförande</div>
+              <div className="kicker mb-2">{t("inspector.variant")}</div>
               <div className="space-y-1">
                 {placement.machine.variants!.map((variant) => (
                   <label
@@ -201,67 +233,9 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             </div>
           ) : null}
 
-          {item && placement.machine.ports.filter((p) => p.role === "out").length > 1 ? (
-            <div className="mt-4">
-              <div className="kicker mb-2">Utgångar</div>
-              <p className="mb-2 text-[11px] leading-relaxed text-muted">
-                Maskinen har flera utgångar. Den markerade är den linjen fortsätter ur. På en
-                ledig utgång kan du bygga vidare med en egen gren.
-              </p>
-              <div className="space-y-1">
-                {placement.machine.ports
-                  .filter((p) => p.role === "out")
-                  .map((port, index) => {
-                    const chosen = item.outPortId ? item.outPortId === port.id : index === 0;
-                    const taken = used.has(port.id);
-                    const targeted =
-                      branchTarget?.instanceId === item.instanceId &&
-                      branchTarget.outPortId === port.id;
-                    return (
-                      <div key={port.id} className="flex items-center gap-2 text-[13px]">
-                        <input
-                          type="radio"
-                          name={`out-${item.instanceId}`}
-                          checked={chosen}
-                          onChange={() => setOutPort(item.instanceId, port.id)}
-                          className="accent-accent"
-                        />
-                        <span className="flex-1">{port.name || port.id}</span>
-                        <span className="num text-[11px] text-muted">{dirLabel(port.dir)}</span>
-                        {taken ? (
-                          <Tag>kopplad</Tag>
-                        ) : (
-                          <button
-                            className={
-                              targeted
-                                ? "border border-accent px-1 text-[11px] text-accent"
-                                : "border border-divider px-1 text-[11px] text-muted hover:text-ink"
-                            }
-                            onClick={() =>
-                              setBranchTarget(
-                                targeted ? null : { instanceId: item.instanceId, outPortId: port.id },
-                              )
-                            }
-                          >
-                            {targeted ? "Avbryt" : "Bygg vidare"}
-                          </button>
-                        )}
-                      </div>
-                    );
-                  })}
-              </div>
-              {branchTarget?.instanceId === item.instanceId ? (
-                <p className="mt-2 border border-accent px-2 py-1 text-[11px] leading-relaxed text-accent">
-                  Välj en maskin i katalogen till vänster — den hamnar på den utgången och
-                  startar en gren.
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
           {item && placement.machine.options.length > 0 ? (
             <div className="mt-4">
-              <div className="kicker mb-2">Optioner</div>
+              <div className="kicker mb-2">{t("inspector.options")}</div>
               <div className="space-y-1">
                 {placement.machine.options.map((option) => (
                   <label
@@ -281,9 +255,31 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             </div>
           ) : null}
 
+          {item ? (
+            <div className="mt-4">
+              <div className="kicker mb-2">{t("inspector.note")}</div>
+              <textarea
+                value={item.note ?? ""}
+                onChange={(e) => setNote(item.instanceId, e.target.value)}
+                rows={3}
+                maxLength={1000}
+                placeholder={t("inspector.notePlaceholder")}
+                className="w-full resize-y border border-divider bg-white px-2 py-1 text-[13px] leading-relaxed outline-none placeholder:text-muted/70 focus:border-accent"
+              />
+              <p className="mt-1 text-[11px] text-muted">
+                {t("inspector.noteHint")}
+              </p>
+            </div>
+          ) : null}
+
+          {/*
+            * Priset står här bara för den som får se belopp. Rutan säger inte
+            * längre "logga in för prisuppgift": inloggning räcker inte, och
+            * ska inte räcka — priset lämnas av INKAB.
+            */}
           <div className="blueprint mt-4 p-3">
-            <div className="kicker">Pris</div>
-            {role !== "guest" && priceLine?.rowTotal != null ? (
+            <div className="kicker">{t("inspector.price")}</div>
+            {priceLine?.rowTotal != null ? (
               <>
                 <div className="num text-xl">{formatSek(priceLine.rowTotal)}</div>
                 <div className="text-[11px] text-muted">
@@ -293,24 +289,17 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </>
             ) : (
               <>
-                <div className="text-base">Se pris →</div>
-                <div className="text-[11px] text-muted">Logga in för prisuppgift</div>
+                <div className="text-base">{t("inspector.priceOnRequest")}</div>
+                <div className="text-[11px] text-muted">
+                  {t("inspector.priceOnRequestHint")}
+                </div>
               </>
             )}
           </div>
 
-          {item?.manualOffset ? (
-            <div className="mt-3 flex items-center gap-2">
-              <Tag tone="warn">Manuellt flyttad</Tag>
-              <Button size="sm" variant="ghost" onClick={() => resetOffset(item.instanceId)}>
-                Återställ
-              </Button>
-            </div>
-          ) : null}
-
           {item ? (
             <div className="mt-4 space-y-2">
-              <div className="kicker">Finjustera</div>
+              <div className="kicker">{t("inspector.nudge")}</div>
               <div className="grid grid-cols-4 gap-1">
                 {(
                   [
@@ -327,7 +316,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
               </div>
               <StepButton file={placement.machine.stepFile} name={placement.machine.name} role={role} />
               <Button className="w-full" variant="ghost" onClick={() => removeItem(item.instanceId)}>
-                Ta bort ur linjen
+                {t("inspector.remove")}
               </Button>
             </div>
           ) : null}
@@ -346,6 +335,7 @@ function StepButton({
   name: string;
   role: Role;
 }) {
+  const t = useT();
   const [message, setMessage] = useState<string | null>(null);
   useEffect(() => {
     if (!message) return;
@@ -362,12 +352,12 @@ function StepButton({
         onClick={() =>
           setMessage(
             role !== "guest"
-              ? `${file} finns inte i prototypen. I skarpt läge levereras en signerad, loggad nedladdning.`
-              : "STEP-filer kräver inloggning. Prototypen levererar inga CAD-filer.",
+              ? t("inspector.stepMissing", { file })
+              : t("inspector.stepLogin"),
           )
         }
       >
-        Ladda ner STEP
+        {t("inspector.stepDownload")}
       </Button>
       {message ? <p className="mt-1 text-[11px] leading-relaxed text-muted">{message}</p> : null}
     </div>
@@ -378,9 +368,3 @@ function formatSek(amount: number): string {
   return `${new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount)} kr`;
 }
 
-/** Portriktning i löptext, sett med flödet. */
-function dirLabel(dir: string): string {
-  return (
-    { "x+": "rakt fram", "x-": "bakåt", "y+": "åt höger", "y-": "åt vänster" }[dir] ?? dir
-  );
-}

@@ -175,7 +175,6 @@ export function QuotePlan({
         )}
 
         {/* Flödet: från startpunkt genom kedjan till slutpunkt */}
-        <FlowLine config={config} layout={layout} u={u} />
 
         {/* Maskinerna */}
         {layout.placements.map((p) => (
@@ -244,63 +243,6 @@ function Legend({ swatch, children }: { swatch: React.ReactNode; children: React
       {swatch}
       {children}
     </span>
-  );
-}
-
-/** Flödespilen: startpunkt → maskinernas mittpunkter → slutpunkt. */
-function FlowLine({
-  config,
-  layout,
-  u,
-}: {
-  config: Configuration;
-  layout: LayoutResult;
-  u: number;
-}) {
-  const chain = layout.placements.filter((p) => !p.aux);
-  if (chain.length === 0) return null;
-
-  const points = [
-    config.flow.startPoint,
-    ...chain.map((p) => ({ x: p.bbox.x + p.bbox.l / 2, y: p.bbox.y + p.bbox.w / 2 })),
-    ...(config.flow.endPoint ? [config.flow.endPoint] : []),
-  ];
-
-  return (
-    <g>
-      <polyline
-        points={points.map((p) => `${p.x},${p.y}`).join(" ")}
-        fill="none"
-        stroke="#1d1f20"
-        strokeOpacity="0.45"
-        strokeWidth={u * 2}
-        strokeDasharray={`${u * 14} ${u * 8}`}
-        markerEnd="url(#q-arrow)"
-      />
-      <circle cx={points[0].x} cy={points[0].y} r={u * 7} fill="#fff" stroke="#1d1f20" strokeWidth={u * 2} />
-      <text
-        x={points[0].x}
-        y={points[0].y - u * 14}
-        textAnchor="middle"
-        fill="#1d1f20"
-        className="num"
-        fontSize={u * 16}
-      >
-        Inmatning
-      </text>
-      {config.flow.endPoint ? (
-        <text
-          x={config.flow.endPoint.x}
-          y={config.flow.endPoint.y - u * 14}
-          textAnchor="middle"
-          fill="#1d1f20"
-          className="num"
-          fontSize={u * 16}
-        >
-          Avlämning
-        </text>
-      ) : null}
-    </g>
   );
 }
 

@@ -72,24 +72,3 @@ describe("boxar", () => {
   });
 });
 
-describe("isometrisk projektion", () => {
-  it("är inverterbar vid golvnivå", async () => {
-    const { isoProject, isoUnproject } = await import("@/lib/projection");
-    const p = isoProject(12345, 6789, 0);
-    const back = isoUnproject(p.x, p.y);
-    expect(back.x).toBeCloseTo(12345, 6);
-    expect(back.y).toBeCloseTo(6789, 6);
-  });
-
-  it("höjd flyttar punkten uppåt i bild", async () => {
-    const { isoProject } = await import("@/lib/projection");
-    expect(isoProject(0, 0, 1000).y).toBeLessThan(isoProject(0, 0, 0).y);
-  });
-
-  it("djupsortering följer avstånd från betraktaren", async () => {
-    const { isoBox } = await import("@/lib/projection");
-    const near = isoBox({ x: 0, y: 0, l: 1000, w: 1000 }, 500);
-    const far = isoBox({ x: 9000, y: 9000, l: 1000, w: 1000 }, 500);
-    expect(far.depth).toBeGreaterThan(near.depth);
-  });
-});

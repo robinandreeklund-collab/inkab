@@ -1,6 +1,8 @@
 import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, type MachineLibrary } from "@/lib/library";
 import type { Configuration } from "@/lib/types";
+import { translate } from "@/lib/i18n/translate";
+import type { Locale } from "@/lib/i18n/locale";
 
 export type FallbackSuggestion = {
   id: string;
@@ -18,8 +20,12 @@ const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v));
 export function ruleBasedSuggestions(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  /** Kundens språk. Reservläget är också ett svar till kunden. */
+  locale: Locale = "sv",
 ): { text: string; suggestions: FallbackSuggestion[] } {
-  const layout = computeLayout(config, library);
+  const t = (key: string, vars?: Record<string, string | number>) =>
+    translate(locale, key, vars);
+  const layout = computeLayout(config, library, t);
   const fixable = layout.diagnostics.filter((d) => d.fix);
   const suggestions: FallbackSuggestion[] = [];
 
@@ -49,10 +55,10 @@ export function ruleBasedSuggestions(
   const warnings = layout.diagnostics.filter((d) => d.severity === "warning").length;
 
   const text = suggestions.length
-    ? `Assistenten körs utan API-nyckel, så det här är regelmotorns egna åtgärdsförslag — inte en AI-analys. Layouten har ${errors} fel och ${warnings} varningar.`
+    ? t("fallback.withFixes", { errors, warnings })
     : errors + warnings === 0
-      ? "Assistenten körs utan API-nyckel. Regelmotorn hittar inga problem i den här layouten."
-      : `Assistenten körs utan API-nyckel. Regelmotorn hittar ${errors} fel och ${warnings} varningar, men inget av dem har ett automatiskt åtgärdsförslag.`;
+      ? t("fallback.clean")
+      : t("fallback.noFixes", { errors, warnings });
 
   return { text, suggestions };
 }

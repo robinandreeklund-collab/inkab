@@ -138,19 +138,13 @@ export function QuoteView({
               value={metrics.throughputPerHour > 0 ? `${metrics.throughputPerHour} pkt/h` : "—"}
             />
             <Line
-              label={
-                price?.adjustment?.fixedTotalSek
-                  ? "Avtalat pris"
-                  : price?.totals
-                    ? "Listpris"
-                    : "Prisintervall"
-              }
+              label={price?.adjustment?.fixedTotalSek ? "Avtalat pris" : "Pris"}
               value={
                 price?.totals
                   ? mkr(price.totals.grandTotal)
-                  : price
+                  : price?.indication
                     ? `${mkr(price.indication.lowSek)}–${mkr(price.indication.highSek)}`
-                    : "—"
+                    : "Lämnas av INKAB"
               }
             />
           </Party>
@@ -195,7 +189,15 @@ export function QuoteView({
                 return (
                   <tr key={line.instanceId} className="break-inside-avoid border-b border-divider">
                     <Td>{line.pos}</Td>
-                    <Td>{line.name}</Td>
+                    <Td>
+                      {line.name}
+                      {/* Kundens egen anteckning om maskinen, om den skrivit en. */}
+                      {line.note ? (
+                        <span className="mt-0.5 block text-[11px] italic leading-relaxed text-muted">
+                          {line.note}
+                        </span>
+                      ) : null}
+                    </Td>
                     <Td muted>{line.sku}</Td>
                     <Td muted>
                       {placement
@@ -295,14 +297,7 @@ export function QuoteView({
 
           <Section title="Flöde och konfiguration">
             <dl className="text-sm">
-              <Line label="Paketen kommer in" value={infeedLabel(config.flow.infeedFrom)} />
-              <Line label="Pulpetens sida" value={sideLabel(config.flow.controlDeskSide)} />
-              <Line label="Ströfacksmagasin" value={sideLabel(config.flow.stickerMagazineSide)} />
               <Line label="Trucken hämtar från" value={sideLabel(config.flow.truckPickupSide)} />
-              <Line
-                label="Sista kedjetransportör"
-                value={`${meters(config.flow.finalConveyorLengthMm)} m`}
-              />
               <Line
                 label="Virkesbredd"
                 value={`${meters(config.product.packageWidthMinMm)}–${meters(config.product.packageWidthMaxMm)} m`}

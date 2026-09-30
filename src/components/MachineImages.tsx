@@ -1,5 +1,6 @@
 "use client";
 
+import { imageSrc } from "@/lib/imageAsset";
 import { useState } from "react";
 import type { Machine } from "@/lib/types";
 
@@ -23,10 +24,10 @@ export function MachineImages({ machine }: { machine: Machine }) {
               onClick={() => setOpen(assetId)}
               className="border border-divider bg-paper hover:border-accent"
             >
-              {/* Bilderna ligger i biblioteksdokumentet och serveras per id. */}
+              {/* En fil i repot, eller en bild ur biblioteksdokumentet. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={`/api/library/asset/${assetId}`}
+                src={imageSrc(assetId)}
                 alt={machine.name}
                 className="h-16 w-full object-cover"
               />
@@ -67,7 +68,7 @@ export function MachineImages({ machine }: { machine: Machine }) {
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={`/api/library/asset/${open}`}
+            src={imageSrc(open)}
             alt={machine.name}
             className="max-h-full max-w-full object-contain"
           />

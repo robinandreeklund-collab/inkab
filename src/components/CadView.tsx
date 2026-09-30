@@ -2,12 +2,16 @@
 
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { isoBounds, isoBox, isoProject, isoUnproject, padBox } from "@/lib/projection";
+import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
 import { closeCorners, fitDoorToWall, snapToWalls, WALL_THICKNESS_MM } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
-import type { Box, DrawnObject, DrawnKind, Placement, Vec2 } from "@/lib/types";
+import { ROTATE_ARC, ROTATE_TIP } from "./ui";
+import type { Box, DrawnObject, DrawnKind, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
+import { DIR_VEC } from "@/lib/geometry";
+import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { useT } from "@/lib/i18n";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
@@ -16,9 +20,6 @@ const SNAP_MM = 250;
 const PAD_MM = 4000;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
-
-/** CadView ritar plan och isometri; läget "model" hanteras av ModelView. */
-type PlanarView = Exclude<ViewMode, "model">;
 
 /** Väggens och portens tjocklek, mm. */
 
@@ -87,16 +88,36 @@ export function CadView() {
     showZones,
     showPorts,
     select,
-    nudge,
+    moveMachine,
+    turnMachine,
+    addMachine,
+    library,
+    draggingMachineId,
+    updateDrawn,
+    turnDrawn,
     addDrawn,
     setTool,
-    setFlowPoint,
+    setStartPoint,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const planarView: PlanarView = view === "3d" ? "3d" : "2d";
+  const t = useT();
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
+  /*
+   * Utsnittet som gällde när ett drag började.
+   *
+   * Vyn ramar in allt som finns i hallen, så den räknas om när en maskin
+   * flyttas — och då glider ritningen under pekaren mitt i draget. Maskinen
+   * drev i sidled fast man bara drog neråt. Under ett drag står utsnittet
+   * still och släpps när man släpper.
+   */
+  const [frozen, setFrozen] = useState<Box | null>(null);
+  /** Punkten en maskin ur katalogen skulle landa i, medan den dras. */
+  const [dropAt, setDropAt] = useState<Vec2 | null>(null);
+  const dragged = draggingMachineId
+    ? (library.machines.find((m) => m.id === draggingMachineId) ?? null)
+    : null;
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState<Vec2>({ x: 0, y: 0 });
 
@@ -111,17 +132,15 @@ export function CadView() {
     return { x: minX, y: minY, l: maxX - minX, w: maxY - minY };
   }, [hallBox.l, hallBox.w, layout.bounds, config.drawn]);
 
-  const maxHeight = Math.max(config.hall.clearHeightMm, ...layout.placements.map((p) => p.size.heightMm), 1);
-
   const viewBox = useMemo(() => {
-    const base =
-      view === "2d" ? padBox(contentBox, PAD_MM) : padBox(isoBounds(contentBox, maxHeight), PAD_MM);
+    const framed = frozen ?? contentBox;
+    const base = padBox(framed, PAD_MM);
     const cx = base.x + base.l / 2 + pan.x;
     const cy = base.y + base.w / 2 + pan.y;
     const l = base.l / zoom;
     const w = base.w / zoom;
     return { x: cx - l / 2, y: cy - w / 2, l, w };
-  }, [contentBox, view, maxHeight, zoom, pan]);
+  }, [contentBox, frozen, zoom, pan]);
 
   /** Skärmkoordinat → världskoordinat (mm), via SVG:ns egen transform. */
   const toWorld = useCallback(
@@ -131,9 +150,9 @@ export function CadView() {
       const ctm = svg.getScreenCTM();
       if (!ctm) return null;
       const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
-      return planarView === "2d" ? { x: point.x, y: point.y } : isoUnproject(point.x, point.y);
+      return { x: point.x, y: point.y };
     },
-    [planarView],
+    [],
   );
 
   const strokeUnit = viewBox.l / 900;
@@ -144,22 +163,44 @@ export function CadView() {
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
     event.stopPropagation();
     select(placement.instanceId);
-    if (tool !== "select" || placement.aux === undefined) return;
+    if (tool !== "select") return;
 
-    const start = toWorld(event);
-    if (!start) return;
-    let last = { x: 0, y: 0 };
+    /*
+     * Koordinatsystemet låses vid draget.
+     *
+     * toWorld frågar SVG:n om dess transform varje gång. Den ändras mitt i
+     * draget — vyn ramar om sig, panelen öppnas — och då betyder samma punkt
+     * på skärmen olika punkter i hallen från ett ögonblick till nästa.
+     * Maskinen drev i sidled fast man bara drog neråt. Med matrisen från
+     * nedtryckningen följer maskinen pekaren.
+     */
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const frozenInverse = ctm.inverse();
+    const at = (e: { clientX: number; clientY: number }): Vec2 => {
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      return { x: point.x, y: point.y };
+    };
+
+    const start = at(event);
+    /*
+     * Positionen sätts absolut, inte som en förskjutning. Maskinen står där
+     * den står — den räknas inte fram ur något annat — så draget behöver
+     * inte veta vad den hade för utgångsläge, bara var den hamnar.
+     */
+    const origin = { ...placement.origin };
+    setFrozen(contentBox);
 
     const move = (e: PointerEvent) => {
-      const now = toWorld(e);
-      if (!now) return;
-      const target = { x: snap(now.x - start.x), y: snap(now.y - start.y) };
-      const delta = { x: target.x - last.x, y: target.y - last.y };
-      if (delta.x === 0 && delta.y === 0) return;
-      last = target;
-      nudge(placement.instanceId, delta);
+      const now = at(e);
+      moveMachine(placement.instanceId, {
+        x: snap(origin.x + (now.x - start.x)),
+        y: snap(origin.y + (now.y - start.y)),
+      });
     };
     const up = () => {
+      setFrozen(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -167,13 +208,59 @@ export function CadView() {
     window.addEventListener("pointerup", up);
   };
 
-  /* ── Dra start- och slutpunkt ────────────────────────────────────────── */
-  const dragFlowPoint = (which: "startPoint" | "endPoint", event: React.PointerEvent) => {
+  /* ── Drag av ritat objekt ────────────────────────────────────────────── */
+  const startDragDrawn = (object: DrawnObject, event: React.PointerEvent) => {
+    event.stopPropagation();
+    select(object.id);
+    if (tool !== "select") return;
+
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const frozenInverse = ctm.inverse();
+    const at = (e: { clientX: number; clientY: number }): Vec2 => {
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      return { x: point.x, y: point.y };
+    };
+
+    const start = at(event);
+    const from = { x: object.x, y: object.y };
+    setFrozen(contentBox);
+    let senaste = from;
+
+    const move = (e: PointerEvent) => {
+      const now = at(e);
+      senaste = {
+        x: snap(from.x + (now.x - start.x)),
+        y: snap(from.y + (now.y - start.y)),
+      };
+      updateDrawn(object.id, senaste);
+    };
+    const up = () => {
+      setFrozen(null);
+      /*
+       * En port hör till en vägg. Släpps den i närheten av en söker den upp
+       * väggen igen — annars blir den en ruta på golvet, vilket är precis
+       * vad fitDoorToWall finns för när man ritar den.
+       */
+      if (object.kind === "door") {
+        const box = fitDoorToWall({ ...senaste, l: object.l, w: object.w }, walls);
+        if (box) updateDrawn(object.id, box);
+      }
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
+  /* ── Dra startpunkten ────────────────────────────────────────────────── */
+  const dragStartPoint = (event: React.PointerEvent) => {
     event.stopPropagation();
     if (tool !== "select") return;
     const move = (e: PointerEvent) => {
       const p = toWorld(e);
-      if (p) setFlowPoint(which, { x: snap(p.x), y: snap(p.y) });
+      if (p) setStartPoint({ x: snap(p.x), y: snap(p.y) });
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -268,15 +355,45 @@ export function CadView() {
   const labelFor = (p: Placement) =>
     p.aux ? p.machine.sku.split("-")[0] : String(p.pos);
 
-  const sorted3d = [...layout.placements].sort(
-    (a, b) => isoBox(a.bbox, a.size.heightMm).depth - isoBox(b.bbox, b.size.heightMm).depth,
-  );
-
   const cursor =
     tool === "select" ? "default" : tool === "measure" ? "crosshair" : "crosshair";
 
+  /* ── Släpp en maskin ur katalogen ────────────────────────────────────── */
+  /*
+   * Maskinen läggs där den släpps. Att först klicka fram den på ledig yta
+   * och sedan dra den dit den ska är två moment för en sak. Rutan som ritas
+   * under pekaren är maskinens verkliga fotavtryck — man ser vad man får
+   * innan man släpper.
+   */
+  const dropMachine = (event: React.DragEvent): Machine | null => {
+    const id = event.dataTransfer.getData(MACHINE_DRAG_TYPE);
+    return id ? (library.machines.find((m) => m.id === id) ?? null) : null;
+  };
+
+  const onDragOver = (event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes(MACHINE_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    const at = toWorld(event.nativeEvent);
+    setDropAt(at ? { x: snap(at.x), y: snap(at.y) } : null);
+  };
+
+  const onDrop = (event: React.DragEvent) => {
+    const machine = dropMachine(event);
+    setDropAt(null);
+    if (!machine) return;
+    event.preventDefault();
+    const at = toWorld(event.nativeEvent);
+    if (at) addMachine(machine.id, { pos: { x: snap(at.x), y: snap(at.y) } });
+  };
+
   return (
-    <div className="relative h-full w-full overflow-hidden bg-paper">
+    <div
+      className="relative h-full w-full overflow-hidden bg-paper"
+      onDragOver={onDragOver}
+      onDragLeave={() => setDropAt(null)}
+      onDrop={onDrop}
+    >
       <svg
         ref={svgRef}
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.l} ${viewBox.w}`}
@@ -317,16 +434,17 @@ export function CadView() {
           y={viewBox.y}
           width={viewBox.l}
           height={viewBox.w}
-          fill={view === "2d" ? "url(#grid)" : "#f2f2f3"}
+          fill="url(#grid)"
           onPointerDown={startGround}
         />
 
-        {view === "2d" ? (
           <Plan2D
             hallBox={hallBox}
             config={config}
             layout={layout}
-            onSelectDrawn={select}
+            onDrawnDown={startDragDrawn}
+            onTurnDrawn={turnDrawn}
+            turnTitle={t("cad.turn")}
             showZones={showZones}
             showPorts={showPorts}
             strokeUnit={strokeUnit}
@@ -334,38 +452,50 @@ export function CadView() {
             strokeFor={strokeFor}
             labelFor={labelFor}
             onMachineDown={startDrag}
+            onTurn={turnMachine}
             selectedId={selectedId}
           />
-        ) : (
-          <Iso3D
-            hallBox={hallBox}
-            config={config}
-            layout={layout}
-            sorted={sorted3d}
-            strokeUnit={strokeUnit}
-            strokeFor={strokeFor}
-            labelFor={labelFor}
-            onMachineDown={startDrag}
-          />
-        )}
 
-        {draft ? <DraftShape draft={draft} view={planarView} strokeUnit={strokeUnit} /> : null}
+        {draft ? <DraftShape draft={draft} strokeUnit={strokeUnit} /> : null}
 
         <FlowMarkers
           start={config.flow.startPoint}
-          end={config.flow.endPoint}
-          lineEnd={layout.metrics.endPointGapMm !== null ? config.flow.endPoint : null}
-          view={planarView}
           strokeUnit={strokeUnit}
-          onDrag={dragFlowPoint}
+          onDrag={dragStartPoint}
         />
 
-        {measure ? <MeasureLine measure={measure} view={planarView} strokeUnit={strokeUnit} /> : null}
+        {dropAt && dragged ? (
+          <g pointerEvents="none">
+            <rect
+              x={dropAt.x - dragged.footprint.lengthMm / 2}
+              y={dropAt.y - dragged.footprint.widthMm / 2}
+              width={dragged.footprint.lengthMm}
+              height={dragged.footprint.widthMm}
+              fill="#5980a6"
+              fillOpacity="0.12"
+              stroke="#5980a6"
+              strokeWidth={strokeUnit * 2}
+              strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
+            />
+            <text
+              x={dropAt.x}
+              y={dropAt.y - dragged.footprint.widthMm / 2 - strokeUnit * 8}
+              textAnchor="middle"
+              fontSize={strokeUnit * 13}
+              fill="#5980a6"
+              className="num"
+            >
+              {dragged.name}
+            </text>
+          </g>
+        ) : null}
+
+        {measure ? <MeasureLine measure={measure} strokeUnit={strokeUnit} /> : null}
       </svg>
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
         <span className="kicker bg-paper/80 px-1">
-          {view === "2d" ? "Planvy" : "Isometrisk vy"} · snapp {SNAP_MM} mm
+          {t("cad.plan")} · {t("cad.snap", { mm: SNAP_MM })}
         </span>
         <button
           onClick={fit}
@@ -391,7 +521,10 @@ function Plan2D({
   strokeFor,
   labelFor,
   onMachineDown,
-  onSelectDrawn,
+  onTurn,
+  onDrawnDown,
+  onTurnDrawn,
+  turnTitle,
   selectedId,
 }: {
   hallBox: Box;
@@ -404,7 +537,10 @@ function Plan2D({
   strokeFor: (p: Placement) => string;
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
-  onSelectDrawn: (id: string) => void;
+  onTurn: (instanceId: string, steps: number) => void;
+  onDrawnDown: (o: DrawnObject, e: React.PointerEvent) => void;
+  onTurnDrawn: (id: string) => void;
+  turnTitle: string;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
@@ -440,7 +576,7 @@ function Plan2D({
           object={d}
           selected={d.id === selectedId}
           strokeUnit={strokeUnit}
-          onSelect={onSelectDrawn}
+          onDown={onDrawnDown}
         />
       ))}
 
@@ -490,16 +626,36 @@ function Plan2D({
         </g>
       ))}
 
+      {(() => {
+        const maskin = layout.placements.find((p) => p.instanceId === selectedId);
+        if (maskin) {
+          return (
+            <TurnHandle
+              box={maskin.bbox}
+              strokeUnit={strokeUnit}
+              onTurn={(steps) => onTurn(maskin.instanceId, steps)}
+              title={turnTitle}
+            />
+          );
+        }
+        const ritat = config.drawn.find((d) => d.id === selectedId);
+        return ritat ? (
+          <TurnHandle
+            box={{ x: ritat.x, y: ritat.y, l: ritat.l, w: ritat.w }}
+            strokeUnit={strokeUnit}
+            onTurn={() => onTurnDrawn(ritat.id)}
+            title={turnTitle}
+          />
+        ) : null;
+      })()}
+
       {showPorts
         ? layout.placements.flatMap((p) =>
             p.ports.map((port) => (
-              <circle
+              <FlowArrow
                 key={`${p.instanceId}-${port.id}`}
-                cx={port.pos.x}
-                cy={port.pos.y}
-                r={strokeUnit * 4}
-                fill={port.role === "in" ? "#5980a6" : "#1d2d3d"}
-                pointerEvents="none"
+                port={port}
+                strokeUnit={strokeUnit}
               />
             )),
           )
@@ -535,165 +691,6 @@ function Plan2D({
 
 /* ── Isometrisk vy ────────────────────────────────────────────────────── */
 
-function Iso3D({
-  hallBox,
-  config,
-  layout,
-  sorted,
-  strokeUnit,
-  strokeFor,
-  labelFor,
-  onMachineDown,
-}: {
-  hallBox: Box;
-  config: ReturnType<typeof useConfigStore.getState>["config"];
-  layout: ReturnType<typeof useConfigStore.getState>["layout"];
-  sorted: Placement[];
-  strokeUnit: number;
-  strokeFor: (p: Placement) => string;
-  labelFor: (p: Placement) => string;
-  onMachineDown: (p: Placement, e: React.PointerEvent) => void;
-}) {
-  const floor = [
-    [hallBox.x, hallBox.y],
-    [hallBox.x + hallBox.l, hallBox.y],
-    [hallBox.x + hallBox.l, hallBox.y + hallBox.w],
-    [hallBox.x, hallBox.y + hallBox.w],
-  ]
-    .map(([a, b]) => {
-      const p = isoProject(a, b, 0);
-      return `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
-    })
-    .join(" ");
-
-  const gridLines: string[] = [];
-  for (let x = hallBox.x; x <= hallBox.x + hallBox.l; x += 2000) {
-    const a = isoProject(x, hallBox.y, 0);
-    const b = isoProject(x, hallBox.y + hallBox.w, 0);
-    gridLines.push(`M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`);
-  }
-  for (let y = hallBox.y; y <= hallBox.y + hallBox.w; y += 2000) {
-    const a = isoProject(hallBox.x, y, 0);
-    const b = isoProject(hallBox.x + hallBox.l, y, 0);
-    gridLines.push(`M${a.x.toFixed(1)} ${a.y.toFixed(1)}L${b.x.toFixed(1)} ${b.y.toFixed(1)}`);
-  }
-
-  return (
-    <g>
-      <polygon
-        points={floor}
-        fill="#eff0f1"
-        stroke="#1d1f20"
-        strokeOpacity="0.45"
-        strokeWidth={strokeUnit * 1.4}
-        strokeDasharray={`${strokeUnit * 12} ${strokeUnit * 5} ${strokeUnit * 3} ${strokeUnit * 5}`}
-      />
-      <g stroke="#1d1f20" strokeOpacity="0.1" strokeWidth={strokeUnit * 0.8} fill="none">
-        {gridLines.map((d, i) => (
-          <path key={i} d={d} />
-        ))}
-      </g>
-
-      {config.drawn.map((d) => {
-        const faces = isoBox({ x: d.x, y: d.y, l: d.l, w: d.w }, d.h || 1);
-
-        // Markering (höjd noll): ligger på golvet i stället för att resa sig.
-        if ((d.kind === "wall" || d.kind === "door") && d.h === 0) {
-          return (
-            <polygon
-              key={d.id}
-              points={faces.top}
-              fill={d.kind === "door" ? "#5980a6" : "#1d1f20"}
-              fillOpacity={d.kind === "door" ? 0.18 : 0.1}
-              stroke={d.kind === "door" ? "#5980a6" : "#1d1f20"}
-              strokeOpacity="0.75"
-              strokeWidth={strokeUnit * 1.4}
-              strokeDasharray={`${strokeUnit * 7} ${strokeUnit * 4}`}
-            />
-          );
-        }
-
-        if (d.kind === "wall") {
-          return (
-            <g key={d.id}>
-              <polygon points={faces.right} fill="#bdbdc0" stroke="#1d1f20" strokeWidth={strokeUnit} />
-              <polygon points={faces.left} fill="#cfcfd2" stroke="#1d1f20" strokeWidth={strokeUnit} />
-              <polygon points={faces.top} fill="#e7e7ea" stroke="#1d1f20" strokeWidth={strokeUnit} />
-            </g>
-          );
-        }
-        if (d.kind === "door") {
-          return (
-            <g key={d.id}>
-              <polygon points={faces.right} fill="#5980a6" fillOpacity="0.35" stroke="#5980a6" strokeWidth={strokeUnit} />
-              <polygon points={faces.left} fill="#5980a6" fillOpacity="0.25" stroke="#5980a6" strokeWidth={strokeUnit} />
-              <polygon points={faces.top} fill="#5980a6" fillOpacity="0.15" stroke="#5980a6" strokeWidth={strokeUnit} />
-            </g>
-          );
-        }
-        return (
-          <polygon
-            key={d.id}
-            points={faces.top}
-            fill={d.kind === "truck" ? "url(#aisleHatch)" : "url(#nogoHatch)"}
-            stroke={d.kind === "truck" ? "#1d1f20" : "#9f1239"}
-            strokeOpacity="0.5"
-            strokeWidth={strokeUnit}
-            strokeDasharray={`${strokeUnit * 5} ${strokeUnit * 3}`}
-          />
-        );
-      })}
-
-      {sorted.map((p) => {
-        const faces = isoBox(p.bbox, p.size.heightMm);
-        const stroke = strokeFor(p);
-        return (
-          <g key={p.instanceId} onPointerDown={(e) => onMachineDown(p, e)} style={{ cursor: "grab" }}>
-            <polygon
-              points={faces.right}
-              fill={p.aux ? "#e7e7ea" : "#d9d9dd"}
-              stroke={stroke}
-              strokeWidth={strokeUnit * 1.2}
-            />
-            <polygon
-              points={faces.left}
-              fill={p.aux ? "#efeff1" : "#e7e7ea"}
-              stroke={stroke}
-              strokeWidth={strokeUnit * 1.2}
-            />
-            <polygon
-              points={faces.top}
-              fill={p.aux ? "#fbfbfc" : "#f5f5f8"}
-              stroke={stroke}
-              strokeWidth={strokeUnit * 1.4}
-              strokeDasharray={p.aux ? `${strokeUnit * 5} ${strokeUnit * 3}` : undefined}
-            />
-            <text
-              x={faces.center.x}
-              y={faces.center.y + strokeUnit * 6}
-              textAnchor="middle"
-              fontSize={strokeUnit * (p.aux ? 13 : 18)}
-              fill="#1d1f20"
-              className="num"
-              pointerEvents="none"
-            >
-              {labelFor(p)}
-            </text>
-          </g>
-        );
-      })}
-
-      <DiagnosticBadges
-        layout={layout}
-        strokeUnit={strokeUnit}
-        project={(v) => isoProject(v.x, v.y, 0)}
-      />
-    </g>
-  );
-}
-
-/* ── Diagnostik förankrad i geometrin ─────────────────────────────────── */
-
 function DiagnosticBadges({
   layout,
   strokeUnit,
@@ -716,15 +713,13 @@ function DiagnosticBadges({
         const width = strokeUnit * 44;
         const height = strokeUnit * 22;
         return (
-          <g
-            key={`${d.code}-${i}`}
-            style={{ cursor: "pointer" }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              if (d.instanceIds[0]) select(d.instanceIds[0]);
-              toggleDiagnostics(true);
-            }}
-          >
+          /*
+           * Brickan är en markering, inte en knapp. Den sitter mitt på den
+           * maskin den handlar om, och fångade den pekaren gick maskinen inte
+           * att dra — man tog tag mitt i den och ingenting hände. Felen nås
+           * i diagnostikpanelen; att peka på maskinen räcker här.
+           */
+          <g key={`${d.code}-${i}`} pointerEvents="none">
             <rect
               x={p.x - width / 2}
               y={p.y - height / 2}
@@ -755,12 +750,12 @@ function DrawnShape({
   object,
   selected,
   strokeUnit,
-  onSelect,
+  onDown,
 }: {
   object: DrawnObject;
   selected: boolean;
   strokeUnit: number;
-  onSelect: (id: string) => void;
+  onDown: (o: DrawnObject, e: React.PointerEvent) => void;
 }) {
   const style = {
     wall: { fill: "#d4d4d7", stroke: "#1d1f20", dash: undefined as string | undefined },
@@ -782,13 +777,7 @@ function DrawnShape({
   const marked = object.kind === "wall" && object.h === 0;
 
   return (
-    <g
-      style={{ cursor: "pointer" }}
-      onPointerDown={(e) => {
-        e.stopPropagation();
-        onSelect(object.id);
-      }}
-    >
+    <g style={{ cursor: "grab" }} onPointerDown={(e) => onDown(object, e)}>
       <rect
         x={object.x}
         y={object.y}
@@ -849,11 +838,9 @@ function DrawnShape({
 /** Utkastet medan man drar, med måttet utskrivet. */
 function DraftShape({
   draft,
-  view,
   strokeUnit,
 }: {
   draft: NonNullable<Draft>;
-  view: PlanarView;
   strokeUnit: number;
 }) {
   const { box } = draft;
@@ -862,34 +849,21 @@ function DraftShape({
     draft.kind === "wall" || draft.kind === "door"
       ? `${meters(alongX ? box.l : box.w)} m`
       : `${meters(box.l)} × ${meters(box.w)} m`;
-  const center = view === "2d"
-    ? { x: box.x + box.l / 2, y: box.y + box.w / 2 }
-    : isoProject(box.x + box.l / 2, box.y + box.w / 2, 0);
+  const center = { x: box.x + box.l / 2, y: box.y + box.w / 2 };
 
   return (
     <g pointerEvents="none">
-      {view === "2d" ? (
-        <rect
-          x={box.x}
-          y={box.y}
-          width={box.l}
-          height={box.w}
-          fill="#5980a6"
-          fillOpacity="0.12"
-          stroke="#5980a6"
-          strokeWidth={strokeUnit * 2}
-          strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
-        />
-      ) : (
-        <polygon
-          points={isoBox(box, 1).top}
-          fill="#5980a6"
-          fillOpacity="0.12"
-          stroke="#5980a6"
-          strokeWidth={strokeUnit * 2}
-          strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
-        />
-      )}
+      <rect
+        x={box.x}
+        y={box.y}
+        width={box.l}
+        height={box.w}
+        fill="#5980a6"
+        fillOpacity="0.12"
+        stroke="#5980a6"
+        strokeWidth={strokeUnit * 2}
+        strokeDasharray={`${strokeUnit * 6} ${strokeUnit * 4}`}
+      />
       <rect
         x={center.x - strokeUnit * 32}
         y={center.y - strokeUnit * 12}
@@ -914,97 +888,62 @@ function DraftShape({
 }
 
 /** Start- och slutpunkt som dragbara markörer i ritningen. */
+/**
+ * Startpunkten som en dragbar markör.
+ *
+ * Bara start. Här satt också en slutpunkt, med en kryssmarkör och ett mått
+ * på hur långt linjen slutade från den — den hörde till tiden då en solver
+ * räknade fram var kedjan tog slut. Med fri placering slutar anläggningen
+ * där sista maskinen står, och en punkt som inget mäts emot är bara en
+ * markör till i vägen.
+ */
 function FlowMarkers({
   start,
-  end,
-  view,
   strokeUnit,
   onDrag,
 }: {
   start: Vec2;
-  end: Vec2 | null;
-  lineEnd: Vec2 | null;
-  view: PlanarView;
   strokeUnit: number;
-  onDrag: (which: "startPoint" | "endPoint", event: React.PointerEvent) => void;
+  onDrag: (event: React.PointerEvent) => void;
 }) {
-  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
-  const a = project(start);
   const r = strokeUnit * 9;
 
   return (
-    <g>
-      <g
-        style={{ cursor: "grab" }}
-        onPointerDown={(e) => onDrag("startPoint", e)}
+    <g style={{ cursor: "grab" }} onPointerDown={onDrag}>
+      <circle
+        cx={start.x}
+        cy={start.y}
+        r={r}
+        fill="#5980a6"
+        fillOpacity="0.18"
+        stroke="#5980a6"
+        strokeWidth={strokeUnit * 1.6}
+      />
+      <circle cx={start.x} cy={start.y} r={strokeUnit * 2.4} fill="#5980a6" />
+      <text
+        x={start.x}
+        y={start.y - r - strokeUnit * 4}
+        textAnchor="middle"
+        fontSize={strokeUnit * 12}
+        fill="#5980a6"
+        className="num"
+        pointerEvents="none"
       >
-        <circle cx={a.x} cy={a.y} r={r} fill="#5980a6" fillOpacity="0.18" stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
-        <circle cx={a.x} cy={a.y} r={strokeUnit * 2.4} fill="#5980a6" />
-        <text
-          x={a.x}
-          y={a.y - r - strokeUnit * 4}
-          textAnchor="middle"
-          fontSize={strokeUnit * 12}
-          fill="#5980a6"
-          className="num"
-          pointerEvents="none"
-        >
-          START
-        </text>
-      </g>
-
-      {end ? (
-        <g style={{ cursor: "grab" }} onPointerDown={(e) => onDrag("endPoint", e)}>
-          {(() => {
-            const b = project(end);
-            return (
-              <>
-                <circle
-                  cx={b.x}
-                  cy={b.y}
-                  r={r}
-                  fill="#1d2d3d"
-                  fillOpacity="0.12"
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.6}
-                />
-                <path
-                  d={`M${b.x - r} ${b.y}h${r * 2}M${b.x} ${b.y - r}v${r * 2}`}
-                  stroke="#1d2d3d"
-                  strokeWidth={strokeUnit * 1.4}
-                />
-                <text
-                  x={b.x}
-                  y={b.y - r - strokeUnit * 4}
-                  textAnchor="middle"
-                  fontSize={strokeUnit * 12}
-                  fill="#1d2d3d"
-                  className="num"
-                  pointerEvents="none"
-                >
-                  SLUT
-                </text>
-              </>
-            );
-          })()}
-        </g>
-      ) : null}
+        START
+      </text>
     </g>
   );
 }
 
 function MeasureLine({
   measure,
-  view,
   strokeUnit,
 }: {
   measure: NonNullable<Measure>;
-  view: PlanarView;
   strokeUnit: number;
 }) {
-  const project = (v: Vec2) => (view === "2d" ? v : isoProject(v.x, v.y, 0));
-  const a = project(measure.from);
-  const b = project(measure.to);
+  const a = measure.from;
+  const b = measure.to;
   const distance = Math.hypot(measure.to.x - measure.from.x, measure.to.y - measure.from.y);
 
   return (
@@ -1031,6 +970,120 @@ function MeasureLine({
       >
         {meters(distance)} m
       </text>
+    </g>
+  );
+}
+
+/**
+ * Flödespil vid en port: åt vilket håll maskinen tar emot eller lämnar paket.
+ *
+ * Pilen kopplar ingenting. Portarna var förut anslutningspunkter som en
+ * solver matchade mot varandra, och positionen räknades fram ur kedjan; nu
+ * står maskinerna där kunden ställt dem och pilen är en upplysning om vad
+ * maskinen klarar — in på den här sidan, ut på den där.
+ *
+ * Ingång och utgång ritas åt samma håll som flödet går. Pilspetsen pekar
+ * därför in i maskinen på en ingång och bort från den på en utgång, vilket
+ * är precis skillnaden man vill se när man vänder en maskin.
+ */
+function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number }) {
+  const v = DIR_VEC[port.dir];
+  const len = strokeUnit * 26;
+  const head = strokeUnit * 9;
+  const inPort = port.role === "in";
+  const color = inPort ? "#5980a6" : "#1d2d3d";
+
+  // Ingången ritas utanför maskinen och pekar in; utgången börjar i porten
+  // och pekar ut. Bägge slutar alltså där paketen är på väg.
+  const tip = inPort
+    ? port.pos
+    : { x: port.pos.x + v.x * len, y: port.pos.y + v.y * len };
+  const tail = inPort
+    ? { x: port.pos.x - v.x * len, y: port.pos.y - v.y * len }
+    : port.pos;
+
+  // Vinkelrätt mot flödet, för pilspetsens vingar.
+  const n = { x: -v.y, y: v.x };
+
+  return (
+    <g pointerEvents="none">
+      <line
+        x1={tail.x}
+        y1={tail.y}
+        x2={tip.x}
+        y2={tip.y}
+        stroke={color}
+        strokeWidth={strokeUnit * 2.5}
+        strokeLinecap="round"
+      />
+      <path
+        d={
+          `M${tip.x} ${tip.y}` +
+          `L${tip.x - v.x * head + n.x * head * 0.6} ${tip.y - v.y * head + n.y * head * 0.6}` +
+          `L${tip.x - v.x * head - n.x * head * 0.6} ${tip.y - v.y * head - n.y * head * 0.6}Z`
+        }
+        fill={color}
+      />
+    </g>
+  );
+}
+
+/**
+ * Vridhandtaget på den markerade maskinen.
+ *
+ * Vridningen låg bara i inspektorn, som fyra gradknappar längst ut till
+ * höger. Man tittade bort från ritningen för att ändra något man ser i den.
+ * Handtaget sitter i stället på maskinen: ett klick är ett kvarts varv
+ * medurs, skift-klick moturs. Samma sak går med tangenten R.
+ *
+ * Tecknet är samma som inspektorns, hämtat ur ui.tsx och skalat in i
+ * hallens koordinater — inte en egen båge ritad på fri hand. Ringen ligger
+ * på vit botten så handtaget syns också över en ritad zon.
+ */
+function TurnHandle({
+  box,
+  strokeUnit,
+  onTurn,
+  title,
+}: {
+  box: Box;
+  strokeUnit: number;
+  onTurn: (steps: number) => void;
+  title: string;
+}) {
+  const r = strokeUnit * 12;
+  // Utanför hörnet, så det aldrig ligger över ytan man drar i.
+  const cx = box.x + box.l + r * 1.15;
+  const cy = box.y - r * 1.15;
+  /*
+   * Ikonen är ritad i ett rutnät på 24 med bågens mitt i (12, 12) och en
+   * radie på 7. Skalan sätts efter bågen, inte efter rutnätet: annars blir
+   * tecknet en liten krumelur mitt i en stor ring.
+   */
+  const scale = (r * 1.25) / 14;
+
+  return (
+    <g
+      style={{ cursor: "pointer" }}
+      onPointerDown={(e) => {
+        // Utan detta börjar ett drag av maskinen under handtaget.
+        e.stopPropagation();
+        onTurn(e.shiftKey ? -1 : 1);
+      }}
+    >
+      <title>{title}</title>
+      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.2} />
+      <g
+        transform={`translate(${cx} ${cy}) scale(${scale}) translate(-12 -12)`}
+        fill="none"
+        stroke="#1d2d3d"
+        strokeWidth={(strokeUnit * 1.3) / scale}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={ROTATE_ARC} />
+        <path d={ROTATE_TIP} />
+      </g>
     </g>
   );
 }

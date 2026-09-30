@@ -2,9 +2,6 @@ export function meters(mm: number, decimals = 1): string {
   return (mm / 1000).toFixed(decimals).replace(".", ",");
 }
 
-export function formatLength(mm: number, unit: "m" | "mm"): string {
-  return unit === "m" ? `${meters(mm)} m` : `${Math.round(mm)} mm`;
-}
 
 export function parseMeters(text: string): number | null {
   const normalized = text.replace(",", ".").trim();

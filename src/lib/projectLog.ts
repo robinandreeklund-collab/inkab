@@ -125,7 +125,7 @@ export function describeChange(
 
   const flowChanges = (Object.keys(after.flow) as (keyof Configuration["flow"])[])
     .filter((key) => JSON.stringify(before.flow[key]) !== JSON.stringify(after.flow[key]))
-    .filter((key) => key !== "startPoint" && key !== "endPoint");
+    .filter((key) => key !== "startPoint");
   if (flowChanges.length > 0) {
     return logEntry(
       "flow",
@@ -137,12 +137,7 @@ export function describeChange(
 }
 
 const FLOW_LABEL: Partial<Record<keyof Configuration["flow"], string>> = {
-  infeedFrom: "Paketen kommer in",
-  controlDeskSide: "Pulpetens sida",
-  stickerMagazineSide: "Ströfacksmagasinets sida",
   truckPickupSide: "Truckens hämtsida",
-  finalConveyorLengthMm: "Sista transportörens längd",
-  fitToEndPoint: "Passa in mot slutpunkt",
 };
 
 const VALUE_LABEL: Record<string, string> = {

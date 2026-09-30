@@ -4,7 +4,9 @@ import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
 import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
-import { removeWithBranches, segmentEndIndex } from "@/lib/branches";
+import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
+import { translate } from "@/lib/i18n/translate";
+import { claimedBox, freeSpot } from "@/lib/solver";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
   ConfigPatch,
@@ -14,6 +16,7 @@ import type {
   LayoutResult,
   Machine,
   ParameterValue,
+  Rotation,
   Vec2,
 } from "@/lib/types";
 
@@ -27,10 +30,19 @@ const STORAGE_KEY = "inkab.config.v1";
 const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
+/** Kundens språkval. Ligger vid sidan av konfigurationen: det är en läsare, inte en anläggning. */
+const LOCALE_KEY = "inkab.locale";
 
 export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
-export type ViewMode = "2d" | "3d" | "model";
-export type Unit = "m" | "mm";
+/*
+ * Två vyer: ritningen och modellen.
+ *
+ * Däremellan fanns en isometrisk vy, ritad av samma SVG med maskinerna som
+ * lådor sedda snett uppifrån. Den svarade på samma fråga som modellvyn —
+ * hur står det till i rummet — men med klossar i stället för maskinerna,
+ * och den kostade en egen uppsättning projektioner genom hela ritlagret.
+ */
+export type ViewMode = "2d" | "model";
 
 type Screen = "onboarding" | "configurator" | "quote";
 
@@ -54,7 +66,6 @@ type State = {
 
   screen: Screen;
   view: ViewMode;
-  unit: Unit;
   tool: Tool;
   selectedId: string | null;
   inspectorOpen: boolean;
@@ -63,6 +74,16 @@ type State = {
   showZones: boolean;
   showPorts: boolean;
   hydrated: boolean;
+  /** Språket gränssnittet visas på. Se lib/i18n. */
+  locale: Locale;
+  /**
+   * Maskinen som just nu dras ur katalogen, medan den dras.
+   *
+   * Ritningen ritar dess fotavtryck under pekaren så att man ser vad man
+   * får innan man släpper. Släppet självt bär id:t i dataTransfer —
+   * webbläsaren låter ingen läsa det under dragover, bara vid drop.
+   */
+  draggingMachineId: string | null;
   shareNotice: ShareNotice | null;
   /** Vad som hänt i projektet, äldst först. */
   log: LogEntry[];
@@ -73,18 +94,11 @@ type State = {
    * skriver tillbaka till samma rad i stället för att lägga en kopia bredvid.
    */
   proposalId: string | null;
-  /**
-   * Utgången nästa maskin ska hängas på. Satt när någon tryckt "bygg vidare
-   * härifrån" på en ledig utgång; nästa maskin ur katalogen startar då en
-   * gren i stället för att läggas sist.
-   */
-  branchTarget: { instanceId: string; outPortId: string } | null;
 };
 
 type Actions = {
   setScreen: (s: Screen) => void;
   setView: (v: ViewMode) => void;
-  setUnit: (u: Unit) => void;
   setTool: (t: Tool) => void;
   select: (id: string | null) => void;
   toggleInspector: () => void;
@@ -92,6 +106,8 @@ type Actions = {
   toggleDiagnostics: (open?: boolean) => void;
   toggleZones: () => void;
   togglePorts: () => void;
+  setDraggingMachine: (machineId: string | null) => void;
+  setLocale: (locale: Locale) => void;
 
   setLibrary: (machines: Machine[]) => void;
   /** Skriver en rad i projektloggen. */
@@ -102,19 +118,33 @@ type Actions = {
   load: (config: Configuration, options?: { resetHistory?: boolean; note?: string }) => void;
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
-  setFlowPoint: (which: "startPoint" | "endPoint", point: Vec2 | null) => void;
-  addMachine: (machineId: string, atIndex?: number) => void;
+  /** Flyttar startpunkten — den enda punkt flödet har. */
+  setStartPoint: (point: Vec2) => void;
+  /**
+   * Lägger till en maskin.
+   *
+   * Med `pos` hamnar den där — maskinens mitt i punkten, för det är den man
+   * siktar med när man släpper. Utan `pos` läggs den på ledig yta.
+   */
+  addMachine: (machineId: string, options?: { atIndex?: number; pos?: Vec2 }) => void;
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
   setVariant: (instanceId: string, variantId: string) => void;
-  setBranchTarget: (target: { instanceId: string; outPortId: string } | null) => void;
-  setOutPort: (instanceId: string, outPortId: string) => void;
+  /** Flyttar maskinen till en ny position i hallen, mm. */
+  moveMachine: (instanceId: string, pos: Vec2) => void;
+  /** Vrider ett kvarts varv i taget. +1 medurs, -1 moturs. */
+  turnMachine: (instanceId: string, steps: number) => void;
+  mirrorMachine: (instanceId: string) => void;
+  setLength: (instanceId: string, lengthMm: number) => void;
+  /** Kundens anteckning om maskinen. Tom text tar bort den. */
+  setNote: (instanceId: string, note: string) => void;
   setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
-  resetOffset: (instanceId: string) => void;
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
+  /** Vrider ett ritat objekt ett kvarts varv kring sin mitt. */
+  turnDrawn: (id: string) => void;
   removeDrawn: (id: string) => void;
   clearDrawn: () => void;
   applyPatch: (patch: ConfigPatch) => void;
@@ -186,11 +216,17 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     persistLog(log);
   };
 
+  /** Regelverkets texter på det språk kunden valt just nu. */
+  const t = () => {
+    const locale = get().locale;
+    return (key: string, vars?: Record<string, string | number>) => translate(locale, key, vars);
+  };
+
   const commit = (next: Configuration) => {
     const { config, past, library } = get();
     set({
       config: next,
-      layout: computeLayout(next, library),
+      layout: computeLayout(next, library, t()),
       past: [...past, config].slice(-HISTORY_LIMIT),
       future: [],
     });
@@ -214,7 +250,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     screen: "onboarding",
     view: "2d",
-    unit: "m",
     tool: "select",
     selectedId: null,
     /*
@@ -226,16 +261,16 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     aiOpen: false,
     diagnosticsOpen: false,
     showZones: true,
-    showPorts: false,
+    showPorts: true,
     hydrated: false,
+    draggingMachineId: null,
+    locale: "sv",
     shareNotice: null,
     log: [],
     proposalId: null,
-    branchTarget: null,
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
-    setUnit: (unit) => set({ unit }),
     setTool: (tool) => set({ tool }),
     select: (selectedId) =>
       // Att markera något är att vilja se det. Panelen fälls ut av sig själv
@@ -249,6 +284,27 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
+
+    setDraggingMachine: (draggingMachineId) => set({ draggingMachineId }),
+
+    setLocale: (locale) => {
+      set({ locale });
+      /*
+       * Diagnostiken är redan uträknad, med texterna inbakade. Den räknas om
+       * nu — annars står de gamla felen kvar på gammalt språk tills någon
+       * råkar ändra något i anläggningen.
+       */
+      const { config, library } = get();
+      set({
+        layout: computeLayout(config, library, (key, vars) => translate(locale, key, vars)),
+      });
+      if (typeof document !== "undefined") document.documentElement.lang = locale;
+      try {
+        window.localStorage.setItem(LOCALE_KEY, locale);
+      } catch {
+        // Privat läge: språket gäller sessionen ut, och det får duga.
+      }
+    },
 
     note: (kind, text, detail) => note(logEntry(kind, text, detail)),
     setProposalId: (proposalId) => set({ proposalId }),
@@ -264,7 +320,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setLibrary: (machines) => {
       const library = makeLibrary(machines);
-      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library) });
+      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library, t()) });
     },
 
     load: (config, options) => {
@@ -272,7 +328,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       if (options?.resetHistory) {
         set({
           config: next,
-          layout: computeLayout(next, get().library),
+          layout: computeLayout(next, get().library, t()),
           past: [],
           future: [],
           selectedId: null,
@@ -293,16 +349,9 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setFlow: (patch) => get().update((d) => Object.assign(d.flow, patch)),
 
-    setFlowPoint: (which, point) =>
-      get().update((d) => {
-        if (which === "startPoint") {
-          if (point) d.flow.startPoint = point;
-        } else {
-          d.flow.endPoint = point;
-        }
-      }),
+    setStartPoint: (point) => get().update((d) => void (d.flow.startPoint = point)),
 
-    addMachine: (machineId, atIndex) => {
+    addMachine: (machineId, options) => {
       const machine = getMachine(machineId, get().library);
       if (!machine) return;
       // Hjälpobjekt är unika: en linje har en pulpet och ett ströfacksmagasin.
@@ -318,30 +367,35 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       if (machine.variants?.length) item.variantId = machine.variants[0].id;
 
       /*
-       * Var maskinen hamnar: på den utpekade utgången om någon är vald, annars
-       * sist i samma gren som den markerade maskinen. Utan markering sist i
-       * listan, som förut.
+       * Var maskinen hamnar: på ledig yta till höger om det som redan står.
+       * Inte för att det är rätt plats, utan för att den ska synas och gå
+       * att dra dit den ska. Placeringen är kundens.
        */
-      const target = get().branchTarget;
-      if (target) item.branch = { fromInstanceId: target.instanceId, outPortId: target.outPortId };
-      const fallback = target
-        ? segmentEndIndex(get().config.line, target.instanceId)
-        : segmentEndIndex(get().config.line, get().selectedId);
+      const { config, layout } = get();
+      const storlek = { l: machine.footprint.lengthMm, w: machine.footprint.widthMm };
+      item.pos = options?.pos
+        ? {
+            // Maskinens mitt i punkten: det är mitten man siktar med.
+            x: Math.round(options.pos.x - storlek.l / 2),
+            y: Math.round(options.pos.y - storlek.w / 2),
+          }
+        : freeSpot(
+            layout.placements.map(claimedBox),
+            storlek,
+            config.flow.startPoint,
+            config.hall,
+          );
 
       get().update((d) => {
-        const index = atIndex ?? fallback;
+        const index = options?.atIndex ?? config.line.length;
         d.line.splice(Math.max(0, Math.min(d.line.length, index)), 0, item);
       });
-      set({ branchTarget: null });
       get().select(item.instanceId);
     },
 
     removeItem: (instanceId) => {
       get().update((d) => {
-        // Grenar som hänger på maskinen följer med: en gren utan fäste går
-        // inte att placera, och att lämna kvar den vore att lämna maskiner
-        // som varken kan ritas eller hittas.
-        d.line = removeWithBranches(d.line, instanceId);
+        d.line = d.line.filter((i) => i.instanceId !== instanceId);
       });
       if (get().selectedId === instanceId) set({ selectedId: null });
     },
@@ -354,22 +408,47 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         d.line.splice(Math.max(0, Math.min(d.line.length, toIndex)), 0, item);
       }),
 
-    setBranchTarget: (branchTarget) => set({ branchTarget }),
-
     setVariant: (instanceId, variantId) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (!item) return;
         item.variantId = variantId;
-        // Manuell förskjutning hör ihop med det gamla måttet. Ett nytt
-        // utförande är en annan maskin i geometrin, så justeringen släpps.
-        delete item.manualOffset;
       }),
 
-    setOutPort: (instanceId, outPortId) =>
+    moveMachine: (instanceId, pos) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) item.outPortId = outPortId;
+        if (item) item.pos = { x: Math.round(pos.x), y: Math.round(pos.y) };
+      }),
+
+    turnMachine: (instanceId, steps) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (!item) return;
+        // Fyra lägen runt varvet, alltid 0/90/180/270 oavsett hur många steg.
+        const varv = (((item.rotation ?? 0) / 90 + steps) % 4 + 4) % 4;
+        item.rotation = (varv * 90) as Rotation;
+      }),
+
+    mirrorMachine: (instanceId) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.mirrored = !item.mirrored;
+      }),
+
+    setLength: (instanceId, lengthMm) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (item) item.lengthMm = Math.round(lengthMm);
+      }),
+
+    setNote: (instanceId, note) =>
+      get().update((d) => {
+        const item = d.line.find((i) => i.instanceId === instanceId);
+        if (!item) return;
+        const rensad = note.trim();
+        if (rensad) item.note = rensad.slice(0, 1000);
+        else delete item.note;
       }),
 
     setParameter: (instanceId, parameterId, value) =>
@@ -391,15 +470,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     nudge: (instanceId, delta) =>
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
-        if (!item) return;
-        const current = item.manualOffset ?? { x: 0, y: 0 };
-        item.manualOffset = { x: current.x + delta.x, y: current.y + delta.y };
-      }),
-
-    resetOffset: (instanceId) =>
-      get().update((d) => {
-        const item = d.line.find((i) => i.instanceId === instanceId);
-        if (item) delete item.manualOffset;
+        if (!item?.pos) return;
+        item.pos = { x: Math.round(item.pos.x + delta.x), y: Math.round(item.pos.y + delta.y) };
       }),
 
     addDrawn: (obj) => {
@@ -413,6 +485,26 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const object = d.drawn.find((o) => o.id === id);
         if (object) Object.assign(object, patch);
+      }),
+
+    turnDrawn: (id) =>
+      get().update((d) => {
+        const obj = d.drawn.find((o) => o.id === id);
+        if (!obj) return;
+        /*
+         * Ett ritat objekt är en axelparallell låda utan egen vinkel — så
+         * räknar geometrin och reglerna med den. Att vrida den är därför att
+         * byta längd mot bredd kring mitten, inte att luta den: en truckgata
+         * som ligger längs hallen kommer att ligga tvärs, och ligger kvar
+         * där den låg.
+         */
+        const cx = obj.x + obj.l / 2;
+        const cy = obj.y + obj.w / 2;
+        obj.x = Math.round(cx - obj.w / 2);
+        obj.y = Math.round(cy - obj.l / 2);
+        const l = obj.l;
+        obj.l = obj.w;
+        obj.w = l;
       }),
 
     removeDrawn: (id) => {
@@ -447,7 +539,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const previous = past[past.length - 1];
       set({
         config: previous,
-        layout: computeLayout(previous, get().library),
+        layout: computeLayout(previous, get().library, t()),
         past: past.slice(0, -1),
         future: [config, ...future].slice(0, HISTORY_LIMIT),
       });
@@ -460,7 +552,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const next = future[0];
       set({
         config: next,
-        layout: computeLayout(next, get().library),
+        layout: computeLayout(next, get().library, t()),
         past: [...past, config].slice(-HISTORY_LIMIT),
         future: future.slice(1),
       });
@@ -474,6 +566,21 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
       // Loggen läses först: det som hände före omladdningen hände ändå.
       set({ log: readLog() });
+
+      /*
+       * Språket: kundens val om hon gjort ett, annars det webbläsaren ber om.
+       * En tysk besökare ska inte behöva leta upp växlaren för att förstå
+       * första sidan.
+       */
+      let locale: Locale = "sv";
+      try {
+        const sparat = window.localStorage.getItem(LOCALE_KEY);
+        locale = isLocale(sparat) ? sparat : preferredLocale(navigator.languages ?? []);
+      } catch {
+        locale = preferredLocale(navigator.languages ?? []);
+      }
+      set({ locale });
+      document.documentElement.lang = locale;
 
       const params = new URLSearchParams(window.location.search);
 

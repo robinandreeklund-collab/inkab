@@ -167,3 +167,58 @@ export function Row({ label, value }: { label: string; value: ReactNode }) {
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="border border-dashed border-divider px-3 py-4 text-xs text-muted">{children}</p>;
 }
+
+/**
+ * Rotationsikonens geometri, i ett rutnät på 24 × 24.
+ *
+ * Bågen och spetsen ligger här i stället för hos den som ritar dem, så att
+ * handtaget i ritningen och knapparna i inspektorn blir exakt samma tecken.
+ * Förut var det en hemmagjord båge med en fylld triangel på ena stället och
+ * unicodetecknen ↺ ↻ på det andra — två olika saker för samma handling, och
+ * ingen av dem i husets tunna linjestil.
+ *
+ * Bågen går tre kvarts varv och slutar överst, där spetsen pekar medurs.
+ * Moturs är samma tecken speglat, så de alltid väger lika.
+ */
+/*
+ * Bågen: tre kvarts varv medurs, från höger runt till toppen, kring (12, 12).
+ *
+ * Flaggorna är inte utbytbara. Ett bågkommando har två tänkbara medelpunkter,
+ * och large-arc och sweep väljer vilken. Med fel par låg medelpunkten i
+ * (5, 5) i stället, så hela tecknet drogs ett halvt varv upp till vänster och
+ * hängde utanför sin egen ring.
+ */
+export const ROTATE_ARC = "M19 12A7 7 0 1 1 12 5";
+export const ROTATE_TIP = "M9.4 2.8 12 5 9.4 7.2";
+
+export function RotateIcon({
+  anticlockwise = false,
+  size = 16,
+}: {
+  anticlockwise?: boolean;
+  size?: number;
+}) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <g
+        transform={anticlockwise ? "translate(24 0) scale(-1 1)" : undefined}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d={ROTATE_ARC} />
+        <path d={ROTATE_TIP} />
+      </g>
+    </svg>
+  );
+}
+
+/** Spegelvändning: två halvor kring en tänkt axel. */
+export function MirrorIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M12 3v18" strokeDasharray="2 2.5" />
+      <path d="M9 7 4 12l5 5z" strokeLinejoin="round" />
+      <path d="M15 7l5 5-5 5z" strokeLinejoin="round" />
+    </svg>
+  );
+}

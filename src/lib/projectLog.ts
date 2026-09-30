@@ -125,7 +125,7 @@ export function describeChange(
 
   const flowChanges = (Object.keys(after.flow) as (keyof Configuration["flow"])[])
     .filter((key) => JSON.stringify(before.flow[key]) !== JSON.stringify(after.flow[key]))
-    .filter((key) => key !== "startPoint");
+    .filter((key) => !POINT_KEYS.has(key));
   if (flowChanges.length > 0) {
     return logEntry(
       "flow",
@@ -133,8 +133,26 @@ export function describeChange(
     );
   }
 
+  const beforeMarkers = before.flow.markers?.length ?? 0;
+  const afterMarkers = after.flow.markers?.length ?? 0;
+  if (beforeMarkers !== afterMarkers) {
+    return logEntry(
+      "flow",
+      afterMarkers > beforeMarkers
+        ? "Lade till en start- eller slutpunkt"
+        : "Tog bort en start- eller slutpunkt",
+    );
+  }
+
   return null;
 }
+
+/**
+ * Punkterna flyttas med musen och kommentarerna skrivs tecken för tecken —
+ * varje steg vore en rad i loggen. Att en punkt läggs till eller tas bort får
+ * en egen rad ovan.
+ */
+const POINT_KEYS = new Set<keyof Configuration["flow"]>(["startPoint", "startComment", "markers"]);
 
 const FLOW_LABEL: Partial<Record<keyof Configuration["flow"], string>> = {
   truckPickupSide: "Truckens hämtsida",

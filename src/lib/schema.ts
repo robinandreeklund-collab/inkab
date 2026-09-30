@@ -39,6 +39,18 @@ export const drawnSchema = z.object({
 export const flowSchema = z.object({
   truckPickupSide: z.enum(["right", "left"]),
   startPoint: vec2,
+  startComment: z.string().max(300).optional(),
+  markers: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        role: z.enum(["start", "end"]),
+        pos: vec2,
+        comment: z.string().max(300),
+      }),
+    )
+    .max(12)
+    .optional(),
 });
 
 export const configurationSchema = z.object({

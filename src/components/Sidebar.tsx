@@ -5,11 +5,13 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
-import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag } from "./ui";
+import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
+import { Button, Empty, Field, NumberInput, SectionHeading, Segmented, Tag, Tip } from "./ui";
+import { toolHelp } from "./toolHelp";
 import { MachineThumb } from "./MachineThumb";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { useT } from "@/lib/i18n";
-import type { Machine, MachineCategory, Side } from "@/lib/types";
+import type { FlowMarker, Machine, MachineCategory, Side } from "@/lib/types";
 
 
 
@@ -32,6 +34,11 @@ export function Sidebar() {
     library,
     layout,
     setStartPoint,
+    setStartComment,
+    addFlowMarker,
+    updateFlowMarker,
+    removeFlowMarker,
+    activateFlowMarker,
     setDraggingMachine,
   } = useConfigStore();
   const t = useT();
@@ -191,7 +198,11 @@ export function Sidebar() {
           </div>
 
           <div>
-            <span className="kicker mb-1 block">{t("sidebar.newMachinesAt")}</span>
+            <Tip block side="right" title={t("points.title")} body={t("points.why")}>
+              <span className="kicker mb-1 block cursor-help underline decoration-dotted underline-offset-2">
+                {t("sidebar.newMachinesAt")}
+              </span>
+            </Tip>
             <p className="mb-2 text-[11px] text-muted">
               {t("sidebar.startPointHint")}
             </p>
@@ -214,6 +225,57 @@ export function Sidebar() {
                   }}
                 />
               </Field>
+            </div>
+            <CommentInput
+              label={t("points.why.label")}
+              placeholder={t("points.startPlaceholder")}
+              value={config.flow.startComment ?? ""}
+              help={t("points.startHelp")}
+              onCommit={setStartComment}
+            />
+          </div>
+
+          {/* Fler start- och slutpunkter, med motivering. */}
+          <div>
+            <div className="mb-1 flex items-center justify-between">
+              <Tip side="right" title={t("points.more")} body={t("points.moreTip")}>
+                <span className="kicker cursor-help underline decoration-dotted underline-offset-2">
+                  {t("points.more")}
+                </span>
+              </Tip>
+              <span className="kicker">{config.flow.markers?.length ?? 0} st</span>
+            </div>
+            {(config.flow.markers ?? []).map((marker) => (
+              <MarkerRow
+                key={marker.id}
+                label={`${t(marker.role === "start" ? "points.start" : "points.end")} ${markerNumber(config.flow, marker)}`}
+                marker={marker}
+                onComment={(comment) => updateFlowMarker(marker.id, { comment })}
+                onActivate={() => activateFlowMarker(marker.id)}
+                onRemove={() => removeFlowMarker(marker.id)}
+              />
+            ))}
+            <div className="grid grid-cols-2 gap-1">
+              <Tip block title={t("points.addStartTip")} body={t("points.startHelp")}>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
+                  onClick={() => addFlowMarker("start")}
+                >
+                  {t("points.addStart")}
+                </Button>
+              </Tip>
+              <Tip block title={t("points.addEndTip")} body={t("points.endHelp")}>
+                <Button
+                  size="sm"
+                  className="w-full"
+                  disabled={(config.flow.markers?.length ?? 0) >= MAX_MARKERS}
+                  onClick={() => addFlowMarker("end")}
+                >
+                  {t("points.addEnd")}
+                </Button>
+              </Tip>
             </div>
           </div>
         </div>
@@ -290,30 +352,27 @@ export function Sidebar() {
           ))}
         </div>
 
+        <p className="mb-3 text-[11px] leading-relaxed text-muted">{t("guide.hall.drag")}</p>
+
         <span className="kicker mb-1 block">{t("sidebar.tools")}</span>
         <div className="grid grid-cols-3 gap-1">
-          {(
-            [
-              ["select", "Markera"],
-              ["wall", "Vägg"],
-              ["door", "Port"],
-              ["truck", "Truckgata"],
-              ["nogo", "No-go"],
-              ["measure", "Mät"],
-            ] as const
-          ).map(([value, label]) => (
-            <button
-              key={value}
-              onClick={() => setTool(value)}
-              className={`border px-2 py-1 text-xs transition-colors ${
-                tool === value
-                  ? "border-accent bg-accent text-white"
-                  : "border-divider bg-white hover:border-accent"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
+          {(["select", "wall", "door", "truck", "nogo", "measure"] as const).map((value) => {
+            const help = toolHelp(t, value);
+            return (
+              <Tip key={value} block title={help.title} body={help.body} shortcut={help.shortcut}>
+                <button
+                  onClick={() => setTool(value)}
+                  className={`w-full border px-2 py-1 text-xs transition-colors ${
+                    tool === value
+                      ? "border-accent bg-accent text-white"
+                      : "border-divider bg-white hover:border-accent"
+                  }`}
+                >
+                  {help.label}
+                </button>
+              </Tip>
+            );
+          })}
         </div>
         <p className="mt-2 text-[11px] leading-relaxed text-muted">
           {tool === "select"
@@ -441,6 +500,93 @@ function ShareButton() {
           behöver inget konto.
         </p>
       )}
+    </div>
+  );
+}
+
+/** Kommentarfält som sparar när man lämnar det, så att varje tecken inte blir ett ångra-steg. */
+function CommentInput({
+  label,
+  placeholder,
+  value,
+  help,
+  onCommit,
+}: {
+  label: string;
+  placeholder: string;
+  value: string;
+  help: string;
+  onCommit: (text: string) => void;
+}) {
+  return (
+    <label className="mb-2 block">
+      <Tip block side="right" title={label} body={help}>
+        <span className="kicker mb-1 block">{label}</span>
+      </Tip>
+      <input
+        key={value}
+        defaultValue={value}
+        placeholder={placeholder}
+        maxLength={300}
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim() !== value) onCommit(e.currentTarget.value);
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-full border border-divider bg-white px-2 py-1 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
+      />
+    </label>
+  );
+}
+
+function MarkerRow({
+  label,
+  marker,
+  onComment,
+  onActivate,
+  onRemove,
+}: {
+  label: string;
+  marker: FlowMarker;
+  onComment: (comment: string) => void;
+  onActivate: () => void;
+  onRemove: () => void;
+}) {
+  const t = useT();
+  return (
+    <div className="mb-1.5 border border-dashed border-divider p-1.5">
+      <div className="mb-1 flex items-center gap-2">
+        <span className={`kicker ${marker.role === "start" ? "text-accent" : "text-steel"}`}>{label}</span>
+        <span className="num text-[11px] text-muted">
+          {meters(marker.pos.x)} × {meters(marker.pos.y)} m
+        </span>
+        <span className="ml-auto flex items-center gap-1">
+          {marker.role === "start" ? (
+            <Tip side="right" title={t("points.activate")} body={t("points.activateTip")}>
+              <button onClick={onActivate} className="kicker border border-divider px-1 hover:border-accent hover:text-accent">
+                {t("points.activate")}
+              </button>
+            </Tip>
+          ) : null}
+          <button onClick={onRemove} className="text-muted hover:text-danger" aria-label="Ta bort">
+            ×
+          </button>
+        </span>
+      </div>
+      <input
+        key={marker.comment}
+        defaultValue={marker.comment}
+        placeholder={t("points.placeholder")}
+        maxLength={300}
+        onBlur={(e) => {
+          if (e.currentTarget.value.trim() !== marker.comment) onComment(e.currentTarget.value.trim());
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") e.currentTarget.blur();
+        }}
+        className="w-full border border-divider bg-white px-2 py-0.5 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
+      />
     </div>
   );
 }

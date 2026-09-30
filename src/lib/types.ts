@@ -276,6 +276,23 @@ export type Flow = {
   truckPickupSide: Side;
   /** Var den första maskinen läggs när hallen är tom. Kan dras i ritningen. */
   startPoint: Vec2;
+  /** Varför startpunkten ligger just där. Visas i ritningen och offerten. */
+  startComment?: string;
+  /**
+   * Fler start- och slutpunkter, var och en med sin motivering: "från
+   * hyvleriet", "trucken hämtar vid port B". De är markeringar för den som
+   * läser ritningen och påverkar inte placeringen — utom att en alternativ
+   * start kan göras till den aktiva startpunkten.
+   */
+  markers?: FlowMarker[];
+};
+
+/** En extra start- eller slutpunkt, med kommentar om varför. */
+export type FlowMarker = {
+  id: string;
+  role: "start" | "end";
+  pos: Vec2;
+  comment: string;
 };
 
 export type Hall = {

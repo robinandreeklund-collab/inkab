@@ -106,6 +106,11 @@ för underhåll, och där är ett hinder ett hinder. R-104 och R-106 mäter bara
 sidorna. Föreslå därför inte att kunden ska glesa ut en rad som står tätt.
 Två maskiner vars portar möts — utgång mot ingång — hänger ihop och undantas
 helt, också i ett hörn där paketen tas emot från sidan.
+Maskiner som hänger ihop får gå in i varandra upp till 0,3 m (snappsteget) utan
+att det räknas som krock. Pulpet och ströfacksmagasin ska stå intill maskinerna
+och räknas inte som intrång i zonerna. Varje maskinpar får bara sin allvarligaste
+anmärkning: krock (R-103) före maskinzon (R-106) före servicezon (R-104).
+R-106 är en varning och R-104 en upplysning; fel är det som hindrar bygget.
 
 GEOMETRISKA GRUNDER
 - Origo ligger i hallens nedre vänstra hörn. X är längs hallen, Y tvärs.

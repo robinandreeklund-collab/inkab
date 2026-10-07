@@ -153,16 +153,26 @@ export function QuoteView({
         {errors.length > 0 || warnings.length > 0 ? (
           <Callout tone={errors.length > 0 ? "danger" : "warn"}>
             <strong>
-              {errors.length > 0
-                ? `${errors.length} olöst ${errors.length === 1 ? "fel" : "fel"} i layouten`
-                : `${warnings.length} ${warnings.length === 1 ? "varning" : "varningar"}`}
-              .
+              {[
+                errors.length > 0 ? `${errors.length} fel` : null,
+                warnings.length > 0
+                  ? `${warnings.length} ${warnings.length === 1 ? "varning" : "varningar"}`
+                  : null,
+              ]
+                .filter(Boolean)
+                .join(" och ")}{" "}
+              i layouten.
             </strong>{" "}
             Underlaget går att ta fram ändå, men{" "}
             {errors.length > 0
               ? "felen måste lösas innan anläggningen kan byggas"
               : "punkterna bör gås igenom med konstruktör"}
-            : {[...errors, ...warnings].map((d) => d.code).join(", ")}.
+            :{" "}
+            {/* En rad per regel, inte en kod per anmärkning: "R-103 ×8" säger mer än åtta likadana koder. */}
+            {groupByCode([...errors, ...warnings])
+              .map(({ code, title, count }) => `${title} (${code}${count > 1 ? ` ×${count}` : ""})`)
+              .join(", ")}
+            .
           </Callout>
         ) : null}
 
@@ -564,4 +574,15 @@ function truckSummary(config: ReturnType<typeof useConfigStore.getState>["config
 
 function unverifiedCount(layout: ReturnType<typeof useConfigStore.getState>["layout"]): number {
   return layout.placements.filter((p) => p.machine.dimensionsVerified !== true).length;
+}
+
+/** Anmärkningarna grupperade per regel, i den ordning de först förekommer. */
+function groupByCode(list: { code: string; title: string }[]) {
+  const groups = new Map<string, { code: string; title: string; count: number }>();
+  for (const d of list) {
+    const group = groups.get(d.code);
+    if (group) group.count += 1;
+    else groups.set(d.code, { code: d.code, title: d.title, count: 1 });
+  }
+  return [...groups.values()];
 }

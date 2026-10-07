@@ -9,6 +9,9 @@ import { useT } from "@/lib/i18n";
 import { Tip } from "./ui";
 import type { LayoutResult, Configuration, Machine, Placement, Vec2 } from "@/lib/types";
 
+/** Maskinernas färg i 3D: INKAB:s stålblå, mörk nog att synas mot golvet. */
+const MACHINE_TINT = "#3d566e";
+
 /** Maskiner snappar till samma raster som i planvyn, mm. */
 const SNAP_MM = 250;
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
@@ -110,6 +113,25 @@ export function ModelView() {
       Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 200 });
       scene.add(sun);
 
+      /*
+       * Modellerna kommer ur STEP-filerna i neutral grå och vit, och mot det
+       * ljusa golvet blev hela anläggningen en blek massa. Varje material
+       * färgas mot INKAB:s stålblå: vitt blir mörkt stålblått och mörka delar
+       * ännu mörkare, så att modellens egna skillnader syns kvar. En lätt
+       * metallisk yta gör att ljuset tar i kanterna.
+       */
+      const TINT = new THREE.Color(MACHINE_TINT);
+      const tinted = (material: import("three").Material | import("three").Material[]) => {
+        const one = (m: import("three").Material) => {
+          const copy = m.clone() as import("three").MeshStandardMaterial;
+          if (copy.color) copy.color.multiply(TINT);
+          if ("metalness" in copy) copy.metalness = Math.max(copy.metalness ?? 0, 0.35);
+          if ("roughness" in copy) copy.roughness = Math.min(copy.roughness ?? 1, 0.6);
+          return copy;
+        };
+        return Array.isArray(material) ? material.map(one) : one(material);
+      };
+
       const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
       const cache = new Map<string, Promise<import("three").Object3D>>();
 
@@ -123,6 +145,7 @@ export function ModelView() {
               if (!mesh.isMesh) return;
               mesh.castShadow = true;
               mesh.receiveShadow = true;
+              mesh.material = tinted(mesh.material);
             });
             return gltf.scene;
           });
@@ -562,7 +585,7 @@ export function ModelView() {
       />
 
       {selected ? (
-        <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent bg-white px-3 py-1.5 text-xs shadow-sm">
+        <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent/60 bg-white/60 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-white/95">
           <span className="max-w-[220px] truncate">{selected.machine.name}</span>
           <span className="text-muted">{t("model.dragHint")}</span>
           <Tip title={t("model.turnLeft")} shortcut="⇧R">
@@ -683,7 +706,8 @@ function footprintBox(
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(l, h, w),
     new THREE.MeshStandardMaterial({
-      color: placement.aux ? "#dfe3e7" : "#f2f3f5",
+      // Samma stålblå som modellerna; hjälpobjekten ljusare så att de skiljer sig.
+      color: placement.aux ? "#8a9bad" : MACHINE_TINT,
       roughness: 0.8,
       transparent: placement.aux,
       opacity: placement.aux ? 0.75 : 1,
@@ -750,9 +774,13 @@ function OrbitPanel({
   );
 
   return (
-    <div className="absolute right-3 top-3 z-10 flex w-[132px] flex-col items-center gap-2 border border-divider bg-white/95 p-2 shadow-sm">
+    /*
+     * Halvgenomskinlig, så att scenen syns bakom: panelen ligger över
+     * modellen och ska inte skymma den. Under musen blir den tydlig igen.
+     */
+    <div className="absolute right-3 top-3 z-10 flex w-[132px] flex-col items-center gap-2 border border-divider/60 bg-white/40 p-2 shadow-sm backdrop-blur-[2px] transition-colors hover:bg-white/90">
       <div className="kicker">{t("model.orbit")}</div>
-      <div className="relative h-[104px] w-[104px] rounded-full border border-divider bg-paper">
+      <div className="relative h-[104px] w-[104px] rounded-full border border-divider/70 bg-paper/40">
         {/* Kompassen: pilen pekar längs hallen (X), i den riktning kameran tittar. */}
         <svg
           viewBox="0 0 100 100"
@@ -773,7 +801,7 @@ function OrbitPanel({
         <button
           onClick={() => onPreset("overview")}
           title={t("model.view.overview")}
-          className="kicker absolute left-1/2 top-1/2 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-divider bg-white text-[9px] hover:border-accent"
+          className="kicker absolute left-1/2 top-1/2 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-divider bg-white/70 text-[9px] hover:border-accent"
         >
           {t("model.fit")}
         </button>
@@ -791,7 +819,7 @@ function OrbitPanel({
           <button
             key={name}
             onClick={() => onPreset(name)}
-            className="border border-divider px-1 py-0.5 text-left text-[11px] hover:border-accent hover:text-accent"
+            className="border border-divider/70 bg-white/30 px-1 py-0.5 text-left text-[11px] hover:border-accent hover:bg-white hover:text-accent"
           >
             {t(`model.view.${name}`)}
           </button>

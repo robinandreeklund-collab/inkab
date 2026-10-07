@@ -3,6 +3,7 @@
 import { dimensionLength } from "@/lib/dimensions";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
+import { useT } from "@/lib/i18n";
 import type { Box, Configuration, LayoutResult } from "@/lib/types";
 
 /**
@@ -29,6 +30,7 @@ export function QuotePlan({
   config: Configuration;
   layout: LayoutResult;
 }) {
+  const t = useT();
   const hall: Box = { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
 
   const boxes: Box[] = [hall, layout.bounds];
@@ -62,7 +64,7 @@ export function QuotePlan({
         className="block w-full"
         style={{ aspectRatio: `${view.l} / ${view.w}` }}
         role="img"
-        aria-label={`Planritning över ${config.projectName}`}
+        aria-label={t("quote.planOf", { name: config.projectName })}
       >
         <defs>
           <pattern
@@ -149,7 +151,7 @@ export function QuotePlan({
                 className="num"
                 {...text(16)}
               >
-                {d.name || (d.kind === "truck" ? "Truckgata" : "Spärrad yta")}
+                {d.name || (d.kind === "truck" ? t("tool.truck") : t("quote.legend.nogo"))}
               </text>
             </g>
           );
@@ -226,28 +228,27 @@ export function QuotePlan({
 
       <figcaption className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
         <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-[#e7e7ea]" />}>
-          Maskin, siffran är positionen i maskinlistan
+          {t("quote.legend.machine")}
         </Legend>
         {aux.length > 0 ? (
           <Legend
             swatch={<span className="inline-block h-2 w-3 border border-dashed border-ink" />}
           >
-            Pulpet och magasin
+            {t("quote.legend.aux")}
           </Legend>
         ) : null}
         {config.drawn.some((d) => d.kind === "truck") ? (
           <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-paper" />}>
-            Truckgata
+            {t("tool.truck")}
           </Legend>
         ) : null}
         <Legend
           swatch={<span className="inline-block h-2 w-3 border border-dashed border-divider" />}
         >
-          Maskinzon — fritt utrymme som måste hållas
+          {t("quote.legend.zone")}
         </Legend>
         <span>
-          Måtten är i meter. Ritningen är genererad ur konfigurationen och ersätter inte en
-          måttsatt anläggningsritning.
+          {t("quote.legend.note")}
         </span>
       </figcaption>
     </figure>

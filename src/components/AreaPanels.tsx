@@ -484,7 +484,7 @@ function TruckArea() {
             className="mt-1 w-full"
             onClick={() => {
               const zone = suggestTruckZone(layout.bounds, "x+", config.flow.truckPickupSide);
-              addDrawn({ id: `truck-${Date.now().toString(36)}`, kind: "truck", name: "Hämtzon", ...zone, h: 0 });
+              addDrawn({ id: `truck-${Date.now().toString(36)}`, kind: "truck", name: t("draw.pickup"), ...zone, h: 0 });
             }}
           >
             {t("guide.zones.pickup")}

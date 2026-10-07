@@ -532,7 +532,7 @@ export function CadView() {
         const object: DrawnObject = {
           id: `${current.kind}-${Date.now().toString(36)}`,
           kind: current.kind,
-          name: nextName(current.kind, config.drawn),
+          name: nextName(current.kind, config.drawn, t),
           x: Math.round(box.x),
           y: Math.round(box.y),
           l: Math.round(box.l),

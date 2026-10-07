@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { useT } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
 import { ShareNotice } from "./ShareNotice";
@@ -45,6 +45,7 @@ export function AppShell() {
   } = useConfigStore();
 
   const t = useT();
+  const locale = useLocale();
   const [user, setUser] = useState<SessionUser | null>(null);
   const role: Role = user?.role ?? "guest";
   // /admin skickar hit besökare som saknar behörighet; öppna inloggningen direkt.
@@ -91,7 +92,7 @@ export function AppShell() {
         headers: { "Content-Type": "application/json" },
         // Offertens id följer med så att serverns pris blir offertens pris,
         // rabatten inräknad. Konfigurationen ensam vet inget om affären.
-        body: JSON.stringify({ config, proposalId }),
+        body: JSON.stringify({ config, proposalId, locale }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -102,7 +103,7 @@ export function AppShell() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [config, user, proposalId]);
+  }, [config, user, proposalId, locale]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {

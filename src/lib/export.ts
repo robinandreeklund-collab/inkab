@@ -1,4 +1,5 @@
 import { dimensionLength } from "./dimensions";
+import { translate } from "./i18n/translate";
 import { meters } from "./format";
 import type { Box, Configuration, LayoutResult } from "./types";
 import type { PriceResult, Role } from "./server/pricing";
@@ -26,19 +27,22 @@ export function machineListCsv(
   layout: LayoutResult,
   price: PriceResult | null,
   role: Role,
+  /** Rubrikerna på kundens språk. Utan översättare: svenska. */
+  t: (key: string, vars?: Record<string, string | number>) => string = (key, vars) =>
+    translate("sv", key, vars),
 ): string {
   const showPrice = role !== "guest";
   const header = [
-    "Pos",
-    "Benämning",
-    "Artikel",
-    "Optioner",
-    "Antal",
-    "Längd (m)",
-    "Bredd (m)",
-    "Höjd (m)",
-    "Effekt (kW)",
-    ...(showPrice ? ["Radpris (kr)"] : []),
+    t("quote.col.pos"),
+    t("quote.col.name"),
+    t("quote.col.sku"),
+    t("quote.col.options"),
+    t("quote.col.qty"),
+    t("csv.length"),
+    t("csv.width"),
+    t("csv.height"),
+    t("csv.power"),
+    ...(showPrice ? [t("csv.rowPrice")] : []),
   ];
 
   const byInstance = new Map(layout.placements.map((p) => [p.instanceId, p]));

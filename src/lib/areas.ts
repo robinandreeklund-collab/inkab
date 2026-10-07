@@ -51,6 +51,16 @@ export function previousArea(area: Area): Area | null {
   return i > 0 ? AREA_ORDER[i - 1] : null;
 }
 
+/**
+ * Ytor som kan bockas av för hand. Hallen har alltid ett mått, alla lokaler
+ * har inte portar eller pelare, och paketets utgångsvärden kan vara de rätta
+ * — där räcker det att kunden säger att det stämmer.
+ *
+ * Maskinerna och linjen avgörs bara av konfigurationen: att klicka vidare
+ * från en linje med fel gör den inte felfri. Offerten är aldrig "klar".
+ */
+export const CONFIRMABLE: ReadonlySet<Area> = new Set<Area>(["hall", "walls", "zones", "points", "truck", "product"]);
+
 /** Om ytan är klar, utifrån konfigurationen och det kunden själv bockat av. */
 export function isAreaDone(
   area: Area,
@@ -58,7 +68,7 @@ export function isAreaDone(
   layout: LayoutResult,
   confirmed: ReadonlySet<Area>,
 ): boolean {
-  if (confirmed.has(area)) return true;
+  if (confirmed.has(area) && CONFIRMABLE.has(area)) return true;
   const has = (kind: string) => config.drawn.some((d) => d.kind === kind);
   switch (area) {
     case "hall":

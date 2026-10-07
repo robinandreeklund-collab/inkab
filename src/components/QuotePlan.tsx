@@ -1,5 +1,6 @@
 "use client";
 
+import { dimensionLength } from "@/lib/dimensions";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
 import type { Box, Configuration, LayoutResult } from "@/lib/types";
@@ -207,7 +208,7 @@ export function QuotePlan({
 
         {/* Mått kunden sparat på ritningen. */}
         {(config.dimensions ?? []).map((d) => {
-          const length = Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y);
+          const length = dimensionLength(d);
           const mid = { x: (d.from.x + d.to.x) / 2, y: (d.from.y + d.to.y) / 2 };
           return (
             <g key={d.id}>

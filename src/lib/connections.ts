@@ -65,16 +65,22 @@ export function findConnections(placements: Placement[]): {
           if (ahead < -BEHIND_TOLERANCE_MM) continue;
           const straight =
             out.dir === inp.dir && lateral <= LATERAL_TOLERANCE_MM && ahead <= CONNECT_REACH_MM;
-          // En port som tar emot eller lämnar åt sidan: ett hörn, mätt fågelvägen.
-          const corner = (turns(a, out) || turns(b, inp)) && distance(out, inp) <= TURN_REACH_MM;
+          // En port som tar emot eller lämnar åt sidan: ett hörn. Avståndet
+          // räcker inte — två maskiner som bara står bredvid varandra ska inte
+          // räknas som ihopkopplade. Flödet måste kunna svänga: riktningarna
+          // får inte gå mot varandra, och utgången måste ligga uppströms om
+          // ingången räknat i ingångens riktning.
+          const corner =
+            (turns(a, out) || turns(b, inp)) &&
+            out.dir !== inp.dir &&
+            !opposite(out, inp) &&
+            distance(out, inp) <= TURN_REACH_MM &&
+            offset(inp, out).ahead <= BEHIND_TOLERANCE_MM;
           if (straight || corner) connections.push({ from: a.instanceId, to: b.instanceId });
         }
       }
     }
   }
-
-  const linked = (x: string, y: string) =>
-    connections.some((c) => (c.from === x && c.to === y) || (c.from === y && c.to === x));
 
   // Utgång mot utgång eller ingång mot ingång, vända mot varandra: den ena
   // maskinen står baklänges. Bara mellan maskiner som inte redan hänger ihop.
@@ -82,7 +88,7 @@ export function findConnections(placements: Placement[]): {
     for (let j = i + 1; j < line.length; j++) {
       const a = line[i];
       const b = line[j];
-      if (linked(a.instanceId, b.instanceId)) continue;
+      if (isLinked(connections, a.instanceId, b.instanceId)) continue;
       for (const pa of a.ports) {
         const pb = b.ports.find(
           (x) => x.role === pa.role && opposite(pa, x) && inLine(pa, x),

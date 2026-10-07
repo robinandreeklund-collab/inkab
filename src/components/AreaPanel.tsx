@@ -1,7 +1,7 @@
 "use client";
 
 import { useConfigStore } from "@/store/useConfigStore";
-import { groupOf, isAreaDone, nextArea, previousArea } from "@/lib/areas";
+import { CONFIRMABLE, groupOf, isAreaDone, nextArea, previousArea } from "@/lib/areas";
 import { useT } from "@/lib/i18n";
 import { AreaBody } from "./AreaPanels";
 import { Inspector } from "./Inspector";
@@ -62,9 +62,9 @@ export function AreaPanel({ price, role }: { price: PriceResult | null; role: Ro
                 variant="primary"
                 className="ml-auto"
                 onClick={() => {
-                  // Att gå vidare är att säga att ytan är klar, också när den
-                  // inte går att bocka av på egen hand.
-                  if (!done) confirmArea(area);
+                  // Att gå vidare är att säga att ytan är klar — där det går
+                  // att säga. En linje med fel blir inte felfri av ett klick.
+                  if (!done && CONFIRMABLE.has(area)) confirmArea(area);
                   setArea(next);
                 }}
               >

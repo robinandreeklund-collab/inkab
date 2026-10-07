@@ -68,6 +68,22 @@ describe("R-601 lös maskin", () => {
   });
 });
 
+describe("två banor bredvid varandra", () => {
+  it("räknas inte som ihopkopplade fast en av dem tar emot från sidan", () => {
+    const config = defaultConfig();
+    const a = lineItem("rullbana");
+    const b = lineItem("rullbana");
+    a.pos = { x: 10000, y: 8000 };
+    config.line = [a, b];
+    const first = layoutOf(config, REAL).placements.find((p) => p.instanceId === a.instanceId)!;
+    // Precis under den första, parallell, med 0,2 m mellanrum: sidoingången
+    // ligger inom två meter från den andras utgång, men flödet kan inte svänga dit.
+    b.pos = { x: first.bbox.x, y: first.bbox.y + first.bbox.w + 200 };
+    const { connections } = findConnections(layoutOf(config, REAL).placements);
+    expect(connections).toHaveLength(0);
+  });
+});
+
 describe("överföring i ett hörn", () => {
   it("en maskin som matar in i rullbanans sidoingång gör inget intrång", () => {
     const config = defaultConfig();

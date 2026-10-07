@@ -14,8 +14,9 @@ import {
   WALL_THICKNESS_MM,
 } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
+import { HALL_LIMITS } from "@/lib/limits";
 import { markerNumber } from "@/lib/flowMarkers";
-import { dimensionLength, makeDimension, straighten } from "@/lib/dimensions";
+import { dimensionLength, makeDimension, MAX_DIMENSIONS, MIN_DIMENSION_MM, straighten } from "@/lib/dimensions";
 import { ROTATE_ARC, ROTATE_TIP, TipCard } from "./ui";
 import { toolHelp } from "./toolHelp";
 import type { Box, Dimension, DrawnObject, DrawnKind, Flow, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
@@ -46,8 +47,6 @@ type Measure = {
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 /** Hallens mått snappar grövre än maskinerna: halvmeter räcker för en lokal. */
 const HALL_SNAP_MM = 500;
-/** Samma gränser som serverns schema. */
-const HALL_LIMITS = { lengthMm: [5000, 300000], widthMm: [5000, 150000] } as const;
 
 /** Förklaring som visas intill muspekaren när man håller den över något i ritningen. */
 type Hover = { title: string; body?: string; x: number; y: number } | null;
@@ -163,12 +162,14 @@ export function CadView() {
   const saveMeasure = useCallback(
     (note: string) => {
       if (!measure?.done) return;
+      // Schemat tar högst MAX_DIMENSIONS; fler gjorde hela konfigurationen ogiltig.
+      if ((config.dimensions?.length ?? 0) >= MAX_DIMENSIONS) return;
       const dimension = makeDimension(measure.from, measure.to);
       if (dimension) addDimension(note.trim() ? { ...dimension, note: note.trim() } : dimension);
       setMeasure(null);
       setTool("select");
     },
-    [measure, addDimension, setTool],
+    [measure, addDimension, setTool, config.dimensions],
   );
 
   // En mätning som inte sparats försvinner när man byter verktyg.
@@ -401,7 +402,7 @@ export function CadView() {
       window.removeEventListener("pointerup", up);
       setFrozen(null);
       setEditing(null);
-      if (latest !== dimension && dimensionLength(latest) > 100) {
+      if (latest !== dimension && dimensionLength(latest) >= MIN_DIMENSION_MM) {
         updateDimension(dimension.id, { from: latest.from, to: latest.to });
       }
     };
@@ -479,7 +480,9 @@ export function CadView() {
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
-        if (dimensionLength(latest) <= 100) {
+        // Samma prövning som när måttet sparas — annars kunde notisen erbjuda
+        // att spara ett mått som avrundningen sedan gjorde för kort.
+        if (!makeDimension(latest.from, latest.to)) {
           setMeasure(null);
           return;
         }
@@ -741,6 +744,7 @@ export function CadView() {
               dimension={shown}
               selected={selectedId === d.id}
               strokeUnit={strokeUnit}
+              interactive={tool === "select"}
               onDown={(end, e) => startDimension(d, end, e)}
               tip={tip(t("dim.saved"), t("dim.savedTip"))}
             />
@@ -757,6 +761,7 @@ export function CadView() {
           key={`${measure.from.x}:${measure.from.y}:${measure.to.x}:${measure.to.y}`}
           lengthMm={dimensionLength(measure)}
           at={measure.screen}
+          full={(config.dimensions?.length ?? 0) >= MAX_DIMENSIONS}
           onSave={saveMeasure}
           onDiscard={() => setMeasure(null)}
         />
@@ -1483,11 +1488,14 @@ function MeasureLine({ measure, strokeUnit }: { measure: NonNullable<Measure>; s
 function MeasureNotice({
   lengthMm,
   at,
+  full,
   onSave,
   onDiscard,
 }: {
   lengthMm: number;
   at?: { x: number; y: number };
+  /** Ritningen rymmer inga fler mått. */
+  full: boolean;
   onSave: (note: string) => void;
   onDiscard: () => void;
 }) {
@@ -1520,7 +1528,7 @@ function MeasureNotice({
           placeholder={t("dim.notePlaceholder")}
           maxLength={200}
           onKeyDown={(e) => {
-            if (e.key === "Enter") onSave(note);
+            if (e.key === "Enter" && !full) onSave(note);
             if (e.key === "Escape") onDiscard();
           }}
           className="w-full border border-divider bg-white px-2 py-1 text-sm outline-none focus:border-accent"
@@ -1529,7 +1537,8 @@ function MeasureNotice({
       <div className="flex gap-2">
         <button
           onClick={() => onSave(note)}
-          className="flex-1 border border-ink bg-ink px-3 py-1.5 text-sm text-paper hover:bg-steel"
+          disabled={full}
+          className="flex-1 border border-ink bg-ink px-3 py-1.5 text-sm text-paper hover:bg-steel disabled:cursor-not-allowed disabled:opacity-40"
         >
           {t("dim.saveMeasure")}
         </button>
@@ -1540,7 +1549,9 @@ function MeasureNotice({
           {t("dim.discard")}
         </button>
       </div>
-      <p className="mt-2 text-[10px] text-muted">{t("dim.noticeKeys")}</p>
+      <p className={`mt-2 text-[10px] ${full ? "text-warn" : "text-muted"}`}>
+        {full ? t("dim.full", { max: MAX_DIMENSIONS }) : t("dim.noticeKeys")}
+      </p>
     </div>
   );
 }
@@ -1555,9 +1566,12 @@ function DimensionLine({
   strokeUnit,
   onDown,
   tip,
+  interactive,
 }: {
   dimension: Dimension;
   selected: boolean;
+  /** Bara med markeringsverktyget — annars går det inte att mäta eller rita från ett befintligt mått. */
+  interactive: boolean;
   strokeUnit: number;
   onDown: (end: "from" | "to" | null, e: React.PointerEvent) => void;
   tip: ReturnType<TipHandlers>;
@@ -1575,7 +1589,7 @@ function DimensionLine({
   const width = u * (label.length * 6.4 + 8);
 
   return (
-    <g>
+    <g pointerEvents={interactive ? undefined : "none"}>
       <g style={{ cursor: "pointer" }} onPointerDown={(e) => onDown(null, e)} {...tip}>
         {/* Bred osynlig linje så att måttet går att träffa. */}
         <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={u * 10} />

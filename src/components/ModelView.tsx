@@ -17,7 +17,9 @@ const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 export type CameraPreset = "overview" | "top" | "infeed" | "side" | "outfeed";
 
 type ViewApi = {
-  update: (c: Configuration, l: LayoutResult, sel: string | null) => void;
+  update: (c: Configuration, l: LayoutResult) => void;
+  /** Markerar en maskin utan att bygga om scenen. */
+  select: (id: string | null) => void;
   dispose: () => void;
   /** Punkten på golvet under en skärmkoordinat, i hallens mm. */
   floorAt: (clientX: number, clientY: number) => Vec2 | null;
@@ -198,28 +200,39 @@ export function ModelView() {
           return;
         }
 
-        store.select(id);
+        /*
+         * Gruppen hämtas före markeringen, och markeringen bygger inte om
+         * scenen (se select nedan). Förut byggde en ny markering om hela
+         * världen, och draget flyttade en grupp som inte längre fanns i den:
+         * maskinen stod still under draget och hoppade först vid släppet.
+         */
         const group = groups.get(id);
         const origin = origins.get(id);
+        store.select(id);
         const start = floorAt(event.clientX, event.clientY);
         if (!group || !origin || !start) return;
         controls.enabled = false;
         const from = group.position.clone();
-        let delta = { x: 0, y: 0 };
+        let target = origin;
 
         const move = (e: PointerEvent) => {
           const now = floorAt(e.clientX, e.clientY);
           if (!now) return;
-          delta = { x: snap(now.x - start.x), y: snap(now.y - start.y) };
-          group.position.set(from.x + delta.x / 1000, from.y, from.z + delta.y / 1000);
+          // Positionen snappas, inte förflyttningen — samma raster som i planvyn.
+          target = { x: snap(origin.x + now.x - start.x), y: snap(origin.y + now.y - start.y) };
+          group.position.set(
+            from.x + (target.x - origin.x) / 1000,
+            from.y,
+            from.z + (target.y - origin.y) / 1000,
+          );
           selection?.update();
         };
         const up = () => {
           window.removeEventListener("pointermove", move);
           window.removeEventListener("pointerup", up);
           controls.enabled = true;
-          if (delta.x !== 0 || delta.y !== 0) {
-            useConfigStore.getState().moveMachine(id, { x: origin.x + delta.x, y: origin.y + delta.y });
+          if (target.x !== origin.x || target.y !== origin.y) {
+            useConfigStore.getState().moveMachine(id, target);
           }
         };
         window.addEventListener("pointermove", move);
@@ -304,7 +317,14 @@ export function ModelView() {
 
       let generation = 0;
 
-      const update = async (cfg: Configuration, result: LayoutResult, sel: string | null) => {
+      /** Den markerade maskinen. Ändras utan ombyggnad; update läser den. */
+      let sel: string | null = null;
+      const select = (id: string | null) => {
+        sel = id;
+        highlight(id && groups.has(id) ? id : null);
+      };
+
+      const update = async (cfg: Configuration, result: LayoutResult) => {
         const mine = ++generation;
         clear(world);
         groups.clear();
@@ -417,7 +437,7 @@ export function ModelView() {
             }
           }
 
-          group.add(footprintBox(THREE, placement, placement.instanceId === sel));
+          group.add(footprintBox(THREE, placement, false));
           if (placement.instanceId === sel) highlight(sel);
         }
         if (!sel || !groups.has(sel)) highlight(null);
@@ -463,6 +483,7 @@ export function ModelView() {
 
       api.current = {
         update,
+        select,
         floorAt,
         ghost,
         preset,
@@ -477,7 +498,8 @@ export function ModelView() {
           element.removeChild(renderer.domElement);
         },
       };
-      update(config, layout, selectedId);
+      select(selectedId);
+      update(config, layout);
     })();
 
     return () => {
@@ -489,9 +511,14 @@ export function ModelView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Konfigurationen bygger om scenen; en ny markering gör det inte.
   useEffect(() => {
-    api.current?.update(config, layout, selectedId);
-  }, [config, layout, selectedId]);
+    api.current?.update(config, layout);
+  }, [config, layout]);
+
+  useEffect(() => {
+    api.current?.select(selectedId);
+  }, [selectedId]);
 
   const dropMachine = (event: React.DragEvent): Machine | null => {
     const id = useConfigStore.getState().draggingMachineId ?? event.dataTransfer.getData(MACHINE_DRAG_TYPE);
@@ -508,7 +535,8 @@ export function ModelView() {
 
   const onDrop = (event: React.DragEvent) => {
     api.current?.ghost(null, null);
-    const id = event.dataTransfer.getData(MACHINE_DRAG_TYPE);
+    // Samma källa som spöket under draget, så att det som syns är det som släpps.
+    const id = dropMachine(event)?.id;
     if (!id) return;
     event.preventDefault();
     const at = api.current?.floorAt(event.clientX, event.clientY);

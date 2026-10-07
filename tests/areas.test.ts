@@ -44,6 +44,14 @@ describe("när en yta är klar", () => {
     expect(firstOpenArea(config, computeLayout(config), new Set(["hall", "walls"] as const))).toBe("zones");
   });
 
+  it("maskinerna och linjen går inte att bocka av för hand", () => {
+    const config = templateConfig("strolinje");
+    config.hall.lengthMm = 15000;
+    const layout = computeLayout(config);
+    expect(isAreaDone("line", config, layout, new Set(["line"] as const))).toBe(false);
+    expect(isAreaDone("quote", config, layout, new Set(["quote"] as const))).toBe(false);
+  });
+
   it("linjen är inte klar så länge regelverket hittar fel", () => {
     const config = templateConfig("strolinje");
     config.hall.lengthMm = 15000;

@@ -128,7 +128,15 @@ type Actions = {
   setLog: (entries: LogEntry[]) => void;
   setProposalId: (id: string | null) => void;
   clearLog: () => void;
-  load: (config: Configuration, options?: { resetHistory?: boolean; note?: string }) => void;
+  load: (
+    config: Configuration,
+    options?: {
+      resetHistory?: boolean;
+      note?: string;
+      /** Behåll ytornas avbockningar — bara när det är samma projekt som laddas om. */
+      keepProgress?: boolean;
+    },
+  ) => void;
   update: (recipe: (draft: Configuration) => void) => void;
   setFlow: (patch: Partial<Flow>) => void;
   /** Flyttar startpunkten — den enda punkt flödet har. */
@@ -203,6 +211,16 @@ function persist(config: Configuration) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(config));
   } catch {
     // Privat läge eller full kvot — autospar är en bekvämlighet, inte ett krav.
+  }
+}
+
+/** Ytornas avbockningar hör till utkastet som ligger i webbläsaren, se load. */
+function persistAreas(areas: string[]) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(AREAS_KEY, JSON.stringify(areas));
+  } catch {
+    /* bocken sätts igen nästa gång — inget går förlorat */
   }
 }
 
@@ -312,11 +330,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     confirmArea: (area) => {
       const confirmedAreas = [...new Set([...get().confirmedAreas, area])];
       set({ confirmedAreas });
-      try {
-        window.localStorage.setItem(AREAS_KEY, JSON.stringify(confirmedAreas));
-      } catch {
-        /* bocken sätts igen nästa gång — inget går förlorat */
-      }
+      persistAreas(confirmedAreas);
     },
 
     setDraggingMachine: (draggingMachineId) => set({ draggingMachineId }),
@@ -368,6 +382,15 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           selectedId: null,
         });
         persist(next);
+        /*
+         * Ett nytt projekt — en mall, en delningslänk, en offert — börjar om
+         * med bockarna. Förut låg de kvar per webbläsare, och ett nytt projekt
+         * visade ytor som klara som ingen ens hade öppnat.
+         */
+        if (!options.keepProgress) {
+          set({ confirmedAreas: [], area: "hall" });
+          persistAreas([]);
+        }
         if (options.note) note(logEntry("start", options.note));
       } else {
         commit(next);
@@ -731,7 +754,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       }
 
       const saved = readLocalDraft();
-      if (saved) get().load(saved, { resetHistory: true });
+      if (saved) get().load(saved, { resetHistory: true, keepProgress: true });
     },
 
     dismissShareNotice: () => set({ shareNotice: null }),

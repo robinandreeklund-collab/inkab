@@ -8,6 +8,7 @@ import { suggestTruckZone } from "@/lib/solver";
 import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { dimensionLength } from "@/lib/dimensions";
+import { clampTo, HALL_LIMITS, setProductValue } from "@/lib/limits";
 import { useT } from "@/lib/i18n";
 import { Button, Empty, Field, NumberInput, Segmented, Tag, Tip } from "./ui";
 import { MachineThumb } from "./MachineThumb";
@@ -187,7 +188,7 @@ function HallArea() {
                 value={meters(config.hall[key])}
                 onCommit={(raw) => {
                   const mm = parseMeters(raw);
-                  if (mm !== null && mm >= min) update((d) => void (d.hall[key] = mm));
+                  if (mm !== null && mm >= min) update((d) => void (d.hall[key] = clampTo(mm, HALL_LIMITS[key])));
                 }}
               />
             </Field>
@@ -506,7 +507,7 @@ function ProductArea() {
       suffix="m"
       onCommit={(raw) => {
         const value = parseMeters(raw);
-        if (value !== null && value > 0) update((d) => void (d.product[key] = value));
+        if (value !== null) update((d) => setProductValue(d.product, key, value));
       }}
     />
   );
@@ -516,8 +517,8 @@ function ProductArea() {
       suffix={suffix}
       step="1"
       onCommit={(raw) => {
-        const value = Math.round(Number(raw.replace(",", ".")));
-        if (Number.isFinite(value) && value > 0) update((d) => void (d.product[key] = value));
+        const value = Number(raw.replace(",", "."));
+        if (Number.isFinite(value)) update((d) => setProductValue(d.product, key, value));
       }}
     />
   );

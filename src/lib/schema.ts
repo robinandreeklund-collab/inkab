@@ -1,5 +1,8 @@
 import { z } from "zod";
 import { MAX_DIMENSIONS } from "./dimensions";
+import { HALL_LIMITS, PRODUCT_LIMITS } from "./limits";
+
+const bounded = ([min, max]: readonly [number, number]) => z.number().int().min(min).max(max);
 
 /** Serverns validering av inkommande konfiguration. Klienten är aldrig betrodd. */
 
@@ -68,19 +71,19 @@ export const configurationSchema = z.object({
     })
     .optional(),
   hall: z.object({
-    lengthMm: z.number().int().min(5000).max(300000),
-    widthMm: z.number().int().min(5000).max(150000),
-    clearHeightMm: z.number().int().min(2000).max(30000),
+    lengthMm: bounded(HALL_LIMITS.lengthMm),
+    widthMm: bounded(HALL_LIMITS.widthMm),
+    clearHeightMm: bounded(HALL_LIMITS.clearHeightMm),
   }),
   flow: flowSchema,
   product: z
     .object({
-      packageLengthMm: z.number().int().min(500).max(12000),
-      packageWidthMinMm: z.number().int().min(200).max(4000),
-      packageWidthMaxMm: z.number().int().min(200).max(4000),
-      packageHeightMm: z.number().int().min(100).max(4000),
-      packageWeightKg: z.number().int().min(1).max(20000),
-      targetPackagesPerHour: z.number().int().min(1).max(200),
+      packageLengthMm: bounded(PRODUCT_LIMITS.packageLengthMm),
+      packageWidthMinMm: bounded(PRODUCT_LIMITS.packageWidthMinMm),
+      packageWidthMaxMm: bounded(PRODUCT_LIMITS.packageWidthMaxMm),
+      packageHeightMm: bounded(PRODUCT_LIMITS.packageHeightMm),
+      packageWeightKg: bounded(PRODUCT_LIMITS.packageWeightKg),
+      targetPackagesPerHour: bounded(PRODUCT_LIMITS.targetPackagesPerHour),
     })
     .refine((p) => p.packageWidthMinMm <= p.packageWidthMaxMm, {
       message: "Minsta virkesbredd får inte överstiga den största.",

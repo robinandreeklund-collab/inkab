@@ -103,13 +103,16 @@ export function Topbar({
           onChange={setView}
         />
 
-        <button
-          onClick={() => setHistoryOpen(true)}
-          title={t("top.historyTitle")}
-          className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
-        >
-          {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
-        </button>
+        {/* Historiken hör till ett konto: en gäst har inget projekt att gå tillbaka i. */}
+        {user ? (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            title={t("top.historyTitle")}
+            className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+          >
+            {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
+          </button>
+        ) : null}
 
         {user?.role === "admin" ? (
           <a
@@ -152,7 +155,7 @@ export function Topbar({
         )}
       </div>
 
-      {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
+      {historyOpen && user ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
 
       {proposalsOpen ? (
         <ProposalDialog

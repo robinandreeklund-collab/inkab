@@ -1,3 +1,5 @@
+import { dimensionLength } from "./dimensions";
+import { translate } from "./i18n/translate";
 import { meters } from "./format";
 import type { Box, Configuration, LayoutResult } from "./types";
 import type { PriceResult, Role } from "./server/pricing";
@@ -25,19 +27,22 @@ export function machineListCsv(
   layout: LayoutResult,
   price: PriceResult | null,
   role: Role,
+  /** Rubrikerna på kundens språk. Utan översättare: svenska. */
+  t: (key: string, vars?: Record<string, string | number>) => string = (key, vars) =>
+    translate("sv", key, vars),
 ): string {
   const showPrice = role !== "guest";
   const header = [
-    "Pos",
-    "Benämning",
-    "Artikel",
-    "Optioner",
-    "Antal",
-    "Längd (m)",
-    "Bredd (m)",
-    "Höjd (m)",
-    "Effekt (kW)",
-    ...(showPrice ? ["Radpris (kr)"] : []),
+    t("quote.col.pos"),
+    t("quote.col.name"),
+    t("quote.col.sku"),
+    t("quote.col.options"),
+    t("quote.col.qty"),
+    t("csv.length"),
+    t("csv.width"),
+    t("csv.height"),
+    t("csv.power"),
+    ...(showPrice ? [t("csv.rowPrice")] : []),
   ];
 
   const byInstance = new Map(layout.placements.map((p) => [p.instanceId, p]));
@@ -139,6 +144,7 @@ const LAYERS = [
   ["PORT", 4],
   ["TEXT", 7],
   ["FLODE", 2],
+  ["MATT", 6],
 ] as const;
 
 /**
@@ -205,6 +211,13 @@ export function planDxf(config: Configuration, layout: LayoutResult): string {
   ];
   for (let i = 1; i < points.length; i++) {
     out.push(...line("FLODE", points[i - 1].x, points[i - 1].y, points[i].x, points[i].y));
+  }
+
+  // Sparade mått: måttlinjen och längden mitt på, på ett eget lager.
+  for (const d of config.dimensions ?? []) {
+    out.push(...line("MATT", d.from.x, d.from.y, d.to.x, d.to.y));
+    const text = `${(dimensionLength(d) / 1000).toFixed(2)} m${d.note ? ` ${d.note}` : ""}`;
+    out.push(...label("MATT", (d.from.x + d.to.x) / 2, (d.from.y + d.to.y) / 2 - 300, 250, text));
   }
 
   out.push(...pair(0, "ENDSEC"), ...pair(0, "EOF"));

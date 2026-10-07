@@ -356,6 +356,20 @@ export type Configuration = {
   product: Product;
   line: LineItem[];
   drawn: DrawnObject[];
+  /** Mått kunden har sparat på ritningen. Se lib/dimensions.ts. */
+  dimensions?: Dimension[];
+};
+
+/**
+ * Ett sparat mått: en måttlinje mellan två punkter, med en valfri rad om vad
+ * som mäts — "fritt mellan pelarna", "till porten". Påverkar varken layouten
+ * eller regelverket; den är till för den som läser ritningen.
+ */
+export type Dimension = {
+  id: string;
+  from: Vec2;
+  to: Vec2;
+  note?: string;
 };
 
 /* ── Layoutresultat ────────────────────────────────────────────────────── */

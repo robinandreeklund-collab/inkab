@@ -96,12 +96,21 @@ R-402  En maskin är högre än hallens fria höjd.
 R-403  En maskin krockar med en ritad vägg eller no-go-zon.
 R-404  En maskin står i en truckgata.
 R-501  En maskin saknar en maskin den kräver, eller står med en den inte kan kombineras med.
+R-601  En maskin är inte kopplad till linjen: ingen annan maskins port når dess portar.
+R-602  En maskin står åt fel håll: två utgångar, eller två ingångar, möts.
 
 MASKINZONEN VAKTAR SIDORNA, INTE ÄNDARNA
 Fram och bak är kopplingsytan: där står nästa maskin, och det är så en anläggning
 byggs. Två maskiner kant i kant är alltså inget fel. Åt sidorna är zonen åtkomst
 för underhåll, och där är ett hinder ett hinder. R-104 och R-106 mäter bara
 sidorna. Föreslå därför inte att kunden ska glesa ut en rad som står tätt.
+Två maskiner vars portar möts — utgång mot ingång — hänger ihop och undantas
+helt, också i ett hörn där paketen tas emot från sidan.
+Maskiner som hänger ihop får gå in i varandra upp till 0,3 m (snappsteget) utan
+att det räknas som krock. Pulpet och ströfacksmagasin ska stå intill maskinerna
+och räknas inte som intrång i zonerna. Varje maskinpar får bara sin allvarligaste
+anmärkning: krock (R-103) före maskinzon (R-106) före servicezon (R-104).
+R-106 är en varning och R-104 en upplysning; fel är det som hindrar bygget.
 
 GEOMETRISKA GRUNDER
 - Origo ligger i hallens nedre vänstra hörn. X är längs hallen, Y tvärs.

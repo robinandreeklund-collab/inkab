@@ -1,3 +1,5 @@
+import { translate } from "@/lib/i18n/translate";
+import type { Locale } from "@/lib/i18n/locale";
 import "server-only";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "@/lib/library";
 import { effectiveMachine } from "@/lib/solver";
@@ -77,6 +79,8 @@ export function priceConfiguration(
   priceBook: PriceBook = BUILTIN_PRICE_BOOK,
   /** Offertens justering. Kommer alltid från lagret, aldrig från klienten. */
   quoteAdjustment?: QuoteAdjustment | null,
+  /** Språket som prisraden skrivs på. Kundens val; svenska om inget anges. */
+  locale: Locale = "sv",
 ): PriceResult {
   const showPrices = canSeePrices(role);
   const lines: QuoteLine[] = [];
@@ -222,7 +226,7 @@ export function priceConfiguration(
     // pris som totalen och lämnar servern bara till den som får se belopp.
     adjustment: showPrices && adjusted.applied ? adjusted : null,
     note: showPrices
-      ? `Listpris enligt ${priceBook.name}, exkl. moms. Montage och styr ingår som påslag.`
-      : "Pris lämnas av INKAB. Kontakta oss för offert.",
+      ? translate(locale, "quote.priceNote", { book: priceBook.name })
+      : translate(locale, "quote.priceNoteGuest"),
   };
 }

@@ -4,7 +4,9 @@ import { useState } from "react";
 import Image from "next/image";
 import { useConfigStore } from "@/store/useConfigStore";
 import { adjustmentLabel } from "@/lib/quoteAdjustment";
-import { meters, mkr, sek, todayISO } from "@/lib/format";
+import { meters, sek, todayISO } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import { dimensionLength } from "@/lib/dimensions";
 import { quoteReference, validUntil } from "@/lib/quote";
 import { COMPANY } from "@/lib/company";
 import { QuotePlan } from "./QuotePlan";
@@ -35,7 +37,12 @@ export function QuoteView({
   user: SessionUser | null;
 }) {
   const { config, layout, setScreen, update } = useConfigStore();
+  const t = useT();
   const metrics = layout.metrics;
+  /** Belopp på kundens språk: "1 234 kr", "SEK 1 234". */
+  const money = (amount: number) => t("quote.money", { v: sek(amount) });
+  const millions = (amount: number) =>
+    t("quote.millions", { v: (amount / 1_000_000).toFixed(2).replace(".", ",") });
   const errors = layout.diagnostics.filter((d) => d.severity === "error");
   const warnings = layout.diagnostics.filter((d) => d.severity === "warning");
 
@@ -74,7 +81,7 @@ export function QuoteView({
                 <div className="hidden border-t border-divider pt-1 text-[10px] text-muted print:block">
                   {COMPANY.legalName} · {COMPANY.town} ·{" "}
                   <span className="whitespace-nowrap">{COMPANY.phone}</span> · {COMPANY.web} —
-                  Underlag {reference}, {today}. Prisindikation, ej bindande offert.
+                  {t("quote.footer", { reference, today })}
                 </div>
               </td>
             </tr>
@@ -87,7 +94,7 @@ export function QuoteView({
             <Image src="/inkab-logo.png" alt="INKAB" width={153} height={32} className="h-8 w-auto" />
           </div>
           <div className="flex-1">
-            <div className="kicker">Offertunderlag · utkast</div>
+            <div className="kicker">{t("quote.kicker")}</div>
             <h1 className="text-2xl leading-tight">{config.projectName}</h1>
             <p className="text-xs text-muted">
               {COMPANY.legalName} · {COMPANY.town} ·{" "}
@@ -95,56 +102,56 @@ export function QuoteView({
             </p>
           </div>
           <dl className="shrink-0 text-right text-xs">
-            <Meta label="Underlag" value={reference} mono />
-            <Meta label="Datum" value={today} mono />
-            <Meta label="Prisindikation t.o.m." value={expires} mono />
-            {user ? <Meta label="Framtaget av" value={user.name || user.email} /> : null}
+            <Meta label={t("quote.reference")} value={reference} mono />
+            <Meta label={t("quote.date")} value={today} mono />
+            <Meta label={t("quote.validUntil")} value={expires} mono />
+            {user ? <Meta label={t("quote.preparedBy")} value={user.name || user.email} /> : null}
           </dl>
         </header>
 
         <section className="mb-6 grid grid-cols-2 gap-x-8 gap-y-1 text-sm">
-          <Party title="Kund">
+          <Party title={t("quote.customer")}>
             <EditableLine
-              label="Företag"
+              label={t("quote.company")}
               value={config.customer?.company ?? ""}
-              placeholder={user?.company || "Kundens företag"}
+              placeholder={user?.company || t("quote.companyPlaceholder")}
               onChange={(v) => setCustomer({ company: v })}
             />
             <EditableLine
-              label="Kontakt"
+              label={t("quote.contact")}
               value={config.customer?.contact ?? ""}
-              placeholder="Namn hos kunden"
+              placeholder={t("quote.contactPlaceholder")}
               onChange={(v) => setCustomer({ contact: v })}
             />
             <EditableLine
-              label="Anläggning"
+              label={t("quote.site")}
               value={config.customer?.site ?? ""}
-              placeholder="Ort eller sågverk"
+              placeholder={t("quote.sitePlaceholder")}
               onChange={(v) => setCustomer({ site: v })}
             />
             <EditableLine
-              label="Er referens"
+              label={t("quote.yourReference")}
               value={config.customer?.reference ?? ""}
-              placeholder="Kundens eget projektnummer"
+              placeholder={t("quote.yourReferencePlaceholder")}
               onChange={(v) => setCustomer({ reference: v })}
             />
           </Party>
 
-          <Party title="Sammanfattning">
-            <Line label="Totalmått" value={`${meters(metrics.totalLengthMm)} × ${meters(metrics.totalWidthMm)} m`} />
-            <Line label="Golvyta inkl. gångar" value={`${metrics.footprintM2} m²`} />
+          <Party title={t("quote.summary")}>
+            <Line label={t("quote.totalSize")} value={`${meters(metrics.totalLengthMm)} × ${meters(metrics.totalWidthMm)} m`} />
+            <Line label={t("quote.floorArea")} value={`${metrics.footprintM2} m²`} />
             <Line
-              label="Kapacitet"
-              value={metrics.throughputPerHour > 0 ? `${metrics.throughputPerHour} pkt/h` : "—"}
+              label={t("quote.capacity")}
+              value={metrics.throughputPerHour > 0 ? t("quote.perHour", { count: metrics.throughputPerHour }) : "—"}
             />
             <Line
-              label={price?.adjustment?.fixedTotalSek ? "Avtalat pris" : "Pris"}
+              label={price?.adjustment?.fixedTotalSek ? t("quote.agreedPrice") : t("quote.price")}
               value={
                 price?.totals
-                  ? mkr(price.totals.grandTotal)
+                  ? millions(price.totals.grandTotal)
                   : price?.indication
-                    ? `${mkr(price.indication.lowSek)}–${mkr(price.indication.highSek)}`
-                    : "Lämnas av INKAB"
+                    ? `${millions(price.indication.lowSek)}–${millions(price.indication.highSek)}`
+                    : t("quote.priceByInkab")
               }
             />
           </Party>
@@ -153,34 +160,38 @@ export function QuoteView({
         {errors.length > 0 || warnings.length > 0 ? (
           <Callout tone={errors.length > 0 ? "danger" : "warn"}>
             <strong>
-              {errors.length > 0
-                ? `${errors.length} olöst ${errors.length === 1 ? "fel" : "fel"} i layouten`
-                : `${warnings.length} ${warnings.length === 1 ? "varning" : "varningar"}`}
-              .
+              {errors.length > 0 && warnings.length > 0
+                ? t("quote.issuesBoth", { errors: errors.length, warnings: warnings.length })
+                : errors.length > 0
+                  ? t("quote.issuesErrors", { errors: errors.length })
+                  : t(warnings.length === 1 ? "quote.issuesWarning" : "quote.issuesWarnings", {
+                      warnings: warnings.length,
+                    })}
             </strong>{" "}
-            Underlaget går att ta fram ändå, men{" "}
-            {errors.length > 0
-              ? "felen måste lösas innan anläggningen kan byggas"
-              : "punkterna bör gås igenom med konstruktör"}
-            : {[...errors, ...warnings].map((d) => d.code).join(", ")}.
+            {errors.length > 0 ? t("quote.issuesMustFix") : t("quote.issuesReview")}{" "}
+            {/* En rad per regel, inte en kod per anmärkning: "R-103 ×8" säger mer än åtta likadana koder. */}
+            {groupByCode([...errors, ...warnings])
+              .map(({ code, title, count }) => `${title} (${code}${count > 1 ? ` ×${count}` : ""})`)
+              .join(", ")}
+            .
           </Callout>
         ) : null}
 
-        <Section title="Planritning" note={`Skala enligt skalstock · ${reference}`}>
+        <Section title={t("quote.plan")} note={t("quote.planNote", { reference })}>
           <QuotePlan config={config} layout={layout} />
         </Section>
 
-        <Section title="Maskinlista" flow>
+        <Section title={t("quote.machineList")} flow>
           <table className="w-full text-sm">
             <thead className="table-header-group">
               <tr className="border-b border-ink text-left">
-                <Th>Pos</Th>
-                <Th>Benämning</Th>
-                <Th>Artikel</Th>
-                <Th>Mått l × b × h</Th>
-                <Th>Optioner</Th>
-                <Th align="right">Antal</Th>
-                {role !== "guest" ? <Th align="right">Radpris</Th> : null}
+                <Th>{t("quote.col.pos")}</Th>
+                <Th>{t("quote.col.name")}</Th>
+                <Th>{t("quote.col.sku")}</Th>
+                <Th>{t("quote.col.size")}</Th>
+                <Th>{t("quote.col.options")}</Th>
+                <Th align="right">{t("quote.col.qty")}</Th>
+                {role !== "guest" ? <Th align="right">{t("quote.col.rowPrice")}</Th> : null}
               </tr>
             </thead>
             <tbody>
@@ -207,7 +218,7 @@ export function QuoteView({
                     <Td muted>{line.optionNames.join(", ") || "—"}</Td>
                     <Td align="right">{line.quantity}</Td>
                     {role !== "guest" ? (
-                      <Td align="right">{line.rowTotal != null ? `${sek(line.rowTotal)} kr` : "—"}</Td>
+                      <Td align="right">{line.rowTotal != null ? money(line.rowTotal) : "—"}</Td>
                     ) : null}
                   </tr>
                 );
@@ -215,7 +226,7 @@ export function QuoteView({
               {(price?.lines ?? []).length === 0 ? (
                 <tr>
                   <Td>—</Td>
-                  <Td>Linjen är tom</Td>
+                  <Td>{t("quote.emptyLine")}</Td>
                   <Td>—</Td>
                   <Td>—</Td>
                   <Td>—</Td>
@@ -228,82 +239,103 @@ export function QuoteView({
 
           {price?.totals ? (
             <div className="mt-3 ml-auto w-full max-w-xs space-y-1 break-inside-avoid text-sm">
-              <Total label="Maskiner" value={price.totals.machines} />
-              <Total label="Montage" value={price.totals.install} />
-              <Total label="El och styr" value={price.totals.control} />
-              <Total label="Frakt" value={price.totals.freight} />
+              <Total label={t("quote.total.machines")} value={money(price.totals.machines)} />
+              <Total label={t("quote.total.install")} value={money(price.totals.install)} />
+              <Total label={t("quote.total.control")} value={money(price.totals.control)} />
+              <Total label={t("quote.total.freight")} value={money(price.totals.freight)} />
 
               {/* Avdraget står som en egen rad. Ett pris som sänkts utan att
                   det syns är inte en rabatt utan ett annat pris. */}
               {price.adjustment ? (
                 <>
                   <div className="flex justify-between border-t border-divider pt-1">
-                    <span>Listpris</span>
-                    <span className="num">{sek(price.adjustment.listSek)} kr</span>
+                    <span>{t("quote.listPrice")}</span>
+                    <span className="num">{money(price.adjustment.listSek)}</span>
                   </div>
                   <div className="flex justify-between text-accent">
-                    <span>{adjustmentLabel(price.adjustment)}</span>
-                    <span className="num">−{sek(price.adjustment.deltaSek)} kr</span>
+                    <span>{adjustmentLabel(price.adjustment, t)}</span>
+                    <span className="num">−{money(price.adjustment.deltaSek)}</span>
                   </div>
                 </>
               ) : null}
 
               <div className="flex justify-between border-t border-ink pt-1 font-medium">
-                <span>Summa exkl. moms</span>
-                <span className="num">{sek(price.totals.grandTotal)} kr</span>
+                <span>{t("quote.sumExVat")}</span>
+                <span className="num">{money(price.totals.grandTotal)}</span>
               </div>
               {price.adjustment?.note ? (
                 <p className="text-xs leading-relaxed text-muted">{price.adjustment.note}</p>
               ) : null}
               <div className="no-print flex justify-between text-xs text-muted">
-                <span>Marginal (visas ej för kund)</span>
+                <span>{t("quote.margin")}</span>
                 <span className="num">
-                  {sek(price.totals.margin)} kr · {price.totals.marginPercent} %
+                  {money(price.totals.margin)} · {price.totals.marginPercent} %
                 </span>
               </div>
             </div>
           ) : (
             <p className="mt-3 text-xs text-muted">
-              {price?.note ??
-                "Logga in för att se listpriser. Utan inloggning visas bara ett intervall."}
+              {price?.note ?? t("quote.loginForPrices")}
             </p>
           )}
         </Section>
 
         <div className="grid gap-6 md:grid-cols-2">
-          <Section title="Tekniska förutsättningar">
+          <Section title={t("quote.technical")}>
             <dl className="text-sm">
-              <Line label="Elmatning" value={`${metrics.totalPowerKw} kW · 3×400 V`} />
+              <Line label={t("quote.power")} value={`${metrics.totalPowerKw} kW · 3×400 V`} />
               <Line
-                label="Tryckluft"
-                value={metrics.totalAirNlPerMin > 0 ? `${metrics.totalAirNlPerMin} Nl/min · 6 bar` : "Ingen"}
+                label={t("quote.air")}
+                value={metrics.totalAirNlPerMin > 0 ? `${metrics.totalAirNlPerMin} Nl/min · 6 bar` : t("quote.none")}
               />
-              <Line label="Gropar" value={metrics.pitCount > 0 ? `${metrics.pitCount} st` : "Inga"} />
-              <Line label="Fri takhöjd" value={`≥ ${meters(metrics.maxHeightMm + 800)} m`} />
-              <Line label="Hall" value={`${meters(config.hall.lengthMm)} × ${meters(config.hall.widthMm)} m`} />
-              <Line label="Leveranstid" value={`${metrics.leadTimeWeeks} veckor`} />
+              <Line
+                label={t("quote.pits")}
+                value={metrics.pitCount > 0 ? t("quote.pitCount", { count: metrics.pitCount }) : t("quote.nonePlural")}
+              />
+              <Line label={t("quote.clearHeight")} value={`≥ ${meters(metrics.maxHeightMm + 800)} m`} />
+              <Line label={t("quote.hall")} value={`${meters(config.hall.lengthMm)} × ${meters(config.hall.widthMm)} m`} />
+              <Line label={t("quote.leadTime")} value={t("quote.weeks", { count: metrics.leadTimeWeeks })} />
               {metrics.manufacturingHours > 0 ? (
-                <Line label="Tillverkning" value={`${metrics.manufacturingHours} h`} />
+                <Line label={t("quote.manufacturing")} value={`${metrics.manufacturingHours} h`} />
               ) : null}
               {metrics.assemblyHours > 0 ? (
-                <Line label="Montage på plats" value={`${metrics.assemblyHours} h`} />
+                <Line label={t("quote.assembly")} value={`${metrics.assemblyHours} h`} />
               ) : null}
               <Line
-                label="Flaskhals"
-                value={metrics.bottleneck ? metrics.bottleneck.name : "Ingen identifierad"}
+                label={t("quote.bottleneck")}
+                value={metrics.bottleneck ? metrics.bottleneck.name : t("quote.noBottleneck")}
               />
             </dl>
           </Section>
 
-          <Section title="Flöde och konfiguration">
+          <Section title={t("quote.flowConfig")}>
             <dl className="text-sm">
-              <Line label="Trucken hämtar från" value={sideLabel(config.flow.truckPickupSide)} />
+              <Line label={t("sidebar.truckPickup")} value={t(`side.${config.flow.truckPickupSide}`)} />
+              {config.flow.startComment ? (
+                <Line label={t("points.start")} value={config.flow.startComment} />
+              ) : null}
+              {(config.flow.markers ?? [])
+                .filter((m) => m.comment)
+                .map((m) => (
+                  <Line
+                    key={m.id}
+                    label={t(m.role === "start" ? "points.start" : "points.end")}
+                    value={m.comment}
+                  />
+                ))}
+              {(config.dimensions ?? []).map((d) => (
+                <Line
+                  key={d.id}
+                  label={d.note || t("dim.saved")}
+                  value={`${meters(dimensionLength(d), 2)} m`}
+                />
+              ))}
               <Line
-                label="Virkesbredd"
+                label={t("area.product.width")}
                 value={`${meters(config.product.packageWidthMinMm)}–${meters(config.product.packageWidthMaxMm)} m`}
               />
               <Line
-                label="Paket"
+                label={t("area.product.package")}
                 value={`${meters(config.product.packageLengthMm)} × ${meters(config.product.packageHeightMm)} m, ${config.product.packageWeightKg} kg`}
               />
             </dl>
@@ -311,31 +343,23 @@ export function QuoteView({
         </div>
 
 
-        <Section title="Antaganden och avgränsningar" badge={<Tag tone="accent">Utkast</Tag>}>
+        <Section title={t("quote.assumptions")} badge={<Tag tone="accent">{t("quote.draft")}</Tag>}>
           <ul className="ml-4 list-disc text-sm leading-relaxed">
+            <li>{t("quote.assume.floor")}</li>
             <li>
-              Plant betonggolv med minst 25 kN/m² bärighet, och att befintlig linje lämnar paket
-              på 900 mm höjd.
+              {truckSummary(config, t)} {t("quote.assume.truck")}
             </li>
             <li>
-              {truckSummary(config)} Truckgator och hämtzoner är de kunden ritat in; ingen är
-              antagen åt er.
-            </li>
-            <li>
-              Måtten kommer ur maskinbiblioteket.{" "}
+              {t("quote.assume.dims")}{" "}
               {unverifiedCount(layout) > 0
-                ? `${unverifiedCount(layout)} av ${layout.placements.length} maskiner har uppskattade mått som inte är kontrollerade mot ritning.`
-                : "Samtliga ingående maskiner har kontrollerade mått."}
+                ? t("quote.assume.unverified", { count: unverifiedCount(layout), total: layout.placements.length })
+                : t("quote.assume.verified")}
             </li>
-            <li>
-              Elprojektering, riskanalys, hallmätning, fundamentritningar och byggnadsarbeten
-              ingår inte.
-            </li>
-            <li>Priser är exklusive moms och gäller leverans fritt vår fabrik om inget annat avtalas.</li>
+            <li>{t("quote.assume.excluded")}</li>
+            <li>{t("quote.assume.vat")}</li>
           </ul>
           <p className="mt-3 border-t border-divider pt-2 text-xs text-muted">
-            Underlaget är genererat ur konfiguratorn och är en prisindikation, inte en bindande
-            offert. Det granskas av säljare innan utskick. Frågor: {COMPANY.phone}.
+            {t("quote.assume.disclaimer", { phone: COMPANY.phone })}
           </p>
         </Section>
 
@@ -366,6 +390,7 @@ function Toolbar({
   role: Role;
 }) {
   const [busy, setBusy] = useState<string | null>(null);
+  const t = useT();
 
   const run = async (kind: "csv" | "dxf") => {
     setBusy(kind);
@@ -373,7 +398,7 @@ function Toolbar({
     if (kind === "csv") {
       download(
         exportName(reference, config.projectName, "csv"),
-        machineListCsv(config, layout, price, role),
+        machineListCsv(config, layout, price, role, t),
         "text/csv",
       );
     } else {
@@ -389,26 +414,25 @@ function Toolbar({
   return (
     <div className="no-print sticky top-0 z-10 border-b border-divider bg-paper/95 backdrop-blur">
       <div className="mx-auto flex max-w-[210mm] flex-wrap items-center gap-2 px-8 py-3">
-        <Button onClick={onBack}>Tillbaka till vyn</Button>
+        <Button onClick={onBack}>{t("quote.back")}</Button>
         <span className="num text-xs text-muted">{reference}</span>
         <div className="ml-auto flex flex-wrap gap-2">
           <Button onClick={() => run("csv")} disabled={busy !== null}>
-            Maskinlista (CSV)
+            {t("quote.csv")}
           </Button>
           <Button onClick={() => run("dxf")} disabled={busy !== null}>
-            Planritning (DXF)
+            {t("quote.dxf")}
           </Button>
-          <Button disabled title="Kräver inloggning och nedladdningslogg">
-            STEP-filer
+          <Button disabled title={t("quote.stepNeedsLogin")}>
+            {t("quote.step")}
           </Button>
           <Button variant="primary" onClick={() => window.print()}>
-            Skriv ut / spara som PDF
+            {t("quote.print")}
           </Button>
         </div>
       </div>
       <p className="mx-auto max-w-[210mm] px-8 pb-2 text-[11px] leading-relaxed text-muted">
-        Utskriften är satt för A4. DXF:en öppnas i AutoCAD, BricsCAD och LibreCAD med
-        maskiner, hall, truckgator och maskinzoner på egna lager, i millimeter.
+        {t("quote.printHelp")}
       </p>
     </div>
   );
@@ -534,34 +558,41 @@ function Line({ label, value }: { label: string; value: string }) {
   );
 }
 
-function Total({ label, value }: { label: string; value: number }) {
+function Total({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex justify-between text-muted">
       <span>{label}</span>
-      <span className="num">{sek(value)} kr</span>
+      <span className="num">{value}</span>
     </div>
   );
 }
 
 /* ── Text ur konfigurationen ───────────────────────────────────────────── */
 
-function infeedLabel(value: string): string {
-  return { straight: "Rakt", right: "Från höger", left: "Från vänster" }[value] ?? value;
-}
-
-function sideLabel(value: string): string {
-  return value === "right" ? "Höger" : "Vänster";
-}
-
-function truckSummary(config: ReturnType<typeof useConfigStore.getState>["config"]): string {
+function truckSummary(
+  config: ReturnType<typeof useConfigStore.getState>["config"],
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   const aisles = config.drawn.filter((d) => d.kind === "truck");
-  if (aisles.length === 0) {
-    return "Ingen truckgata är inritad — trucktrafiken är alltså inte prövad mot layouten.";
-  }
-  const widest = Math.min(...aisles.map((a) => Math.min(a.l, a.w)));
-  return `${aisles.length} ${aisles.length === 1 ? "truckyta" : "truckytor"} inritade, smalaste fria bredd ${meters(widest)} m.`;
+  if (aisles.length === 0) return t("quote.truck.none");
+  const narrowest = Math.min(...aisles.map((a) => Math.min(a.l, a.w)));
+  return t(aisles.length === 1 ? "quote.truck.one" : "quote.truck.many", {
+    count: aisles.length,
+    width: meters(narrowest),
+  });
 }
 
 function unverifiedCount(layout: ReturnType<typeof useConfigStore.getState>["layout"]): number {
   return layout.placements.filter((p) => p.machine.dimensionsVerified !== true).length;
+}
+
+/** Anmärkningarna grupperade per regel, i den ordning de först förekommer. */
+function groupByCode(list: { code: string; title: string }[]) {
+  const groups = new Map<string, { code: string; title: string; count: number }>();
+  for (const d of list) {
+    const group = groups.get(d.code);
+    if (group) group.count += 1;
+    else groups.set(d.code, { code: d.code, title: d.title, count: 1 });
+  }
+  return [...groups.values()];
 }

@@ -9,12 +9,25 @@ import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
-export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
+/**
+ * Det markerade objektet. Visas i högerpanelen i stället för ytan så länge
+ * något är markerat; "tillbaka" släpper markeringen och visar ytan igen.
+ */
+export function Inspector({
+  price,
+  role,
+  backLabel,
+}: {
+  price: PriceResult | null;
+  role: Role;
+  /** Namnet på ytan man kommer tillbaka till. */
+  backLabel: string;
+}) {
   const {
     config,
     layout,
     selectedId,
-    toggleInspector,
+    select,
     toggleOption,
     setVariant,
     turnMachine,
@@ -33,12 +46,12 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (
-    <aside className="scroll-thin flex h-full w-[300px] flex-none flex-col overflow-y-auto border-l border-divider bg-white p-3">
+    <div className="p-3">
       <div className="mb-3 flex items-center justify-between">
+        <button onClick={() => select(null)} className="text-xs text-accent hover:underline">
+          ‹ {backLabel}
+        </button>
         <h2 className="kicker">{t("inspector.title")}</h2>
-        <Button variant="ghost" size="sm" onClick={toggleInspector}>
-          {t("inspector.collapse")}
-        </Button>
       </div>
 
       {!placement && !drawn ? (
@@ -322,7 +335,7 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           ) : null}
         </div>
       ) : null}
-    </aside>
+    </div>
   );
 }
 

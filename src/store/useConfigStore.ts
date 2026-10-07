@@ -7,6 +7,7 @@ import { defaultConfig, lineItem } from "@/lib/templates";
 import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
 import { translate } from "@/lib/i18n/translate";
 import { claimedBox, freeSpot } from "@/lib/solver";
+import { AREA_ORDER, type Area } from "@/lib/areas";
 import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
@@ -32,8 +33,8 @@ const STORAGE_KEY = "inkab.config.v1";
 const RESCUE_KEY = "inkab.config.before-share";
 /** Projektets logg. Ligger vid sidan av konfigurationen, se lib/projectLog.ts. */
 const LOG_KEY = "inkab.log.v1";
-/** Om kom-igång-guiden är stängd. Per webbläsare, inte per projekt. */
-const GUIDE_KEY = "inkab.guide.v1";
+/** Ytor kunden själv har bockat av. Per webbläsare, se lib/areas.ts. */
+const AREAS_KEY = "inkab.areas.v1";
 /** Kundens språkval. Ligger vid sidan av konfigurationen: det är en läsare, inte en anläggning. */
 const LOCALE_KEY = "inkab.locale";
 
@@ -98,8 +99,10 @@ type State = {
    * skriver tillbaka till samma rad i stället för att lägga en kopia bredvid.
    */
   proposalId: string | null;
-  /** Kom-igång-guiden i ritytan. Öppen tills någon stänger den. */
-  guideOpen: boolean;
+  /** Ytan som är öppen i högerpanelen. Se lib/areas.ts. */
+  area: Area;
+  /** Ytor kunden har bockat av för hand. */
+  confirmedAreas: Area[];
 };
 
 type Actions = {
@@ -112,7 +115,9 @@ type Actions = {
   toggleDiagnostics: (open?: boolean) => void;
   toggleZones: () => void;
   togglePorts: () => void;
-  toggleGuide: (open?: boolean) => void;
+  /** Öppnar en yta i högerpanelen och släpper markeringen, så att ytan syns. */
+  setArea: (area: Area) => void;
+  confirmArea: (area: Area) => void;
   setDraggingMachine: (machineId: string | null) => void;
   setLocale: (locale: Locale) => void;
 
@@ -266,11 +271,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     tool: "select",
     selectedId: null,
     /*
-     * Infälld tills något är markerat. Inspektorn visar en markering, och en
-     * tom panel som tar en fjärdedel av skärmen säger ingenting — ritytan är
-     * mer värd innan man valt något.
+     * Högerpanelen är öppen från början: den visar ytan man arbetar med, och
+     * det är där man ser vad som ska göras. Den kan fällas in (F).
      */
-    inspectorOpen: false,
+    inspectorOpen: true,
     aiOpen: false,
     diagnosticsOpen: false,
     showZones: true,
@@ -281,7 +285,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     shareNotice: null,
     log: [],
     proposalId: null,
-    guideOpen: true,
+    area: "hall",
+    confirmedAreas: [],
 
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
@@ -298,13 +303,14 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
-    toggleGuide: (open) => {
-      const guideOpen = open ?? !get().guideOpen;
-      set({ guideOpen });
+    setArea: (area) => set({ area, selectedId: null, inspectorOpen: true }),
+    confirmArea: (area) => {
+      const confirmedAreas = [...new Set([...get().confirmedAreas, area])];
+      set({ confirmedAreas });
       try {
-        window.localStorage.setItem(GUIDE_KEY, guideOpen ? "open" : "closed");
+        window.localStorage.setItem(AREAS_KEY, JSON.stringify(confirmedAreas));
       } catch {
-        /* guiden öppnas igen nästa gång — inget går förlorat */
+        /* bocken sätts igen nästa gång — inget går förlorat */
       }
     },
 
@@ -605,9 +611,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       // Loggen läses först: det som hände före omladdningen hände ändå.
       set({ log: readLog() });
       try {
-        if (window.localStorage.getItem(GUIDE_KEY) === "closed") set({ guideOpen: false });
+        const saved = JSON.parse(window.localStorage.getItem(AREAS_KEY) ?? "[]");
+        if (Array.isArray(saved)) {
+          set({ confirmedAreas: saved.filter((a): a is Area => AREA_ORDER.includes(a)) });
+        }
       } catch {
-        /* utan lagring visas guiden — det är det säkra hållet */
+        /* utan lagring börjar bockarna om — konfigurationen är orörd */
       }
 
       /*

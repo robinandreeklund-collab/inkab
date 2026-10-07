@@ -140,7 +140,6 @@ export function CadView() {
     setStartPoint,
     updateFlowMarker,
     update,
-    guideOpen,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
@@ -183,17 +182,13 @@ export function CadView() {
 
   const viewBox = useMemo(() => {
     const framed = frozen ?? contentBox;
-    const padded = padBox(framed, PAD_MM);
-    // Guiden ligger över ritningens vänstra del. Ge den plats i stället för att
-    // låta den täcka startpunkten.
-    const guideRoom = guideOpen ? padded.l * 0.3 : 0;
-    const base = { ...padded, x: padded.x - guideRoom, l: padded.l + guideRoom };
+    const base = padBox(framed, PAD_MM);
     const cx = base.x + base.l / 2 + pan.x;
     const cy = base.y + base.w / 2 + pan.y;
     const l = base.l / zoom;
     const w = base.w / zoom;
     return { x: cx - l / 2, y: cy - w / 2, l, w };
-  }, [contentBox, frozen, zoom, pan, guideOpen]);
+  }, [contentBox, frozen, zoom, pan]);
 
   /** Skärmkoordinat → världskoordinat (mm), via SVG:ns egen transform. */
   const toWorld = useCallback(
@@ -962,14 +957,29 @@ function DiagnosticBadges({
   const select = useConfigStore((s) => s.select);
 
   const anchored = layout.diagnostics.filter((d) => d.anchor && d.severity !== "info").slice(0, 8);
+  /** Hur många brickor som redan sitter på samma punkt, så att nästa läggs under. */
+  const stacked = new Map<string, number>();
 
   return (
     <g>
       {anchored.map((d, i) => {
         const p = project(d.anchor!);
         const isError = d.severity === "error";
-        const width = strokeUnit * 44;
-        const height = strokeUnit * 22;
+        /*
+         * Brickan ska peka ut maskinen, inte täcka den. Den är liten från
+         * början och krymper till maskinens mått när maskinen är smal — en
+         * bandomföring på 0,6 m ska fortfarande synas under sin markering.
+         */
+        const machine = layout.placements.find((pl) => pl.instanceId === d.instanceIds[0]);
+        const base = strokeUnit * 30;
+        const fit = machine ? Math.min(machine.bbox.l, machine.bbox.w) / base : 1;
+        const k = Math.min(1, Math.max(0.6, fit));
+        const width = base * k;
+        const height = strokeUnit * 12 * k;
+        const key = `${Math.round(p.x)}:${Math.round(p.y)}`;
+        const row = stacked.get(key) ?? 0;
+        stacked.set(key, row + 1);
+        const y = p.y + row * (height + strokeUnit * 2);
         return (
           /*
            * Brickan är en markering, inte en knapp. Den sitter mitt på den
@@ -977,19 +987,20 @@ function DiagnosticBadges({
            * att dra — man tog tag mitt i den och ingenting hände. Felen nås
            * i diagnostikpanelen; att peka på maskinen räcker här.
            */
-          <g key={`${d.code}-${i}`} pointerEvents="none">
+          <g key={`${d.code}-${i}`} pointerEvents="none" opacity={0.92}>
             <rect
               x={p.x - width / 2}
-              y={p.y - height / 2}
+              y={y - height / 2}
               width={width}
               height={height}
+              rx={height / 2}
               fill={isError ? "#9f1239" : "#b45309"}
             />
             <text
               x={p.x}
-              y={p.y + strokeUnit * 6}
+              y={y + strokeUnit * 3 * k}
               textAnchor="middle"
-              fontSize={strokeUnit * 13}
+              fontSize={strokeUnit * 8.5 * k}
               fill="#ffffff"
               className="num"
               pointerEvents="none"

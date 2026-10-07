@@ -35,7 +35,13 @@ type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 /** Väggens och portens tjocklek, mm. */
 
 /** Mätningen på ritningen. Klar när man släppt — då kan den sparas. */
-type Measure = { from: Vec2; to: Vec2; done?: boolean } | null;
+type Measure = {
+  from: Vec2;
+  to: Vec2;
+  done?: boolean;
+  /** Var notisen ska stå, i ritytans skärmkoordinater. Satt när mätningen är klar. */
+  screen?: { x: number; y: number };
+} | null;
 
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 /** Hallens mått snappar grövre än maskinerna: halvmeter räcker för en lokal. */
@@ -153,34 +159,23 @@ export function CadView() {
   /** Ett sparat mått vars ände dras, innan det sparas om. */
   const [editing, setEditing] = useState<Dimension | null>(null);
 
-  /** Sparar mätningen som en måttlinje på ritningen. */
-  const saveMeasure = useCallback(() => {
-    if (!measure?.done) return;
-    const dimension = makeDimension(measure.from, measure.to);
-    if (dimension) addDimension(dimension);
-    setMeasure(null);
-    setTool("select");
-  }, [measure, addDimension, setTool]);
+  /** Sparar mätningen som en måttlinje på ritningen, med kommentaren om det finns en. */
+  const saveMeasure = useCallback(
+    (note: string) => {
+      if (!measure?.done) return;
+      const dimension = makeDimension(measure.from, measure.to);
+      if (dimension) addDimension(note.trim() ? { ...dimension, note: note.trim() } : dimension);
+      setMeasure(null);
+      setTool("select");
+    },
+    [measure, addDimension, setTool],
+  );
 
   // En mätning som inte sparats försvinner när man byter verktyg.
   useEffect(() => {
     if (tool !== "measure") setMeasure(null);
   }, [tool]);
 
-  // Enter sparar mätningen. Esc byter verktyg (AppShell), och då försvinner den.
-  useEffect(() => {
-    if (!measure?.done) return;
-    const onKey = (e: KeyboardEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
-      if (e.key === "Enter") {
-        e.preventDefault();
-        saveMeasure();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [measure, saveMeasure]);
   /*
    * Utsnittet som gällde när ett drag började.
    *
@@ -484,7 +479,21 @@ export function CadView() {
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
-        setMeasure(dimensionLength(latest) > 100 ? { ...latest, done: true } : null);
+        if (dimensionLength(latest) <= 100) {
+          setMeasure(null);
+          return;
+        }
+        // Notisen ställs vid måttets mitt, räknat om till ritytans pixlar.
+        const svg = svgRef.current;
+        const ctm = svg?.getScreenCTM();
+        const frame = svg?.parentElement?.getBoundingClientRect();
+        const mid = new DOMPoint((latest.from.x + latest.to.x) / 2, (latest.from.y + latest.to.y) / 2);
+        const at = ctm && frame ? mid.matrixTransform(ctm) : null;
+        setMeasure({
+          ...latest,
+          done: true,
+          screen: at && frame ? { x: at.x - frame.left, y: at.y - frame.top } : undefined,
+        });
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -739,15 +748,19 @@ export function CadView() {
         })}
 
         {measure ? (
-          <MeasureLine
-            measure={measure}
-            strokeUnit={strokeUnit}
-            onSave={saveMeasure}
-            onDiscard={() => setMeasure(null)}
-            saveLabel={t("dim.save")}
-          />
+          <MeasureLine measure={measure} strokeUnit={strokeUnit} />
         ) : null}
       </svg>
+
+      {measure?.done ? (
+        <MeasureNotice
+          key={`${measure.from.x}:${measure.from.y}:${measure.to.x}:${measure.to.y}`}
+          lengthMm={dimensionLength(measure)}
+          at={measure.screen}
+          onSave={saveMeasure}
+          onDiscard={() => setMeasure(null)}
+        />
+      ) : null}
 
       {hover ? (
         <TipCard
@@ -1431,67 +1444,104 @@ function DoorDimensions({
   );
 }
 
-function MeasureLine({
-  measure,
-  strokeUnit,
-  onSave,
-  onDiscard,
-  saveLabel,
-}: {
-  measure: NonNullable<Measure>;
-  strokeUnit: number;
-  onSave: () => void;
-  onDiscard: () => void;
-  saveLabel: string;
-}) {
+function MeasureLine({ measure, strokeUnit }: { measure: NonNullable<Measure>; strokeUnit: number }) {
   const a = measure.from;
   const b = measure.to;
-  const distance = dimensionLength(measure);
   const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   const u = strokeUnit;
 
   return (
-    <g>
-      <g pointerEvents="none">
-        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#5980a6" strokeWidth={u * 1.6} />
-        <circle cx={a.x} cy={a.y} r={u * 3} fill="#5980a6" />
-        <circle cx={b.x} cy={b.y} r={u * 3} fill="#5980a6" />
-        <rect x={mid.x - u * 26} y={mid.y - u * 14} width={u * 52} height={u * 20} fill="#ffffff" stroke="#5980a6" strokeWidth={u} />
-        <text x={mid.x} y={mid.y} textAnchor="middle" fontSize={u * 14} fill="#1d1f20" className="num">
-          {meters(distance)} m
-        </text>
-      </g>
-
-      {/* Klar mätning: spara den på ritningen (Enter) eller släng den. */}
-      {measure.done ? (
-        <g>
-          <g
-            style={{ cursor: "pointer" }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onSave();
-            }}
-          >
-            <rect x={mid.x - u * 40} y={mid.y + u * 10} width={u * 62} height={u * 18} fill="#1d2d3d" />
-            <text x={mid.x - u * 9} y={mid.y + u * 22.5} textAnchor="middle" fontSize={u * 10} fill="#ffffff">
-              {saveLabel} ↵
-            </text>
-          </g>
-          <g
-            style={{ cursor: "pointer" }}
-            onPointerDown={(e) => {
-              e.stopPropagation();
-              onDiscard();
-            }}
-          >
-            <rect x={mid.x + u * 24} y={mid.y + u * 10} width={u * 18} height={u * 18} fill="#ffffff" stroke="#5980a6" strokeWidth={u} />
-            <text x={mid.x + u * 33} y={mid.y + u * 23} textAnchor="middle" fontSize={u * 12} fill="#5980a6">
-              ×
-            </text>
-          </g>
-        </g>
-      ) : null}
+    <g pointerEvents="none">
+      <line
+        x1={a.x}
+        y1={a.y}
+        x2={b.x}
+        y2={b.y}
+        stroke="#5980a6"
+        strokeWidth={u * 1.6}
+        strokeDasharray={measure.done ? `${u * 6} ${u * 3}` : undefined}
+      />
+      <circle cx={a.x} cy={a.y} r={u * 3} fill="#5980a6" />
+      <circle cx={b.x} cy={b.y} r={u * 3} fill="#5980a6" />
+      {measure.done ? null : (
+        <>
+          <rect x={mid.x - u * 26} y={mid.y - u * 14} width={u * 52} height={u * 20} fill="#ffffff" stroke="#5980a6" strokeWidth={u} />
+          <text x={mid.x} y={mid.y} textAnchor="middle" fontSize={u * 14} fill="#1d1f20" className="num">
+            {meters(dimensionLength(measure))} m
+          </text>
+        </>
+      )}
     </g>
+  );
+}
+
+/**
+ * Notisen när en mätning är klar: längden, en rad om vad som mäts och två
+ * tydliga val — spara måttet på ritningen eller ta bort det. Kommentarfältet
+ * har fokus direkt, så att man kan skriva och trycka Enter utan att ta musen.
+ */
+function MeasureNotice({
+  lengthMm,
+  at,
+  onSave,
+  onDiscard,
+}: {
+  lengthMm: number;
+  at?: { x: number; y: number };
+  onSave: (note: string) => void;
+  onDiscard: () => void;
+}) {
+  const t = useT();
+  const [note, setNote] = useState("");
+  const width = 280;
+  // Under måttets mitt, men aldrig utanför ritytan.
+  const style: React.CSSProperties = at
+    ? { left: `clamp(8px, ${at.x - width / 2}px, calc(100% - ${width + 8}px))`, top: `min(${at.y + 18}px, calc(100% - 170px))` }
+    : { left: "50%", top: 64, transform: "translateX(-50%)" };
+
+  return (
+    <div
+      role="dialog"
+      aria-label={t("dim.noticeTitle")}
+      className="absolute z-30 border border-accent bg-white p-3 shadow-lg"
+      style={{ width, ...style }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="kicker">{t("dim.noticeTitle")}</span>
+        <span className="num text-xl">{meters(lengthMm, 2)} m</span>
+      </div>
+      <label className="mb-3 block">
+        <span className="kicker mb-1 block">{t("dim.note")}</span>
+        <input
+          autoFocus
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t("dim.notePlaceholder")}
+          maxLength={200}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSave(note);
+            if (e.key === "Escape") onDiscard();
+          }}
+          className="w-full border border-divider bg-white px-2 py-1 text-sm outline-none focus:border-accent"
+        />
+      </label>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onSave(note)}
+          className="flex-1 border border-ink bg-ink px-3 py-1.5 text-sm text-paper hover:bg-steel"
+        >
+          {t("dim.saveMeasure")}
+        </button>
+        <button
+          onClick={onDiscard}
+          className="border border-divider px-3 py-1.5 text-sm hover:border-danger hover:text-danger"
+        >
+          {t("dim.discard")}
+        </button>
+      </div>
+      <p className="mt-2 text-[10px] text-muted">{t("dim.noticeKeys")}</p>
+    </div>
   );
 }
 

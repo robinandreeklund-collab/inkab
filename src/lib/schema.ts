@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { MAX_DIMENSIONS } from "./dimensions";
 
 /** Serverns validering av inkommande konfiguration. Klienten är aldrig betrodd. */
 
@@ -87,6 +88,17 @@ export const configurationSchema = z.object({
     }),
   line: z.array(lineItemSchema).max(40),
   drawn: z.array(drawnSchema).max(80),
+  dimensions: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        from: vec2,
+        to: vec2,
+        note: z.string().max(200).optional(),
+      }),
+    )
+    .max(MAX_DIMENSIONS)
+    .optional(),
 });
 
 export type ValidatedConfiguration = z.infer<typeof configurationSchema>;

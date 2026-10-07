@@ -21,7 +21,9 @@ export function AreaPanel({ price, role }: { price: PriceResult | null; role: Ro
     useConfigStore();
   const selected =
     !!selectedId &&
-    (config.line.some((i) => i.instanceId === selectedId) || config.drawn.some((d) => d.id === selectedId));
+    (config.line.some((i) => i.instanceId === selectedId) ||
+      config.drawn.some((d) => d.id === selectedId) ||
+      !!config.dimensions?.some((d) => d.id === selectedId));
   const next = nextArea(area);
   const previous = previousArea(area);
   const done = isAreaDone(area, config, layout, new Set(confirmedAreas));

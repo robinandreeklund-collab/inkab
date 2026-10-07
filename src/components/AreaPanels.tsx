@@ -7,6 +7,7 @@ import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
 import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { dimensionLength } from "@/lib/dimensions";
 import { useT } from "@/lib/i18n";
 import { Button, Empty, Field, NumberInput, Segmented, Tag, Tip } from "./ui";
 import { MachineThumb } from "./MachineThumb";
@@ -131,6 +132,40 @@ function DrawnList({ kinds, empty }: { kinds: DrawnKind[]; empty: string }) {
   );
 }
 
+/** De sparade måtten, med markera och ta bort. */
+function DimensionList() {
+  const { config, selectedId, select, removeDimension } = useConfigStore();
+  const t = useT();
+  const items = config.dimensions ?? [];
+  if (items.length === 0) return <Empty>{t("dim.empty")}</Empty>;
+  return (
+    <div className="border border-divider">
+      {items.map((d) => (
+        <div
+          key={d.id}
+          onClick={() => select(d.id)}
+          className={`flex cursor-pointer items-center gap-2 border-b border-divider px-2 py-1 text-[12px] last:border-0 ${
+            selectedId === d.id ? "bg-accent/10" : "hover:bg-paper"
+          }`}
+        >
+          <span className="num">{meters(dimensionLength(d), 2)} m</span>
+          <span className="min-w-0 flex-1 truncate text-muted">{d.note ?? ""}</span>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              removeDimension(d.id);
+            }}
+            className="text-muted hover:text-danger"
+            aria-label={t("area.remove")}
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Lokalen ───────────────────────────────────────────────────────────── */
 
 function HallArea() {
@@ -176,6 +211,9 @@ function WallsArea() {
       </Block>
       <Block title={t("area.walls.list")}>
         <DrawnList kinds={["door", "wall"]} empty={t("area.walls.empty")} />
+      </Block>
+      <Block title={t("dim.list")} help={t("dim.listHelp")}>
+        <DimensionList />
       </Block>
     </>
   );

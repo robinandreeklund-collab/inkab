@@ -8,6 +8,8 @@ import { useT } from "@/lib/i18n";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
+import type { Dimension } from "@/lib/types";
+import { dimensionLength } from "@/lib/dimensions";
 
 /**
  * Det markerade objektet. Visas i högerpanelen i stället för ytan så länge
@@ -42,6 +44,7 @@ export function Inspector({
   const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
   const t = useT();
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
+  const dimension = config.dimensions?.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
@@ -54,7 +57,9 @@ export function Inspector({
         <h2 className="kicker">{t("inspector.title")}</h2>
       </div>
 
-      {!placement && !drawn ? (
+      {dimension ? <DimensionInspector dimension={dimension} /> : null}
+
+      {!placement && !drawn && !dimension ? (
         <p className="border border-dashed border-divider px-3 py-6 text-xs text-muted">
           Inget markerat. Klicka på ett objekt i vyn eller i linjelistan.
         </p>
@@ -381,3 +386,50 @@ function formatSek(amount: number): string {
   return `${new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount)} kr`;
 }
 
+/** Ett sparat mått: längden, en rad om vad som mäts, och ändpunkterna exakt. */
+function DimensionInspector({ dimension }: { dimension: Dimension }) {
+  const t = useT();
+  const { updateDimension, removeDimension } = useConfigStore();
+  const point = (end: "from" | "to", axis: "x" | "y") => (
+    <NumberInput
+      value={meters(dimension[end][axis], 2)}
+      onCommit={(raw) => {
+        const mm = parseMeters(raw);
+        if (mm !== null) updateDimension(dimension.id, { [end]: { ...dimension[end], [axis]: mm } });
+      }}
+    />
+  );
+  return (
+    <div>
+      <div className="kicker">{t("dim.saved")}</div>
+      <div className="num mb-3 text-2xl">{meters(dimensionLength(dimension), 2)} m</div>
+      <label className="mb-3 block">
+        <span className="kicker mb-1 block">{t("dim.note")}</span>
+        <input
+          key={dimension.note ?? ""}
+          defaultValue={dimension.note ?? ""}
+          placeholder={t("dim.notePlaceholder")}
+          maxLength={200}
+          onBlur={(e) => {
+            const note = e.currentTarget.value.trim();
+            if (note !== (dimension.note ?? "")) updateDimension(dimension.id, { note: note || undefined });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          className="w-full border border-divider bg-white px-2 py-1 text-sm outline-none focus:border-accent"
+        />
+      </label>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <Field label={`${t("dim.from")} X m`}>{point("from", "x")}</Field>
+        <Field label={`${t("dim.from")} Y m`}>{point("from", "y")}</Field>
+        <Field label={`${t("dim.to")} X m`}>{point("to", "x")}</Field>
+        <Field label={`${t("dim.to")} Y m`}>{point("to", "y")}</Field>
+      </div>
+      <p className="mb-3 text-[11px] leading-relaxed text-muted">{t("dim.help")}</p>
+      <Button className="w-full" variant="ghost" onClick={() => removeDimension(dimension.id)}>
+        {t("area.remove")}
+      </Button>
+    </div>
+  );
+}

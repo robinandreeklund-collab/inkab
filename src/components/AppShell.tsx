@@ -175,12 +175,15 @@ export function AppShell() {
         case "backspace":
           if (!selectedId) break;
           if (config.drawn.some((d) => d.id === selectedId)) removeDrawn(selectedId);
-          else removeItem(selectedId);
+          else if (config.dimensions?.some((d) => d.id === selectedId)) {
+            useConfigStore.getState().removeDimension(selectedId);
+          } else removeItem(selectedId);
           break;
       }
     },
     [
       config.drawn,
+      config.dimensions,
       config.line,
       redo,
       removeDrawn,

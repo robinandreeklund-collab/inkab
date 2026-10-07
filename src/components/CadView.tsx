@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
@@ -15,9 +15,10 @@ import {
 } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
 import { markerNumber } from "@/lib/flowMarkers";
+import { dimensionLength, makeDimension, straighten } from "@/lib/dimensions";
 import { ROTATE_ARC, ROTATE_TIP, TipCard } from "./ui";
 import { toolHelp } from "./toolHelp";
-import type { Box, DrawnObject, DrawnKind, Flow, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
+import type { Box, Dimension, DrawnObject, DrawnKind, Flow, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 import { DIR_VEC } from "@/lib/geometry";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
@@ -33,7 +34,8 @@ type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 
 /** Väggens och portens tjocklek, mm. */
 
-type Measure = { from: Vec2; to: Vec2 } | null;
+/** Mätningen på ritningen. Klar när man släppt — då kan den sparas. */
+type Measure = { from: Vec2; to: Vec2; done?: boolean } | null;
 
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 /** Hallens mått snappar grövre än maskinerna: halvmeter räcker för en lokal. */
@@ -140,12 +142,45 @@ export function CadView() {
     setStartPoint,
     updateFlowMarker,
     update,
+    addDimension,
+    updateDimension,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const t = useT();
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
+  /** Ett sparat mått vars ände dras, innan det sparas om. */
+  const [editing, setEditing] = useState<Dimension | null>(null);
+
+  /** Sparar mätningen som en måttlinje på ritningen. */
+  const saveMeasure = useCallback(() => {
+    if (!measure?.done) return;
+    const dimension = makeDimension(measure.from, measure.to);
+    if (dimension) addDimension(dimension);
+    setMeasure(null);
+    setTool("select");
+  }, [measure, addDimension, setTool]);
+
+  // En mätning som inte sparats försvinner när man byter verktyg.
+  useEffect(() => {
+    if (tool !== "measure") setMeasure(null);
+  }, [tool]);
+
+  // Enter sparar mätningen. Esc byter verktyg (AppShell), och då försvinner den.
+  useEffect(() => {
+    if (!measure?.done) return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveMeasure();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [measure, saveMeasure]);
   /*
    * Utsnittet som gällde när ett drag började.
    *
@@ -341,6 +376,44 @@ export function CadView() {
     window.addEventListener("pointerup", up);
   };
 
+  /* ── Sparade mått ────────────────────────────────────────────────────── */
+  /*
+   * Ett sparat mått markeras med ett klick. Den markerade måttlinjens ändar
+   * går att dra; måttet sparas om när man släpper, så att ett drag blir ett
+   * steg att ångra. Skift låser till vågrätt eller lodrätt.
+   */
+  const startDimension = (dimension: Dimension, end: "from" | "to" | null, event: React.PointerEvent) => {
+    event.stopPropagation();
+    select(dimension.id);
+    if (tool !== "select" || !end) return;
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const inverse = ctm.inverse();
+    setFrozen(contentBox);
+    setHover(null);
+    let latest = dimension;
+    const move = (e: PointerEvent) => {
+      const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(inverse);
+      const other = end === "from" ? dimension.to : dimension.from;
+      const raw = { x: Math.round(pt.x / 10) * 10, y: Math.round(pt.y / 10) * 10 };
+      const point = e.shiftKey ? straighten(other, raw) : raw;
+      latest = { ...dimension, [end]: point };
+      setEditing(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setFrozen(null);
+      setEditing(null);
+      if (latest !== dimension && dimensionLength(latest) > 100) {
+        updateDimension(dimension.id, { from: latest.from, to: latest.to });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   /* ── Ändra hallens yta ───────────────────────────────────────────────── */
   /*
    * Hallen visas med sin nya kant medan man drar men sparas först när man
@@ -396,14 +469,22 @@ export function CadView() {
     if (!start) return;
 
     if (tool === "measure") {
-      setMeasure({ from: start, to: start });
+      /*
+       * Skift låser måttet till vågrätt eller lodrätt. Släpper man ligger
+       * mätningen kvar med en knapp för att spara den på ritningen.
+       */
+      let latest = { from: start, to: start };
+      setMeasure(latest);
       const move = (e: PointerEvent) => {
         const now = toWorld(e);
-        if (now) setMeasure({ from: start, to: now });
+        if (!now) return;
+        latest = { from: start, to: e.shiftKey ? straighten(start, now) : now };
+        setMeasure(latest);
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        setMeasure(dimensionLength(latest) > 100 ? { ...latest, done: true } : null);
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -643,7 +724,29 @@ export function CadView() {
           </g>
         ) : null}
 
-        {measure ? <MeasureLine measure={measure} strokeUnit={strokeUnit} /> : null}
+        {(config.dimensions ?? []).map((d) => {
+          const shown = editing?.id === d.id ? editing : d;
+          return (
+            <DimensionLine
+              key={d.id}
+              dimension={shown}
+              selected={selectedId === d.id}
+              strokeUnit={strokeUnit}
+              onDown={(end, e) => startDimension(d, end, e)}
+              tip={tip(t("dim.saved"), t("dim.savedTip"))}
+            />
+          );
+        })}
+
+        {measure ? (
+          <MeasureLine
+            measure={measure}
+            strokeUnit={strokeUnit}
+            onSave={saveMeasure}
+            onDiscard={() => setMeasure(null)}
+            saveLabel={t("dim.save")}
+          />
+        ) : null}
       </svg>
 
       {hover ? (
@@ -1331,38 +1434,138 @@ function DoorDimensions({
 function MeasureLine({
   measure,
   strokeUnit,
+  onSave,
+  onDiscard,
+  saveLabel,
 }: {
   measure: NonNullable<Measure>;
   strokeUnit: number;
+  onSave: () => void;
+  onDiscard: () => void;
+  saveLabel: string;
 }) {
   const a = measure.from;
   const b = measure.to;
-  const distance = Math.hypot(measure.to.x - measure.from.x, measure.to.y - measure.from.y);
+  const distance = dimensionLength(measure);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const u = strokeUnit;
 
   return (
-    <g pointerEvents="none">
-      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
-      <circle cx={a.x} cy={a.y} r={strokeUnit * 3} fill="#5980a6" />
-      <circle cx={b.x} cy={b.y} r={strokeUnit * 3} fill="#5980a6" />
-      <rect
-        x={(a.x + b.x) / 2 - strokeUnit * 26}
-        y={(a.y + b.y) / 2 - strokeUnit * 14}
-        width={strokeUnit * 52}
-        height={strokeUnit * 20}
-        fill="#ffffff"
-        stroke="#5980a6"
-        strokeWidth={strokeUnit}
-      />
-      <text
-        x={(a.x + b.x) / 2}
-        y={(a.y + b.y) / 2}
-        textAnchor="middle"
-        fontSize={strokeUnit * 14}
-        fill="#1d1f20"
-        className="num"
-      >
-        {meters(distance)} m
-      </text>
+    <g>
+      <g pointerEvents="none">
+        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#5980a6" strokeWidth={u * 1.6} />
+        <circle cx={a.x} cy={a.y} r={u * 3} fill="#5980a6" />
+        <circle cx={b.x} cy={b.y} r={u * 3} fill="#5980a6" />
+        <rect x={mid.x - u * 26} y={mid.y - u * 14} width={u * 52} height={u * 20} fill="#ffffff" stroke="#5980a6" strokeWidth={u} />
+        <text x={mid.x} y={mid.y} textAnchor="middle" fontSize={u * 14} fill="#1d1f20" className="num">
+          {meters(distance)} m
+        </text>
+      </g>
+
+      {/* Klar mätning: spara den på ritningen (Enter) eller släng den. */}
+      {measure.done ? (
+        <g>
+          <g
+            style={{ cursor: "pointer" }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onSave();
+            }}
+          >
+            <rect x={mid.x - u * 40} y={mid.y + u * 10} width={u * 62} height={u * 18} fill="#1d2d3d" />
+            <text x={mid.x - u * 9} y={mid.y + u * 22.5} textAnchor="middle" fontSize={u * 10} fill="#ffffff">
+              {saveLabel} ↵
+            </text>
+          </g>
+          <g
+            style={{ cursor: "pointer" }}
+            onPointerDown={(e) => {
+              e.stopPropagation();
+              onDiscard();
+            }}
+          >
+            <rect x={mid.x + u * 24} y={mid.y + u * 10} width={u * 18} height={u * 18} fill="#ffffff" stroke="#5980a6" strokeWidth={u} />
+            <text x={mid.x + u * 33} y={mid.y + u * 23} textAnchor="middle" fontSize={u * 12} fill="#5980a6">
+              ×
+            </text>
+          </g>
+        </g>
+      ) : null}
+    </g>
+  );
+}
+
+/**
+ * Ett sparat mått som måttlinje: tvärstreck i ändarna och längden mitt på,
+ * med kommentaren under. Markerat får det handtag i ändarna som går att dra.
+ */
+function DimensionLine({
+  dimension,
+  selected,
+  strokeUnit,
+  onDown,
+  tip,
+}: {
+  dimension: Dimension;
+  selected: boolean;
+  strokeUnit: number;
+  onDown: (end: "from" | "to" | null, e: React.PointerEvent) => void;
+  tip: ReturnType<TipHandlers>;
+}) {
+  const { from: a, to: b } = dimension;
+  const u = strokeUnit;
+  const length = dimensionLength(dimension);
+  const colour = selected ? "#5980a6" : "#1d2d3d";
+  // Enhetsvektor längs måttet och vinkelrätt mot det, för tvärstrecken.
+  const v = length > 0 ? { x: (b.x - a.x) / length, y: (b.y - a.y) / length } : { x: 1, y: 0 };
+  const n = { x: -v.y, y: v.x };
+  const tick = u * 6;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const label = `${meters(length, 2)} m`;
+  const width = u * (label.length * 6.4 + 8);
+
+  return (
+    <g>
+      <g style={{ cursor: "pointer" }} onPointerDown={(e) => onDown(null, e)} {...tip}>
+        {/* Bred osynlig linje så att måttet går att träffa. */}
+        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="transparent" strokeWidth={u * 10} />
+        <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={colour} strokeWidth={u * (selected ? 1.8 : 1.2)} />
+        {[a, b].map((p, i) => (
+          <line
+            key={i}
+            x1={p.x - n.x * tick + v.x * tick * 0.6}
+            y1={p.y - n.y * tick + v.y * tick * 0.6}
+            x2={p.x + n.x * tick - v.x * tick * 0.6}
+            y2={p.y + n.y * tick - v.y * tick * 0.6}
+            stroke={colour}
+            strokeWidth={u * 1.4}
+          />
+        ))}
+        <rect x={mid.x - width / 2} y={mid.y - u * 9} width={width} height={u * 16} fill="#ffffff" stroke={colour} strokeWidth={u * 0.8} />
+        <text x={mid.x} y={mid.y + u * 3.5} textAnchor="middle" fontSize={u * 11} fill={colour} className="num">
+          {label}
+        </text>
+        {dimension.note ? (
+          <text x={mid.x} y={mid.y + u * 19} textAnchor="middle" fontSize={u * 9.5} fill={colour} fillOpacity="0.85">
+            {dimension.note.length > 40 ? `${dimension.note.slice(0, 39)}…` : dimension.note}
+          </text>
+        ) : null}
+      </g>
+      {selected
+        ? (["from", "to"] as const).map((end) => (
+            <circle
+              key={end}
+              cx={dimension[end].x}
+              cy={dimension[end].y}
+              r={u * 4.5}
+              fill="#ffffff"
+              stroke="#5980a6"
+              strokeWidth={u * 1.6}
+              style={{ cursor: "move" }}
+              onPointerDown={(e) => onDown(end, e)}
+            />
+          ))
+        : null}
     </g>
   );
 }

@@ -204,6 +204,22 @@ export function QuotePlan({
         ))}
 
         <Dimensions hall={hall} view={view} u={u} />
+
+        {/* Mått kunden sparat på ritningen. */}
+        {(config.dimensions ?? []).map((d) => {
+          const length = Math.hypot(d.to.x - d.from.x, d.to.y - d.from.y);
+          const mid = { x: (d.from.x + d.to.x) / 2, y: (d.from.y + d.to.y) / 2 };
+          return (
+            <g key={d.id}>
+              <line x1={d.from.x} y1={d.from.y} x2={d.to.x} y2={d.to.y} stroke="#1d2d3d" strokeWidth={u * 1.6} />
+              <circle cx={d.from.x} cy={d.from.y} r={u * 3.5} fill="#1d2d3d" />
+              <circle cx={d.to.x} cy={d.to.y} r={u * 3.5} fill="#1d2d3d" />
+              <text x={mid.x} y={mid.y - u * 8} textAnchor="middle" fill="#1d2d3d" className="num" fontSize={u * 15}>
+                {(length / 1000).toFixed(2).replace(".", ",")} m{d.note ? ` · ${d.note}` : ""}
+              </text>
+            </g>
+          );
+        })}
         <ScaleBar view={view} u={u} />
       </svg>
 

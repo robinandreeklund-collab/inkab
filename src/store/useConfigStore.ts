@@ -13,6 +13,7 @@ import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from
 import type {
   ConfigPatch,
   Configuration,
+  Dimension,
   DrawnObject,
   Flow,
   FlowMarker,
@@ -164,6 +165,10 @@ type Actions = {
   /** Vrider ett ritat objekt ett kvarts varv kring sin mitt. */
   turnDrawn: (id: string) => void;
   removeDrawn: (id: string) => void;
+  /** Sparar ett mått på ritningen och markerar det. */
+  addDimension: (dimension: Dimension) => void;
+  updateDimension: (id: string, patch: Partial<Omit<Dimension, "id">>) => void;
+  removeDimension: (id: string) => void;
   clearDrawn: () => void;
   applyPatch: (patch: ConfigPatch) => void;
 
@@ -550,6 +555,26 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         obj.l = obj.w;
         obj.w = l;
       }),
+
+    addDimension: (dimension) => {
+      get().update((d) => {
+        d.dimensions = [...(d.dimensions ?? []), dimension];
+      });
+      get().select(dimension.id);
+    },
+
+    updateDimension: (id, patch) =>
+      get().update((d) => {
+        const dimension = d.dimensions?.find((m) => m.id === id);
+        if (dimension) Object.assign(dimension, patch);
+      }),
+
+    removeDimension: (id) => {
+      get().update((d) => {
+        d.dimensions = (d.dimensions ?? []).filter((m) => m.id !== id);
+      });
+      if (get().selectedId === id) set({ selectedId: null });
+    },
 
     removeDrawn: (id) => {
       get().update((d) => {

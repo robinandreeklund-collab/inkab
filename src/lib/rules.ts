@@ -1,6 +1,7 @@
 import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
 import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
 import type { SolveOutput } from "./solver";
+import { CONNECT_REACH_MM, findConnections, isLinked } from "./connections";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
 import { translate } from "./i18n/translate";
 
@@ -69,6 +70,13 @@ export function runRules(
   const aux = layout.placements.filter((p) => p.aux);
   const all = layout.placements;
   const hall = hallBox(config);
+  /*
+   * Vilka maskiner som för paket mellan sig, läst ur portarna. Två maskiner
+   * som hänger ihop står där de ska stå, hur de än är vridna — en överföring i
+   * ett hörn är inget intrång i maskinzonen.
+   */
+  const { connections, mismatches } = findConnections(all);
+  const linked = (a: Placement, b: Placement) => isLinked(connections, a.instanceId, b.instanceId);
 
   /* ── R-103 Maskiner överlappar ──────────────────────────────────────── */
   for (let i = 0; i < all.length; i++) {
@@ -97,7 +105,7 @@ export function runRules(
     for (const zone of p.zones.filter((z) => z.type === "service")) {
       const box = sidesOnly(zone.box, p);
       for (const other of all) {
-        if (other.instanceId === p.instanceId) continue;
+        if (other.instanceId === p.instanceId || linked(p, other)) continue;
         if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
         out.push({
           code: "R-104",
@@ -118,7 +126,7 @@ export function runRules(
     const sides = sidesOnly(clearance.box, p);
 
     for (const other of all) {
-      if (other.instanceId === p.instanceId) continue;
+      if (other.instanceId === p.instanceId || linked(p, other)) continue;
       if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
@@ -141,6 +149,51 @@ export function runRules(
         detail: t("rule.clearanceObj.d", { obj: obj.name, machine: p.machine.name }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(box),
+      });
+    }
+  }
+
+  /* ── R-602 Maskinen står åt fel håll ────────────────────────────────── */
+  /*
+   * Det vanligaste misstaget med fri placering: en maskin vriden ett halvt
+   * varv, så att två utgångar — eller två ingångar — möts. Paketen kommer
+   * inte vidare, och ritningen ser ändå ut som en linje.
+   */
+  const byId = new Map(all.map((p) => [p.instanceId, p]));
+  for (const mm of mismatches) {
+    const a = byId.get(mm.a)!;
+    const b = byId.get(mm.b)!;
+    out.push({
+      code: "R-602",
+      severity: "warning",
+      title: t("rule.reversed.t"),
+      detail: t(mm.role === "out" ? "rule.reversedOut.d" : "rule.reversedIn.d", {
+        a: a.machine.name,
+        b: b.machine.name,
+      }),
+      instanceIds: [a.instanceId, b.instanceId],
+      anchor: mm.at,
+    });
+  }
+
+  /* ── R-601 Maskinen är inte kopplad till linjen ─────────────────────── */
+  /*
+   * Med fri placering kan en maskin stå var som helst. Står den så långt från
+   * alla andra att ingen port når fram, går inga paket genom den — oftast en
+   * maskin som dragits in och glömts, eller ett mellanrum som blivit för stort.
+   */
+  if (line.length >= 2) {
+    for (const p of line) {
+      if (p.ports.length === 0) continue;
+      if (connections.some((c) => c.from === p.instanceId || c.to === p.instanceId)) continue;
+      if (mismatches.some((mm) => mm.a === p.instanceId || mm.b === p.instanceId)) continue;
+      out.push({
+        code: "R-601",
+        severity: "warning",
+        title: t("rule.loose.t"),
+        detail: t("rule.loose.d", { machine: p.machine.name, reach: m(CONNECT_REACH_MM) }),
+        instanceIds: [p.instanceId],
+        anchor: boxCenter(p.bbox),
       });
     }
   }

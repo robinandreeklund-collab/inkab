@@ -167,6 +167,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     "auth.failed": "Kunde inte nå servern.",
 
     /* Regelverket */
+    "rule.reversed.t": "Maskinen står åt fel håll",
+    "rule.reversedOut.d": "Utgången på {a} möter utgången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget så att paketen går in i nästa maskin.",
+    "rule.reversedIn.d": "Ingången på {a} möter ingången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget.",
+    "rule.loose.t": "Maskinen är inte kopplad till linjen",
+    "rule.loose.d": "Ingen annan maskin tar emot eller lämnar paket till {machine}. Ställ den så att portarna möts, högst {reach} m isär, eller ta bort den om den inte ska vara med.",
     "rule.overlap.t": "Maskiner överlappar",
     "rule.overlap.d": "{a} och {b} går in i varandra över {area} m².",
     "rule.service.t": "Servicezon blockerad",
@@ -439,6 +444,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     "auth.failed": "Could not reach the server.",
 
     /* Regelverket */
+    "rule.reversed.t": "A machine faces the wrong way",
+    "rule.reversedOut.d": "The outlet of {a} meets the outlet of {b}. One of them is turned half a turn — turn it with R or the handle so packages enter the next machine.",
+    "rule.reversedIn.d": "The inlet of {a} meets the inlet of {b}. One of them is turned half a turn — turn it with R or the handle.",
+    "rule.loose.t": "The machine is not connected to the line",
+    "rule.loose.d": "No other machine passes packages to or from {machine}. Place it so the ports meet, at most {reach} m apart, or remove it if it should not be included.",
     "rule.overlap.t": "Machines overlap",
     "rule.overlap.d": "{a} and {b} run into each other over {area} m².",
     "rule.service.t": "Service zone blocked",
@@ -715,6 +725,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     "auth.failed": "Der Server war nicht erreichbar.",
 
     /* Regelverket */
+    "rule.reversed.t": "Maschine steht falsch herum",
+    "rule.reversedOut.d": "Der Ausgang von {a} trifft auf den Ausgang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff, damit die Pakete in die nächste Maschine laufen.",
+    "rule.reversedIn.d": "Der Eingang von {a} trifft auf den Eingang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff.",
+    "rule.loose.t": "Die Maschine ist nicht mit der Linie verbunden",
+    "rule.loose.d": "Keine andere Maschine übergibt Pakete an {machine} oder übernimmt sie. Stellen Sie sie so, dass die Ports aufeinandertreffen, höchstens {reach} m auseinander, oder entfernen Sie sie, falls sie nicht dazugehört.",
     "rule.overlap.t": "Maschinen überlappen",
     "rule.overlap.d": "{a} und {b} überschneiden sich auf {area} m².",
     "rule.service.t": "Servicezone blockiert",

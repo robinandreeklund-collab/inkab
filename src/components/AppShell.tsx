@@ -257,7 +257,8 @@ export function AppShell() {
             {view === "model" ? null : <GettingStarted />}
             <DraftJobWatcher />
             <DiagnosticsPanel />
-            <AiPanel />
+            {/* Assistenten kostar per fråga och är till för kunder med konto. */}
+            {user ? <AiPanel /> : null}
             <ToolRail />
           </div>
           <LineStrip />

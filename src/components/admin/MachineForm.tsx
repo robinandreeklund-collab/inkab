@@ -10,6 +10,7 @@ import { ImagePanel } from "./ImagePanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentPanel } from "./DocumentPanel";
 import { VariantPanel } from "./VariantPanel";
+import { missingTranslations } from "@/lib/machineText";
 import type { ModelOrientation } from "@/lib/cad/orientation";
 import {
   CheckField,
@@ -101,6 +102,9 @@ export function MachineForm({
         ) : null}
         {machine.aux ? <Tag tone="accent">Hjälpobjekt</Tag> : null}
         {machine.dimensionsVerified ? null : <Tag tone="warn">Uppskattade mått</Tag>}
+        {missingTranslations(machine).length > 0 ? (
+          <Tag tone="muted">Saknar {missingTranslations(machine).map((l) => l.toUpperCase()).join(", ")}</Tag>
+        ) : null}
         <div className="ml-auto flex gap-2">
           <Button size="sm" onClick={validate} disabled={validating}>
             {validating ? "Provkopplar…" : "Provkoppla"}
@@ -230,6 +234,8 @@ export function MachineForm({
               ) : null}
             </div>
           </Panel>
+
+          <TranslationPanel machine={machine} onChange={onChange} />
 
           <Panel title="Geometri" description="Yttermått i meter. Lagras som heltal millimeter.">
             <Grid cols={3}>
@@ -889,6 +895,60 @@ function OptionPanel({
           ))}
         </div>
       )}
+    </Panel>
+  );
+}
+
+const TRANSLATION_LANGUAGES = [
+  { code: "en", label: "Engelska" },
+  { code: "de", label: "Tyska" },
+] as const;
+
+/**
+ * Namn och kort beskrivning på engelska och tyska.
+ *
+ * Det svenska namnet och den svenska beskrivningen ovan är källan. Det som
+ * fylls i här visas för kunder som valt språket — i katalogen, ritningen,
+ * inspektorn och offerten. Ett tomt fält visar svenskan.
+ */
+function TranslationPanel({ machine, onChange }: { machine: Machine; onChange: (m: Machine) => void }) {
+  const setField = (code: "en" | "de", field: "name" | "summary", value: string) => {
+    const current = machine.translations?.[code] ?? {};
+    const next = { ...current, [field]: value || undefined };
+    const empty = !next.name && !next.summary;
+    const translations = { ...machine.translations, [code]: empty ? undefined : next };
+    const any = Object.values(translations).some(Boolean);
+    onChange({ ...machine, translations: any ? translations : undefined });
+  };
+
+  return (
+    <Panel
+      title="Översättningar"
+      description="Namn och kort beskrivning på kundens språk. Lämnas ett fält tomt visas svenskan."
+    >
+      <div className="space-y-4">
+        {TRANSLATION_LANGUAGES.map(({ code, label }) => (
+          <div key={code}>
+            <div className="kicker mb-1.5">
+              {label} · {code.toUpperCase()}
+            </div>
+            <TextField
+              label="Namn"
+              value={machine.translations?.[code]?.name ?? ""}
+              hint={machine.name}
+              onChange={(v) => setField(code, "name", v)}
+            />
+            <div className="mt-2">
+              <TextArea
+                label="Kort beskrivning"
+                value={machine.translations?.[code]?.summary ?? ""}
+                rows={2}
+                onChange={(v) => setField(code, "summary", v)}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
     </Panel>
   );
 }

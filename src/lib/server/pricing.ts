@@ -1,4 +1,5 @@
 import { translate } from "@/lib/i18n/translate";
+import { localizeMachine } from "@/lib/machineText";
 import type { Locale } from "@/lib/i18n/locale";
 import "server-only";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "@/lib/library";
@@ -168,7 +169,10 @@ export function priceConfiguration(
       pos: index + 1,
       machineId: machine.id,
       sku: machine.sku,
-      name: variant ? `${machine.name} – ${variant.name}` : machine.name,
+      // Namnet på kundens språk, med admins översättning om den finns.
+      name: variant
+        ? `${localizeMachine(machine, locale).name} – ${variant.name}`
+        : localizeMachine(machine, locale).name,
       quantity: 1,
       optionNames: item.selectedOptions
         .map((id) => machine.options.find((o) => o.id === id)?.name)

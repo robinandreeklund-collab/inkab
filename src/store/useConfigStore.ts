@@ -8,6 +8,7 @@ import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
 import { translate } from "@/lib/i18n/translate";
 import { claimedBox, freeSpot } from "@/lib/solver";
 import { AREA_ORDER, type Area } from "@/lib/areas";
+import { localizeMachines } from "@/lib/machineText";
 import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
 import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
 import type {
@@ -244,6 +245,9 @@ function readLog(): LogEntry[] {
   }
 }
 
+/** Maskinerna som de kom från servern, på svenska. Se setLibrary. */
+let sourceMachines: Machine[] = BUILTIN_LIBRARY.machines;
+
 export const useConfigStore = create<State & Actions>((set, get) => {
   const initial = defaultConfig();
 
@@ -342,8 +346,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        * nu — annars står de gamla felen kvar på gammalt språk tills någon
        * råkar ändra något i anläggningen.
        */
-      const { config, library } = get();
+      const { config } = get();
+      const library = makeLibrary(localizeMachines(sourceMachines, locale));
       set({
+        library,
         layout: computeLayout(config, library, (key, vars) => translate(locale, key, vars)),
       });
       if (typeof document !== "undefined") document.documentElement.lang = locale;
@@ -367,7 +373,14 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     },
 
     setLibrary: (machines) => {
-      const library = makeLibrary(machines);
+      /*
+       * Biblioteket hålls på kundens språk: maskinernas namn och beskrivningar
+       * byts mot admins översättningar innan något annat ser dem. Då följer
+       * katalogen, ritningen, inspektorn, regelverkets texter och offerten med
+       * av sig själva. Källan sparas för att kunna byta språk igen.
+       */
+      sourceMachines = machines;
+      const library = makeLibrary(localizeMachines(machines, get().locale));
       set({ library, libraryLoaded: true, layout: computeLayout(get().config, library, t()) });
     },
 
@@ -679,7 +692,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       } catch {
         locale = preferredLocale(navigator.languages ?? []);
       }
-      set({ locale });
+      set({ locale, library: makeLibrary(localizeMachines(sourceMachines, locale)) });
       document.documentElement.lang = locale;
 
       const params = new URLSearchParams(window.location.search);

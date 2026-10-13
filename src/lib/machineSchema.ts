@@ -137,6 +137,12 @@ export const variantSchema = z.object({
   dimensionsVerified: z.boolean().optional(),
 });
 
+/** Namn och beskrivning på ett annat språk. Samma gränser som svenskan. */
+const translationSchema = z.object({
+  name: z.string().max(80).optional(),
+  summary: z.string().max(400).optional(),
+});
+
 export const machineSchema = z
   .object({
     id: machineIdSchema,
@@ -145,6 +151,12 @@ export const machineSchema = z
     category: z.enum(CATEGORIES),
     summary: z.string().max(400).default(""),
     aiDescription: z.string().max(4000).optional(),
+    translations: z
+      .object({
+        en: translationSchema.optional(),
+        de: translationSchema.optional(),
+      })
+      .optional(),
     aux: z.boolean().optional(),
     anchorFor: z.string().max(40).optional(),
 

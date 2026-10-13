@@ -201,10 +201,19 @@ export type Machine = {
     yawDeg?: 0 | 90 | 180 | 270;
     flipped?: boolean;
   };
+  /**
+   * Namn och kort beskrivning på andra språk än svenska. Svenskan är
+   * källan och står i name och summary; ett språk som saknas här visar den.
+   * Fylls i av admin, se lib/machineText.ts.
+   */
+  translations?: Partial<Record<"en" | "de", MachineTranslation>>;
   /** Länkar till produktkatalog och datablad. */
   productUrl?: string;
   datasheetUrl?: string;
 };
+
+/** En maskins namn och korta beskrivning på ett annat språk. */
+export type MachineTranslation = { name?: string; summary?: string };
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
 

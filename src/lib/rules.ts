@@ -503,7 +503,7 @@ export function runRules(
         detail: t("rule.requires.d", { machine: p.machine.name, needs: reqMachine?.name ?? req }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
-        fix: { kind: "addMachine", machineId: req, label: `Lägg till ${reqMachine?.name ?? req}` },
+        fix: { kind: "addMachine", machineId: req, label: t("rule.addFix", { machine: reqMachine?.name ?? req }) },
       });
     }
     for (const conflict of p.machine.conflictsWith ?? []) {

@@ -276,9 +276,18 @@ export function Inspector({
           {item ? (
             <div className="mt-4">
               <div className="kicker mb-2">{t("inspector.note")}</div>
+              {/*
+                * Texten skrivs lokalt och sparas när fältet lämnas. Storen
+                * trimmar anteckningen; gjorde den det vid varje tangent gick
+                * det inte att skriva ett mellanslag, och varje bokstav blev
+                * ett eget ångra-steg. Nyckeln läser om fältet vid ångra.
+                */}
               <textarea
-                value={item.note ?? ""}
-                onChange={(e) => setNote(item.instanceId, e.target.value)}
+                key={`${item.instanceId}:${item.note ?? ""}`}
+                defaultValue={item.note ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== (item.note ?? "")) setNote(item.instanceId, e.target.value);
+                }}
                 rows={3}
                 maxLength={1000}
                 placeholder={t("inspector.notePlaceholder")}

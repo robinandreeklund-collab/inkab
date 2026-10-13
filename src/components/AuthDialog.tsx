@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "./ui";
+import { useT } from "@/lib/i18n";
 import type { Role } from "@/lib/server/pricing";
 
 export type SessionUser = {
@@ -30,6 +31,7 @@ export function AuthDialog({
   const [company, setCompany] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const t = useT();
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -48,12 +50,23 @@ export function AuthDialog({
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
-        setError(data.error ?? "Något gick fel.");
+        // Felet skrivs på kundens språk; servern svarar bara med status.
+        const key =
+          response.status === 401
+            ? "auth.wrong"
+            : response.status === 409
+              ? "auth.taken"
+              : response.status === 400
+                ? mode === "login"
+                  ? "auth.missing"
+                  : "auth.invalid"
+                : "auth.error";
+        setError(t(key));
         return;
       }
       onSuccess(data.user as SessionUser);
     } catch {
-      setError("Kunde inte nå servern.");
+      setError(t("auth.failed"));
     } finally {
       setBusy(false);
     }
@@ -77,8 +90,8 @@ export function AuthDialog({
         <div className="mb-4 flex border border-divider">
           {(
             [
-              ["login", "Logga in"],
-              ["register", "Skapa konto"],
+              ["login", t("top.logIn")],
+              ["register", t("auth.register")],
             ] as const
           ).map(([value, label], index) => (
             <button
@@ -101,7 +114,7 @@ export function AuthDialog({
           {mode === "register" ? (
             <>
               <label className="block">
-                <span className="kicker mb-1 block">Namn</span>
+                <span className="kicker mb-1 block">{t("auth.name")}</span>
                 <input
                   required
                   autoFocus
@@ -111,7 +124,7 @@ export function AuthDialog({
                 />
               </label>
               <label className="block">
-                <span className="kicker mb-1 block">Företag</span>
+                <span className="kicker mb-1 block">{t("auth.company")}</span>
                 <input
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
@@ -122,7 +135,7 @@ export function AuthDialog({
           ) : null}
 
           <label className="block">
-            <span className="kicker mb-1 block">E-post</span>
+            <span className="kicker mb-1 block">{t("auth.email")}</span>
             <input
               required
               type="email"
@@ -135,7 +148,7 @@ export function AuthDialog({
           </label>
 
           <label className="block">
-            <span className="kicker mb-1 block">Lösenord</span>
+            <span className="kicker mb-1 block">{t("auth.password")}</span>
             <input
               required
               type="password"
@@ -146,7 +159,7 @@ export function AuthDialog({
               className={inputClass}
             />
             {mode === "register" ? (
-              <span className="mt-1 block text-[11px] text-muted">Minst 8 tecken.</span>
+              <span className="mt-1 block text-[11px] text-muted">{t("auth.minPassword")}</span>
             ) : null}
           </label>
         </div>
@@ -157,17 +170,15 @@ export function AuthDialog({
 
         <div className="mt-4 flex items-center gap-2">
           <Button type="submit" variant="primary" disabled={busy}>
-            {busy ? "Arbetar…" : mode === "login" ? "Logga in" : "Skapa konto"}
+            {busy ? t("auth.busy") : mode === "login" ? t("top.logIn") : t("auth.register")}
           </Button>
           <Button variant="ghost" onClick={onClose}>
-            Avbryt
+            {t("auth.cancel")}
           </Button>
         </div>
 
         <p className="mt-4 border-t border-divider pt-3 text-[11px] leading-relaxed text-muted">
-          Konton behövs för att spara projekt, se priser och ladda ner underlag. Prototypen
-          hanterar lösenorden själv (scrypt-hashade); i skarpt läge ersätts det av magisk länk för
-          kund och Entra ID internt.
+          {t("auth.note")}
         </p>
       </form>
     </div>

@@ -201,10 +201,26 @@ export type Machine = {
     yawDeg?: 0 | 90 | 180 | 270;
     flipped?: boolean;
   };
+  /**
+   * Namn och kort beskrivning på andra språk än svenska. Svenskan är
+   * källan och står i name och summary; ett språk som saknas här visar den.
+   * Fylls i av admin, se lib/machineText.ts.
+   */
+  translations?: Partial<Record<"en" | "de", MachineTranslation>>;
   /** Länkar till produktkatalog och datablad. */
   productUrl?: string;
   datasheetUrl?: string;
 };
+
+/**
+ * En maskins texter på ett annat språk: namn, kort beskrivning och det kunden
+ * ställer in när maskinen är vald. Inställningarna står i texts med en nyckel
+ * per text, se lib/machineText.ts:
+ *   option.<id>, variant.<id>,
+ *   param.<id>.label, param.<id>.help, param.<id>.unit,
+ *   param.<id>.choice.<värde>
+ */
+export type MachineTranslation = { name?: string; summary?: string; texts?: Record<string, string> };
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
 
@@ -356,6 +372,20 @@ export type Configuration = {
   product: Product;
   line: LineItem[];
   drawn: DrawnObject[];
+  /** Mått kunden har sparat på ritningen. Se lib/dimensions.ts. */
+  dimensions?: Dimension[];
+};
+
+/**
+ * Ett sparat mått: en måttlinje mellan två punkter, med en valfri rad om vad
+ * som mäts — "fritt mellan pelarna", "till porten". Påverkar varken layouten
+ * eller regelverket; den är till för den som läser ritningen.
+ */
+export type Dimension = {
+  id: string;
+  from: Vec2;
+  to: Vec2;
+  note?: string;
 };
 
 /* ── Layoutresultat ────────────────────────────────────────────────────── */

@@ -45,10 +45,18 @@ export const KIND_LABEL: Record<DrawnKind, string> = {
 };
 
 /** Namnger nästa objekt av samma slag: Port A, Port B, Vägg 1, Vägg 2 … */
-export function nextName(kind: DrawnKind, existing: DrawnObject[]): string {
+export function nextName(
+  kind: DrawnKind,
+  existing: DrawnObject[],
+  /** Namnet på kundens språk. Utan: svenska. */
+  t?: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   const count = existing.filter((d) => d.kind === kind).length;
-  if (kind === "door") return `Port ${String.fromCharCode(65 + count)}`;
-  return `${KIND_LABEL[kind]} ${count + 1}`;
+  if (kind === "door") {
+    const letter = String.fromCharCode(65 + count);
+    return t ? t("draw.door", { letter }) : `Port ${letter}`;
+  }
+  return t ? t(`draw.${kind}`, { n: count + 1 }) : `${KIND_LABEL[kind]} ${count + 1}`;
 }
 
 export type PlanWall = { name?: string; from: Vec2; to: Vec2 };

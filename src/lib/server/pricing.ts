@@ -1,3 +1,6 @@
+import { translate } from "@/lib/i18n/translate";
+import { localizeMachine } from "@/lib/machineText";
+import type { Locale } from "@/lib/i18n/locale";
 import "server-only";
 import { BUILTIN_LIBRARY, getMachine, type MachineLibrary } from "@/lib/library";
 import { effectiveMachine } from "@/lib/solver";
@@ -77,6 +80,8 @@ export function priceConfiguration(
   priceBook: PriceBook = BUILTIN_PRICE_BOOK,
   /** Offertens justering. Kommer alltid från lagret, aldrig från klienten. */
   quoteAdjustment?: QuoteAdjustment | null,
+  /** Språket som prisraden skrivs på. Kundens val; svenska om inget anges. */
+  locale: Locale = "sv",
 ): PriceResult {
   const showPrices = canSeePrices(role);
   const lines: QuoteLine[] = [];
@@ -87,6 +92,8 @@ export function priceConfiguration(
   config.line.forEach((item, index) => {
     const machine = getMachine(item.machineId, library);
     if (!machine) return;
+    // Texterna på kundens språk; id:n och priser är desamma.
+    const text = localizeMachine(machine, locale);
     const entry = priceBook.entries[machine.id];
     if (!entry) return;
 
@@ -104,8 +111,8 @@ export function priceConfiguration(
      * ett pris som inte finns. Saknas posten används grundpriset, så ett nytt
      * utförande fungerar innan prissättningen är gjord.
      */
-    const variant = (machine.variants ?? []).find(
-      (v) => v.id === (item.variantId ?? machine.variants?.[0]?.id),
+    const variant = (text.variants ?? []).find(
+      (v) => v.id === (item.variantId ?? text.variants?.[0]?.id),
     );
     const variantPrice = variant ? entry.variants?.[variant.id] : undefined;
     const basePrice = variantPrice ?? { list: entry.list, cost: entry.cost };
@@ -123,7 +130,7 @@ export function priceConfiguration(
     // Kundens parametrar kan bära pris: per enhet, per val eller vid påslag.
     const parameterLines: string[] = [];
     let parametersPrice = 0;
-    for (const parameter of machine.parameters ?? []) {
+    for (const parameter of text.parameters ?? []) {
       const raw = item.parameters?.[parameter.id];
 
       if (parameter.type === "number") {
@@ -145,7 +152,7 @@ export function priceConfiguration(
 
       const value = typeof raw === "boolean" ? raw : (parameter.defaultBoolean ?? false);
       if (value) parametersPrice += parameter.priceWhenTrue ?? 0;
-      parameterLines.push(`${parameter.label}: ${value ? "Ja" : "Nej"}`);
+      parameterLines.push(`${parameter.label}: ${translate(locale, value ? "quote.yes" : "quote.no")}`);
     }
 
     const listPrice = basePrice.list + lengthPrice;
@@ -164,10 +171,11 @@ export function priceConfiguration(
       pos: index + 1,
       machineId: machine.id,
       sku: machine.sku,
-      name: variant ? `${machine.name} – ${variant.name}` : machine.name,
+      // Namnet på kundens språk, med admins översättning om den finns.
+      name: variant ? `${text.name} – ${variant.name}` : text.name,
       quantity: 1,
       optionNames: item.selectedOptions
-        .map((id) => machine.options.find((o) => o.id === id)?.name)
+        .map((id) => text.options.find((o) => o.id === id)?.name)
         .filter((n): n is string => !!n),
       parameterLines,
       ...(item.note ? { note: item.note } : {}),
@@ -222,7 +230,7 @@ export function priceConfiguration(
     // pris som totalen och lämnar servern bara till den som får se belopp.
     adjustment: showPrices && adjusted.applied ? adjusted : null,
     note: showPrices
-      ? `Listpris enligt ${priceBook.name}, exkl. moms. Montage och styr ingår som påslag.`
-      : "Pris lämnas av INKAB. Kontakta oss för offert.",
+      ? translate(locale, "quote.priceNote", { book: priceBook.name })
+      : translate(locale, "quote.priceNoteGuest"),
   };
 }

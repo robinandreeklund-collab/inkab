@@ -47,8 +47,13 @@ export function Topbar({
         />
       </button>
 
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="kicker text-paper/50">{t("top.project")}</span>
+      {/*
+        * Sidhuvudet byter inte form med språket: varje knapp har en fast bredd
+        * som rymmer den längsta översättningen, och projektnamnet tar det som
+        * blir över. Annars hoppar knapparna i sidled varje gång man byter språk.
+        */}
+      <div className="flex min-w-0 flex-1 items-baseline gap-2">
+        <span className="kicker w-[56px] flex-none text-paper/50">{t("top.project")}</span>
         <input
           value={config.projectName}
           onChange={(e) => update((d) => void (d.projectName = e.target.value))}
@@ -59,13 +64,13 @@ export function Topbar({
 
       <a
         href="tel:+46705701760"
-        className="ml-auto hidden items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
+        className="hidden flex-none items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
       >
-        <span className="kicker text-paper/50">{t("top.questions")}</span>
+        <span className="kicker w-[72px] text-right text-paper/50">{t("top.questions")}</span>
         <span className="num text-sm">+46 70-570 17 60</span>
       </a>
 
-      <div className="flex items-center gap-2 lg:ml-0">
+      <div className="flex flex-none items-center gap-2">
         <button
           onClick={undo}
           disabled={past.length === 0}
@@ -101,20 +106,24 @@ export function Topbar({
             { value: "model", label: t("top.view.model") },
           ]}
           onChange={setView}
+          optionClassName="w-[56px] text-center"
         />
 
-        <button
-          onClick={() => setHistoryOpen(true)}
-          title={t("top.historyTitle")}
-          className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
-        >
-          {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
-        </button>
+        {/* Historiken hör till ett konto: en gäst har inget projekt att gå tillbaka i. */}
+        {user ? (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            title={t("top.historyTitle")}
+            className="w-[112px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+          >
+            {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
+          </button>
+        ) : null}
 
         {user?.role === "admin" ? (
           <a
             href="/admin"
-            className="inline-flex items-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+            className="inline-flex w-[72px] items-center justify-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             Admin
           </a>
@@ -124,20 +133,20 @@ export function Topbar({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setProposalsOpen(true)}
-              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+              className="w-[136px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
               {t("top.myProposals")}
             </button>
-            <span className="hidden text-right leading-tight sm:block">
-              <span className="block text-xs text-paper">{user.name || user.email}</span>
-              <span className="kicker text-paper/50">{t(`role.${user.role}`)}</span>
+            <span className="hidden w-[120px] text-right leading-tight sm:block">
+              <span className="block truncate text-xs text-paper">{user.name || user.email}</span>
+              <span className="kicker block truncate text-paper/50">{t(`role.${user.role}`)}</span>
             </span>
             <button
               onClick={async () => {
                 await fetch("/api/auth/logout", { method: "POST" });
                 onUserChange(null);
               }}
-              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+              className="w-[100px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
               {t("top.logOut")}
             </button>
@@ -145,14 +154,14 @@ export function Topbar({
         ) : (
           <button
             onClick={() => setAuthOpen(true)}
-            className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+            className="w-[100px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             {t("top.logIn")}
           </button>
         )}
       </div>
 
-      {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
+      {historyOpen && user ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
 
       {proposalsOpen ? (
         <ProposalDialog

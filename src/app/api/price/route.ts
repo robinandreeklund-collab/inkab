@@ -5,6 +5,7 @@ import { currentRole, currentUser } from "@/lib/server/session";
 import { activeContext } from "@/lib/server/context";
 import { proposalAdjustment } from "@/lib/server/store";
 import type { Configuration } from "@/lib/types";
+import { isLocale } from "@/lib/i18n/locale";
 
 export const runtime = "nodejs";
 
@@ -21,10 +22,12 @@ export async function POST(request: Request) {
 
   // Klienten skickar antingen konfigurationen rakt av, som förut, eller
   // konfigurationen tillsammans med id:t på offerten den hör till.
-  const wrapped: { config: unknown; proposalId?: unknown } =
+  const wrapped: { config: unknown; proposalId?: unknown; locale?: unknown } =
     body && typeof body === "object" && "config" in body
-      ? (body as { config: unknown; proposalId?: unknown })
+      ? (body as { config: unknown; proposalId?: unknown; locale?: unknown })
       : { config: body };
+  // Prisraden skrivs på kundens språk. Okänt språk blir svenska.
+  const locale = isLocale(wrapped.locale) ? wrapped.locale : "sv";
 
   const parsed = configurationSchema.safeParse(wrapped.config);
   if (!parsed.success) {
@@ -45,6 +48,6 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json(
-    priceConfiguration(parsed.data as Configuration, role, library, priceBook, adjustment),
+    priceConfiguration(parsed.data as Configuration, role, library, priceBook, adjustment, locale),
   );
 }

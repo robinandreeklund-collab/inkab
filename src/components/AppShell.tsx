@@ -2,21 +2,19 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { useT } from "@/lib/i18n";
+import { useLocale, useT } from "@/lib/i18n";
 import { AiPanel } from "./AiPanel";
 import { CadView } from "./CadView";
 import { ShareNotice } from "./ShareNotice";
 import { ModelView } from "./ModelView";
 import { DiagnosticsPanel } from "./DiagnosticsPanel";
 import { DraftJobWatcher } from "./DraftJobWatcher";
-import { Inspector } from "./Inspector";
-import { LineStrip } from "./LineStrip";
 import { Onboarding } from "./Onboarding";
 import { QuoteView } from "./QuoteView";
-import { Sidebar } from "./Sidebar";
+import { NavMenu } from "./NavMenu";
+import { AreaPanel } from "./AreaPanel";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
-import { GettingStarted } from "./GettingStarted";
 import { Button, Tip } from "./ui";
 import { toolHelp } from "./toolHelp";
 import type { PriceResult, Role } from "@/lib/server/pricing";
@@ -46,6 +44,8 @@ export function AppShell() {
     proposalId,
   } = useConfigStore();
 
+  const t = useT();
+  const locale = useLocale();
   const [user, setUser] = useState<SessionUser | null>(null);
   const role: Role = user?.role ?? "guest";
   // /admin skickar hit besökare som saknar behörighet; öppna inloggningen direkt.
@@ -66,9 +66,12 @@ export function AppShell() {
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data?.machines?.length) useConfigStore.getState().setLibrary(data.machines);
+        else useConfigStore.setState({ libraryLoaded: true });
       })
       .catch(() => {
-        // Servern är inte nåbar — det inbyggda biblioteket duger.
+        // Servern är inte nåbar — det inbyggda biblioteket duger. Säg ändå
+        // att biblioteket är klart, annars väntar startsidans mallar för evigt.
+        useConfigStore.setState({ libraryLoaded: true });
       });
   }, []);
 
@@ -89,7 +92,7 @@ export function AppShell() {
         headers: { "Content-Type": "application/json" },
         // Offertens id följer med så att serverns pris blir offertens pris,
         // rabatten inräknad. Konfigurationen ensam vet inget om affären.
-        body: JSON.stringify({ config, proposalId }),
+        body: JSON.stringify({ config, proposalId, locale }),
       })
         .then((r) => (r.ok ? r.json() : null))
         .then((data) => {
@@ -100,7 +103,7 @@ export function AppShell() {
         });
     }, 250);
     return () => clearTimeout(timer);
-  }, [config, user, proposalId]);
+  }, [config, user, proposalId, locale]);
 
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
@@ -173,12 +176,15 @@ export function AppShell() {
         case "backspace":
           if (!selectedId) break;
           if (config.drawn.some((d) => d.id === selectedId)) removeDrawn(selectedId);
-          else removeItem(selectedId);
+          else if (config.dimensions?.some((d) => d.id === selectedId)) {
+            useConfigStore.getState().removeDimension(selectedId);
+          } else removeItem(selectedId);
           break;
       }
     },
     [
       config.drawn,
+      config.dimensions,
       config.line,
       redo,
       removeDrawn,
@@ -248,30 +254,30 @@ export function AppShell() {
         />
 
       <div className="flex min-h-0 flex-1">
-        <Sidebar />
+        <NavMenu />
 
         <main className="relative flex min-w-0 flex-1 flex-col">
           <div className="relative min-h-0 flex-1">
             <ShareNotice />
             {view === "model" ? <ModelView /> : <CadView />}
-            {view === "model" ? null : <GettingStarted />}
             <DraftJobWatcher />
             <DiagnosticsPanel />
-            <AiPanel />
-            <ToolRail />
+            {/* Assistenten kostar per fråga och är till för kunder med konto. */}
+            {user ? <AiPanel /> : null}
+            {/* Ritverktygen hör till planvyn; modellvyn har sin egen kamerakontroll där. */}
+            {view === "model" ? null : <ToolRail />}
           </div>
-          <LineStrip />
         </main>
 
         {inspectorOpen ? (
-          <Inspector price={price} role={role} />
+          <AreaPanel price={price} role={role} />
         ) : (
           <button
             onClick={toggleInspector}
             className="kicker w-8 flex-none border-l border-divider bg-white hover:bg-paper"
             style={{ writingMode: "vertical-rl" }}
           >
-            Inspektor
+            {t("area.panel")}
           </button>
         )}
       </div>

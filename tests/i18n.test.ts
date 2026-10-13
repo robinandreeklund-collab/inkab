@@ -90,3 +90,20 @@ describe("regelverket talar kundens språk", () => {
     expect(text("de").detail).toContain("Rullbana");
   });
 });
+
+describe("namn som blir data skapas på kundens språk", () => {
+  it("en mall på tyska får tyskt projektnamn, tysk hämtzon och tysk port", async () => {
+    const { templateConfig, emptyConfig } = await import("@/lib/templates");
+    const { BUILTIN_LIBRARY } = await import("@/lib/library");
+    const de = (key: string, vars?: Record<string, string | number>) => translate("de", key, vars);
+    const config = templateConfig("strolinje", BUILTIN_LIBRARY, de);
+    expect(config.projectName).toBe("Stapelleistenleger – einfach — Vorstudie");
+    expect(config.drawn.map((d) => d.name)).toEqual(["Abholzone Auslagerung", "Tor A"]);
+    expect(emptyConfig(de).projectName).toBe("Neue Anlage");
+  });
+
+  it("utan översättare är det svenska som förut", async () => {
+    const { templateConfig } = await import("@/lib/templates");
+    expect(templateConfig("strolinje").projectName).toBe("Truckströläggning – enkel — förstudie");
+  });
+});

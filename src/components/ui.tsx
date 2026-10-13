@@ -57,11 +57,14 @@ export function Segmented<T extends string>({
   options,
   onChange,
   ariaLabel,
+  optionClassName,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   ariaLabel: string;
+  /** T.ex. en fast bredd, så att knapparna inte flyttar sig när etiketten byter språk. */
+  optionClassName?: string;
 }) {
   return (
     <div role="radiogroup" aria-label={ariaLabel} className="flex border border-divider bg-white">
@@ -73,6 +76,7 @@ export function Segmented<T extends string>({
           onClick={() => onChange(option.value)}
           className={cx(
             "px-2.5 py-1 text-xs transition-colors",
+            optionClassName,
             index > 0 && "border-l border-divider",
             value === option.value ? "bg-accent text-white" : "text-ink hover:bg-paper",
           )}

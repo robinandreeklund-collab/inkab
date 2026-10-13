@@ -1,7 +1,10 @@
 "use client";
 
+import { dimensionLength } from "@/lib/dimensions";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
+import { useT } from "@/lib/i18n";
+import { TopViewImage } from "./TopViewImage";
 import type { Box, Configuration, LayoutResult } from "@/lib/types";
 
 /**
@@ -28,6 +31,7 @@ export function QuotePlan({
   config: Configuration;
   layout: LayoutResult;
 }) {
+  const t = useT();
   const hall: Box = { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
 
   const boxes: Box[] = [hall, layout.bounds];
@@ -61,7 +65,7 @@ export function QuotePlan({
         className="block w-full"
         style={{ aspectRatio: `${view.l} / ${view.w}` }}
         role="img"
-        aria-label={`Planritning över ${config.projectName}`}
+        aria-label={t("quote.planOf", { name: config.projectName })}
       >
         <defs>
           <pattern
@@ -148,7 +152,7 @@ export function QuotePlan({
                 className="num"
                 {...text(16)}
               >
-                {d.name || (d.kind === "truck" ? "Truckgata" : "Spärrad yta")}
+                {d.name || (d.kind === "truck" ? t("tool.truck") : t("quote.legend.nogo"))}
               </text>
             </g>
           );
@@ -184,11 +188,24 @@ export function QuotePlan({
               y={p.bbox.y}
               width={p.bbox.l}
               height={p.bbox.w}
-              fill={p.aux ? "#fff" : "#e7e7ea"}
+              fill={p.aux || p.machine.model?.glb ? "#fff" : "#e7e7ea"}
               stroke="#1d1f20"
               strokeWidth={u * 2}
               strokeDasharray={p.aux ? `${u * 8} ${u * 5}` : undefined}
             />
+            {/* Modellen ovanifrån, i gråskala för svartvit utskrift. */}
+            <TopViewImage placement={p} print />
+            {/* Positionsnumret på en vit rund platta, så att det syns ovanpå bilden. */}
+            {p.machine.model?.glb && !p.aux ? (
+              <circle
+                cx={p.bbox.x + p.bbox.l / 2}
+                cy={p.bbox.y + p.bbox.w / 2}
+                r={u * 17}
+                fill="#fff"
+                stroke="#1d1f20"
+                strokeWidth={u * 1.2}
+              />
+            ) : null}
             <text
               x={p.bbox.x + p.bbox.l / 2}
               y={p.bbox.y + p.bbox.w / 2}
@@ -198,39 +215,56 @@ export function QuotePlan({
               className="num"
               {...text(p.aux ? 15 : 22)}
             >
-              {p.aux ? shortLabel(p.machine.name) : p.pos}
+              {/* Samma korta märkning som i ritningen (MP, MAG). Hela namnet står i
+                  maskinlistan; utskrivet krockade det med grannens. */}
+              {p.aux ? p.machine.sku.split("-")[0] : p.pos}
             </text>
           </g>
         ))}
 
         <Dimensions hall={hall} view={view} u={u} />
+
+        {/* Mått kunden sparat på ritningen. */}
+        {(config.dimensions ?? []).map((d) => {
+          const length = dimensionLength(d);
+          const mid = { x: (d.from.x + d.to.x) / 2, y: (d.from.y + d.to.y) / 2 };
+          return (
+            <g key={d.id}>
+              <line x1={d.from.x} y1={d.from.y} x2={d.to.x} y2={d.to.y} stroke="#1d2d3d" strokeWidth={u * 1.6} />
+              <circle cx={d.from.x} cy={d.from.y} r={u * 3.5} fill="#1d2d3d" />
+              <circle cx={d.to.x} cy={d.to.y} r={u * 3.5} fill="#1d2d3d" />
+              <text x={mid.x} y={mid.y - u * 8} textAnchor="middle" fill="#1d2d3d" className="num" fontSize={u * 15}>
+                {(length / 1000).toFixed(2).replace(".", ",")} m{d.note ? ` · ${d.note}` : ""}
+              </text>
+            </g>
+          );
+        })}
         <ScaleBar view={view} u={u} />
       </svg>
 
       <figcaption className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
         <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-[#e7e7ea]" />}>
-          Maskin, siffran är positionen i maskinlistan
+          {t("quote.legend.machine")}
         </Legend>
         {aux.length > 0 ? (
           <Legend
             swatch={<span className="inline-block h-2 w-3 border border-dashed border-ink" />}
           >
-            Pulpet och magasin
+            {t("quote.legend.aux")}
           </Legend>
         ) : null}
         {config.drawn.some((d) => d.kind === "truck") ? (
           <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-paper" />}>
-            Truckgata
+            {t("tool.truck")}
           </Legend>
         ) : null}
         <Legend
           swatch={<span className="inline-block h-2 w-3 border border-dashed border-divider" />}
         >
-          Maskinzon — fritt utrymme som måste hållas
+          {t("quote.legend.zone")}
         </Legend>
         <span>
-          Måtten är i meter. Ritningen är genererad ur konfigurationen och ersätter inte en
-          måttsatt anläggningsritning.
+          {t("quote.legend.note")}
         </span>
       </figcaption>
     </figure>
@@ -320,9 +354,4 @@ function ScaleBar({ view, u }: { view: Box; u: number }) {
       </text>
     </g>
   );
-}
-
-/** Kortar "Manöverpulpet" till något som får plats i en liten ruta. */
-function shortLabel(name: string): string {
-  return name.length > 18 ? `${name.slice(0, 16)}…` : name;
 }

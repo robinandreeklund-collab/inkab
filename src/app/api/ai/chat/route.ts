@@ -61,6 +61,14 @@ export async function POST(request: Request) {
   }
 
   const role = await currentRole();
+  // Gäster ser inte assistenten. Ett anrop ändå — från en gammal flik eller
+  // utanför sidan — ska inte kosta en modellfråga.
+  if (role === "guest") {
+    return NextResponse.json(
+      { error: "Logga in för att fråga assistenten." },
+      { status: 401 },
+    );
+  }
   const { library, priceBook } = await activeContext();
   const provider = await activeProvider();
 

@@ -5,7 +5,7 @@ import { BUILTIN_MACHINES } from "@/lib/library";
 import type { Machine } from "@/lib/types";
 import { adjustmentLabel, applyAdjustment, normaliseAdjustment } from "@/lib/quoteAdjustment";
 import { priceConfiguration } from "@/lib/server/pricing";
-import { BUILTIN_LIBRARY } from "@/lib/library";
+import { BUILTIN_LIBRARY, makeLibrary } from "@/lib/library";
 import { BUILTIN_PRICE_BOOK } from "@/lib/server/pricebook";
 import { templateConfig } from "@/lib/templates";
 
@@ -138,5 +138,29 @@ describe("publika biblioteket bär inga priser", () => {
     expect(rensad.parametricLength?.maxMm).toBe(bana.parametricLength!.maxMm);
     expect(rensad.footprint).toEqual(bana.footprint);
     expect(rensad.ports).toEqual(bana.ports);
+  });
+});
+
+describe("offertens rader på kundens språk", () => {
+  it("visar tillval och parametrar med admins översättning", () => {
+    const config = templateConfig("strolinje");
+    const item = config.line.find((i) => {
+      const m = BUILTIN_LIBRARY.machines.find((x) => x.id === i.machineId);
+      return m && m.options.length > 0 && BUILTIN_PRICE_BOOK.entries[m.id];
+    })!;
+    const machine = BUILTIN_LIBRARY.machines.find((x) => x.id === item.machineId)!;
+    const option = machine.options[0];
+    item.selectedOptions = [option.id];
+    const library = makeLibrary(
+      BUILTIN_LIBRARY.machines.map((m) =>
+        m.id === machine.id
+          ? { ...m, translations: { de: { texts: { [`option.${option.id}`]: "Zubehör" } } } }
+          : m,
+      ),
+    );
+    const de = priceConfiguration(config, "guest", library, BUILTIN_PRICE_BOOK, null, "de");
+    const sv = priceConfiguration(config, "guest", library, BUILTIN_PRICE_BOOK, null, "sv");
+    expect(de.lines.find((l) => l.instanceId === item.instanceId)!.optionNames).toEqual(["Zubehör"]);
+    expect(sv.lines.find((l) => l.instanceId === item.instanceId)!.optionNames).toEqual([option.name]);
   });
 });

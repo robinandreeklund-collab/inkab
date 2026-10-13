@@ -141,6 +141,13 @@ export const variantSchema = z.object({
 const translationSchema = z.object({
   name: z.string().max(80).optional(),
   summary: z.string().max(400).optional(),
+  // Inställningarnas texter, se MachineTranslation. Nycklarna kommer ur
+  // maskinens egna id:n; antalet är begränsat av alternativ, utföranden och
+  // parametrar, med marginal.
+  texts: z
+    .record(z.string().min(1).max(140), z.string().max(300))
+    .refine((t) => Object.keys(t).length <= 600, "För många översatta texter.")
+    .optional(),
 });
 
 export const machineSchema = z

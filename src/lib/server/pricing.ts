@@ -92,6 +92,8 @@ export function priceConfiguration(
   config.line.forEach((item, index) => {
     const machine = getMachine(item.machineId, library);
     if (!machine) return;
+    // Texterna på kundens språk; id:n och priser är desamma.
+    const text = localizeMachine(machine, locale);
     const entry = priceBook.entries[machine.id];
     if (!entry) return;
 
@@ -109,8 +111,8 @@ export function priceConfiguration(
      * ett pris som inte finns. Saknas posten används grundpriset, så ett nytt
      * utförande fungerar innan prissättningen är gjord.
      */
-    const variant = (machine.variants ?? []).find(
-      (v) => v.id === (item.variantId ?? machine.variants?.[0]?.id),
+    const variant = (text.variants ?? []).find(
+      (v) => v.id === (item.variantId ?? text.variants?.[0]?.id),
     );
     const variantPrice = variant ? entry.variants?.[variant.id] : undefined;
     const basePrice = variantPrice ?? { list: entry.list, cost: entry.cost };
@@ -128,7 +130,7 @@ export function priceConfiguration(
     // Kundens parametrar kan bära pris: per enhet, per val eller vid påslag.
     const parameterLines: string[] = [];
     let parametersPrice = 0;
-    for (const parameter of machine.parameters ?? []) {
+    for (const parameter of text.parameters ?? []) {
       const raw = item.parameters?.[parameter.id];
 
       if (parameter.type === "number") {
@@ -150,7 +152,7 @@ export function priceConfiguration(
 
       const value = typeof raw === "boolean" ? raw : (parameter.defaultBoolean ?? false);
       if (value) parametersPrice += parameter.priceWhenTrue ?? 0;
-      parameterLines.push(`${parameter.label}: ${value ? "Ja" : "Nej"}`);
+      parameterLines.push(`${parameter.label}: ${translate(locale, value ? "quote.yes" : "quote.no")}`);
     }
 
     const listPrice = basePrice.list + lengthPrice;
@@ -170,12 +172,10 @@ export function priceConfiguration(
       machineId: machine.id,
       sku: machine.sku,
       // Namnet på kundens språk, med admins översättning om den finns.
-      name: variant
-        ? `${localizeMachine(machine, locale).name} – ${variant.name}`
-        : localizeMachine(machine, locale).name,
+      name: variant ? `${text.name} – ${variant.name}` : text.name,
       quantity: 1,
       optionNames: item.selectedOptions
-        .map((id) => machine.options.find((o) => o.id === id)?.name)
+        .map((id) => text.options.find((o) => o.id === id)?.name)
         .filter((n): n is string => !!n),
       parameterLines,
       ...(item.note ? { note: item.note } : {}),

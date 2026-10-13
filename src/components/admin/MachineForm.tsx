@@ -10,7 +10,7 @@ import { ImagePanel } from "./ImagePanel";
 import { ModelPanel } from "./ModelPanel";
 import { DocumentPanel } from "./DocumentPanel";
 import { VariantPanel } from "./VariantPanel";
-import { missingTranslations } from "@/lib/machineText";
+import { missingTranslations, translatableTexts } from "@/lib/machineText";
 import type { ModelOrientation } from "@/lib/cad/orientation";
 import {
   CheckField,
@@ -23,7 +23,7 @@ import {
   TextArea,
   TextField,
 } from "./fields";
-import type { Dir, Machine, MachineCategory, Port, Zone } from "@/lib/types";
+import type { Dir, Machine, MachineCategory, MachineTranslation, Port, Zone } from "@/lib/types";
 
 const DIRECTION_OPTIONS: { value: Dir; label: string }[] = [
   { value: "x+", label: "X+ (framåt)" },
@@ -905,49 +905,93 @@ const TRANSLATION_LANGUAGES = [
 ] as const;
 
 /**
- * Namn och kort beskrivning på engelska och tyska.
+ * Maskinens texter på engelska och tyska.
  *
- * Det svenska namnet och den svenska beskrivningen ovan är källan. Det som
- * fylls i här visas för kunder som valt språket — i katalogen, ritningen,
- * inspektorn och offerten. Ett tomt fält visar svenskan.
+ * Det svenska ovan är källan. Det som fylls i här visas för kunder som valt
+ * språket — i katalogen, ritningen, inspektorn och offerten. Utöver namn och
+ * beskrivning översätts det kunden ställer in: utföranden, tillval och
+ * parametrar med sina val. Ett tomt fält visar svenskan.
  */
 function TranslationPanel({ machine, onChange }: { machine: Machine; onChange: (m: Machine) => void }) {
-  const setField = (code: "en" | "de", field: "name" | "summary", value: string) => {
-    const current = machine.translations?.[code] ?? {};
-    const next = { ...current, [field]: value || undefined };
-    const empty = !next.name && !next.summary;
-    const translations = { ...machine.translations, [code]: empty ? undefined : next };
+  const texts = translatableTexts(machine);
+
+  const setTranslation = (code: "en" | "de", next: MachineTranslation) => {
+    const cleanTexts = Object.fromEntries(Object.entries(next.texts ?? {}).filter(([, v]) => v));
+    const tidy: MachineTranslation = {
+      ...(next.name ? { name: next.name } : {}),
+      ...(next.summary ? { summary: next.summary } : {}),
+      ...(Object.keys(cleanTexts).length ? { texts: cleanTexts } : {}),
+    };
+    const empty = Object.keys(tidy).length === 0;
+    const translations = { ...machine.translations, [code]: empty ? undefined : tidy };
     const any = Object.values(translations).some(Boolean);
     onChange({ ...machine, translations: any ? translations : undefined });
+  };
+  const setField = (code: "en" | "de", field: "name" | "summary", value: string) =>
+    setTranslation(code, { ...machine.translations?.[code], [field]: value || undefined });
+  const setText = (code: "en" | "de", key: string, value: string) => {
+    const current = machine.translations?.[code] ?? {};
+    setTranslation(code, { ...current, texts: { ...current.texts, [key]: value } });
   };
 
   return (
     <Panel
       title="Översättningar"
-      description="Namn och kort beskrivning på kundens språk. Lämnas ett fält tomt visas svenskan."
+      description="Namn, beskrivning och kundens inställningar på kundens språk. Lämnas ett fält tomt visas svenskan."
     >
-      <div className="space-y-4">
-        {TRANSLATION_LANGUAGES.map(({ code, label }) => (
-          <div key={code}>
-            <div className="kicker mb-1.5">
-              {label} · {code.toUpperCase()}
-            </div>
-            <TextField
-              label="Namn"
-              value={machine.translations?.[code]?.name ?? ""}
-              hint={machine.name}
-              onChange={(v) => setField(code, "name", v)}
-            />
-            <div className="mt-2">
-              <TextArea
-                label="Kort beskrivning"
-                value={machine.translations?.[code]?.summary ?? ""}
-                rows={2}
-                onChange={(v) => setField(code, "summary", v)}
+      <div className="space-y-5">
+        {TRANSLATION_LANGUAGES.map(({ code, label }) => {
+          const done = texts.filter((t) => machine.translations?.[code]?.texts?.[t.key]?.trim()).length;
+          return (
+            <div key={code}>
+              <div className="kicker mb-1.5">
+                {label} · {code.toUpperCase()}
+              </div>
+              <TextField
+                label="Namn"
+                value={machine.translations?.[code]?.name ?? ""}
+                hint={machine.name}
+                onChange={(v) => setField(code, "name", v)}
               />
+              <div className="mt-2">
+                <TextArea
+                  label="Kort beskrivning"
+                  value={machine.translations?.[code]?.summary ?? ""}
+                  rows={2}
+                  onChange={(v) => setField(code, "summary", v)}
+                />
+              </div>
+
+              {texts.length > 0 ? (
+                <div className="mt-3">
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <span className="kicker">Inställningar</span>
+                    <span className="num text-[11px] text-muted">
+                      {done} av {texts.length} översatta
+                    </span>
+                  </div>
+                  <div className="divide-y divide-divider border border-divider">
+                    {texts.map((t) => (
+                      <label key={t.key} className="grid grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-2 px-2 py-1.5">
+                        <span className="min-w-0">
+                          <span className="block text-[10px] uppercase tracking-wide text-muted">{t.group}</span>
+                          <span className="block truncate text-xs" title={t.sv}>{t.sv}</span>
+                        </span>
+                        <input
+                          value={machine.translations?.[code]?.texts?.[t.key] ?? ""}
+                          onChange={(e) => setText(code, t.key, e.target.value)}
+                          placeholder={t.sv}
+                          aria-label={`${t.sv} (${code.toUpperCase()})`}
+                          className="w-full border border-divider bg-white px-2 py-1 text-xs outline-none focus:border-accent"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </Panel>
   );

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { localizeMachine, missingTranslations } from "@/lib/machineText";
+import { localizeMachine, missingTranslations, textKey, translatableTexts } from "@/lib/machineText";
 import { machineSchema } from "@/lib/machineSchema";
 import { BUILTIN_LIBRARY } from "@/lib/library";
 
@@ -35,5 +35,90 @@ describe("översatta maskinnamn", () => {
       translations: { en: { name: "Roller conveyor", summary: "Driven rollers." } },
     });
     expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 3))).toBe(true);
+  });
+});
+
+describe("översatta inställningar", () => {
+  const withSettings = {
+    ...base,
+    options: [
+      { id: "o1", name: "Tillval ett" },
+      { id: "o2", name: "Tillval två" },
+    ],
+    parameters: [
+      {
+        id: "p1",
+        label: "Utförande",
+        type: "select" as const,
+        choices: [
+          { value: "a", label: "Val A", priceDelta: 100 },
+          { value: "b", label: "Val B" },
+        ],
+      },
+    ],
+  };
+  const option = withSettings.options[0];
+  const select = withSettings.parameters!.find((p) => p.type === "select")!;
+  const choice = select.choices![0];
+
+  const translated = {
+    ...withSettings,
+    translations: {
+      de: {
+        texts: {
+          [textKey.option(option.id)]: "Zubehör DE",
+          [textKey.paramLabel(select.id)]: "Auswahl DE",
+          [textKey.paramChoice(select.id, choice.value)]: "Wahl DE",
+        },
+      },
+    },
+  };
+
+  it("översätter tillval, parametrar och val men behåller id, värden och priser", () => {
+    const de = localizeMachine(translated, "de");
+    expect(de.options[0]).toEqual({ ...option, name: "Zubehör DE" });
+    const p = de.parameters!.find((x) => x.id === select.id)!;
+    expect(p.label).toBe("Auswahl DE");
+    expect(p.choices![0]).toEqual({ ...choice, label: "Wahl DE" });
+    expect(de.name).toBe(withSettings.name);
+  });
+
+  it("det som saknas visas på svenska", () => {
+    const en = localizeMachine(translated, "en");
+    expect(en).toBe(translated);
+    const de = localizeMachine(translated, "de");
+    if (withSettings.options[1]) expect(de.options[1].name).toBe(withSettings.options[1].name);
+    if (select.choices![1]) expect(de.parameters!.find((x) => x.id === select.id)!.choices![1].label).toBe(select.choices![1].label);
+  });
+
+  it("listar alla texter för admin och räknar språket ofullständigt tills de finns", () => {
+    const keys = translatableTexts(withSettings).map((t) => t.key);
+    expect(keys).toContain(textKey.option(option.id));
+    expect(keys).toContain(textKey.paramChoice(select.id, choice.value));
+    const all = Object.fromEntries(keys.map((k) => [k, "x"]));
+    const complete = { ...withSettings, translations: { en: { name: "N", texts: all } } };
+    expect(missingTranslations(complete)).toEqual(["de"]);
+    expect(missingTranslations({ ...complete, translations: { en: { name: "N" } } })).toEqual(["en", "de"]);
+  });
+
+  it("admins schema tar emot inställningarnas texter", () => {
+    const parsed = machineSchema.safeParse(translated);
+    expect(parsed.success, JSON.stringify(parsed.error?.issues?.slice(0, 3))).toBe(true);
+  });
+});
+
+describe("enheter", () => {
+  it("räknas inte som saknade", () => {
+    const machine = {
+      ...base,
+      options: [],
+      variants: undefined,
+      parameters: [{ id: "t", label: "Takt", type: "number" as const, unit: "mm" }],
+      translations: {
+        en: { name: "N", texts: { [textKey.paramLabel("t")]: "Rate" } },
+        de: { name: "N", texts: { [textKey.paramLabel("t")]: "Takt" } },
+      },
+    };
+    expect(missingTranslations(machine)).toEqual([]);
   });
 });

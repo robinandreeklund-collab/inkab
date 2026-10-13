@@ -212,8 +212,15 @@ export type Machine = {
   datasheetUrl?: string;
 };
 
-/** En maskins namn och korta beskrivning på ett annat språk. */
-export type MachineTranslation = { name?: string; summary?: string };
+/**
+ * En maskins texter på ett annat språk: namn, kort beskrivning och det kunden
+ * ställer in när maskinen är vald. Inställningarna står i texts med en nyckel
+ * per text, se lib/machineText.ts:
+ *   option.<id>, variant.<id>,
+ *   param.<id>.label, param.<id>.help, param.<id>.unit,
+ *   param.<id>.choice.<värde>
+ */
+export type MachineTranslation = { name?: string; summary?: string; texts?: Record<string, string> };
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
 

@@ -4,6 +4,7 @@ import { dimensionLength } from "@/lib/dimensions";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
 import { useT } from "@/lib/i18n";
+import { TopViewImage } from "./TopViewImage";
 import type { Box, Configuration, LayoutResult } from "@/lib/types";
 
 /**
@@ -187,11 +188,24 @@ export function QuotePlan({
               y={p.bbox.y}
               width={p.bbox.l}
               height={p.bbox.w}
-              fill={p.aux ? "#fff" : "#e7e7ea"}
+              fill={p.aux || p.machine.model?.glb ? "#fff" : "#e7e7ea"}
               stroke="#1d1f20"
               strokeWidth={u * 2}
               strokeDasharray={p.aux ? `${u * 8} ${u * 5}` : undefined}
             />
+            {/* Modellen ovanifrån, i gråskala för svartvit utskrift. */}
+            <TopViewImage placement={p} print />
+            {/* Positionsnumret på en vit rund platta, så att det syns ovanpå bilden. */}
+            {p.machine.model?.glb && !p.aux ? (
+              <circle
+                cx={p.bbox.x + p.bbox.l / 2}
+                cy={p.bbox.y + p.bbox.w / 2}
+                r={u * 17}
+                fill="#fff"
+                stroke="#1d1f20"
+                strokeWidth={u * 1.2}
+              />
+            ) : null}
             <text
               x={p.bbox.x + p.bbox.l / 2}
               y={p.bbox.y + p.bbox.w / 2}
@@ -201,7 +215,9 @@ export function QuotePlan({
               className="num"
               {...text(p.aux ? 15 : 22)}
             >
-              {p.aux ? shortLabel(p.machine.name) : p.pos}
+              {/* Samma korta märkning som i ritningen (MP, MAG). Hela namnet står i
+                  maskinlistan; utskrivet krockade det med grannens. */}
+              {p.aux ? p.machine.sku.split("-")[0] : p.pos}
             </text>
           </g>
         ))}
@@ -338,9 +354,4 @@ function ScaleBar({ view, u }: { view: Box; u: number }) {
       </text>
     </g>
   );
-}
-
-/** Kortar "Manöverpulpet" till något som får plats i en liten ruta. */
-function shortLabel(name: string): string {
-  return name.length > 18 ? `${name.slice(0, 16)}…` : name;
 }

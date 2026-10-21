@@ -1,4 +1,10 @@
 import { z } from "zod";
+import { migrateDrawn } from "./zones";
+import { MAX_DIMENSIONS } from "./dimensions";
+import { HALL_LIMITS, PRODUCT_LIMITS } from "./limits";
+
+const bounded = ([min, max]: readonly [number, number]) =>
+  z.number().int().min(min).max(max);
 
 /** Serverns validering av inkommande konfiguration. Klienten är aldrig betrodd. */
 
@@ -15,26 +21,42 @@ export const lineItemSchema = z.object({
    * släpper igenom okända nycklar utan att ta med dem vidare.
    */
   pos: vec2.optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  rotation: z
+    .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+    .optional(),
   mirrored: z.boolean().optional(),
   lengthMm: z.number().int().min(100).max(60000).optional(),
   selectedOptions: z.array(z.string().max(64)).max(12),
   parameters: z
-    .record(z.string().max(64), z.union([z.string().max(200), z.number().finite(), z.boolean()]))
+    .record(
+      z.string().max(64),
+      z.union([z.string().max(200), z.number().finite(), z.boolean()]),
+    )
     .optional(),
   note: z.string().max(1000).optional(),
 });
 
-export const drawnSchema = z.object({
-  id: z.string().min(1).max(64),
-  kind: z.enum(["wall", "door", "truck", "nogo"]),
-  name: z.string().max(120),
-  x: z.number().finite(),
-  y: z.number().finite(),
-  l: z.number().finite().nonnegative(),
-  w: z.number().finite().nonnegative(),
-  h: z.number().finite().nonnegative(),
-});
+/*
+ * Ritade objekt, med de gamla typerna kvar i ingången.
+ *
+ * `truck` och `nogo` var egna objekttyper innan zonerna blev en katalog, och
+ * de finns kvar i delningslänkar och i sparade offerter. Schemat släpper in
+ * dem och låter migreringen göra dem till zoner, så att ett underlag sparat
+ * i våras fortfarande öppnas — och så att resten av koden bara möter zoner.
+ */
+export const drawnSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    kind: z.enum(["wall", "door", "zone", "truck", "nogo"]),
+    zone: z.string().max(32).optional(),
+    name: z.string().max(120),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    l: z.number().finite().nonnegative(),
+    w: z.number().finite().nonnegative(),
+    h: z.number().finite().nonnegative(),
+  })
+  .transform(migrateDrawn);
 
 export const flowSchema = z.object({
   truckPickupSide: z.enum(["right", "left"]),
@@ -67,19 +89,19 @@ export const configurationSchema = z.object({
     })
     .optional(),
   hall: z.object({
-    lengthMm: z.number().int().min(5000).max(300000),
-    widthMm: z.number().int().min(5000).max(150000),
-    clearHeightMm: z.number().int().min(2000).max(30000),
+    lengthMm: bounded(HALL_LIMITS.lengthMm),
+    widthMm: bounded(HALL_LIMITS.widthMm),
+    clearHeightMm: bounded(HALL_LIMITS.clearHeightMm),
   }),
   flow: flowSchema,
   product: z
     .object({
-      packageLengthMm: z.number().int().min(500).max(12000),
-      packageWidthMinMm: z.number().int().min(200).max(4000),
-      packageWidthMaxMm: z.number().int().min(200).max(4000),
-      packageHeightMm: z.number().int().min(100).max(4000),
-      packageWeightKg: z.number().int().min(1).max(20000),
-      targetPackagesPerHour: z.number().int().min(1).max(200),
+      packageLengthMm: bounded(PRODUCT_LIMITS.packageLengthMm),
+      packageWidthMinMm: bounded(PRODUCT_LIMITS.packageWidthMinMm),
+      packageWidthMaxMm: bounded(PRODUCT_LIMITS.packageWidthMaxMm),
+      packageHeightMm: bounded(PRODUCT_LIMITS.packageHeightMm),
+      packageWeightKg: bounded(PRODUCT_LIMITS.packageWeightKg),
+      targetPackagesPerHour: bounded(PRODUCT_LIMITS.targetPackagesPerHour),
     })
     .refine((p) => p.packageWidthMinMm <= p.packageWidthMaxMm, {
       message: "Minsta virkesbredd får inte överstiga den största.",
@@ -87,6 +109,17 @@ export const configurationSchema = z.object({
     }),
   line: z.array(lineItemSchema).max(40),
   drawn: z.array(drawnSchema).max(80),
+  dimensions: z
+    .array(
+      z.object({
+        id: z.string().min(1).max(64),
+        from: vec2,
+        to: vec2,
+        note: z.string().max(200).optional(),
+      }),
+    )
+    .max(MAX_DIMENSIONS)
+    .optional(),
 });
 
 export type ValidatedConfiguration = z.infer<typeof configurationSchema>;

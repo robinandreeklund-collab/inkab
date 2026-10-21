@@ -26,6 +26,15 @@ type Row = {
   ownerName: string | null;
   projectName: string;
   customer: { company?: string; contact?: string; site?: string } | null;
+  /** Satt när kunden skickat in offerten själv, via sista steget. */
+  contact: {
+    name: string;
+    email: string;
+    company?: string;
+    phone?: string;
+    message?: string;
+    submittedAt: string;
+  } | null;
   machineCount: number;
   totalLengthMm: number;
   errorCount: number;
@@ -49,7 +58,8 @@ const STATUS_TONE: Record<Status, "muted" | "accent" | "warn" | "danger"> = {
   lost: "warn",
 };
 
-const sek = (value: number) => `${Math.round(value).toLocaleString("sv-SE")} kr`;
+const sek = (value: number) =>
+  `${Math.round(value).toLocaleString("sv-SE")} kr`;
 
 export function QuotesPanel() {
   const [rows, setRows] = useState<Row[]>([]);
@@ -113,13 +123,17 @@ export function QuotesPanel() {
       return;
     }
     setRows((current) =>
-      current.map((row) => (row.id === id ? { ...row, ...result.proposal } : row)),
+      current.map((row) =>
+        row.id === id ? { ...row, ...result.proposal } : row,
+      ),
     );
     setError(null);
   };
 
   const remove = async (id: string) => {
-    await fetch(`/api/admin/proposals?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+    await fetch(`/api/admin/proposals?id=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
     setRows((current) => current.filter((row) => row.id !== id));
   };
 
@@ -127,7 +141,9 @@ export function QuotesPanel() {
     () => ({
       count: shown.length,
       value: shown.reduce((sum, row) => sum + row.finalSek, 0),
-      won: shown.filter((row) => row.status === "won").reduce((sum, row) => sum + row.finalSek, 0),
+      won: shown
+        .filter((row) => row.status === "won")
+        .reduce((sum, row) => sum + row.finalSek, 0),
     }),
     [shown],
   );
@@ -143,7 +159,9 @@ export function QuotesPanel() {
       }
     >
       {error ? (
-        <p className="mb-3 border border-danger px-2 py-1 text-xs text-danger">{error}</p>
+        <p className="mb-3 border border-danger px-2 py-1 text-xs text-danger">
+          {error}
+        </p>
       ) : null}
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -159,7 +177,9 @@ export function QuotesPanel() {
               key={value}
               onClick={() => setFilter(value)}
               className={`kicker border px-2 py-1 ${
-                filter === value ? "border-accent bg-accent text-white" : "border-divider"
+                filter === value
+                  ? "border-accent bg-accent text-white"
+                  : "border-divider"
               }`}
             >
               {value === "all" ? "Alla" : STATUS_LABEL[value]}
@@ -167,7 +187,8 @@ export function QuotesPanel() {
           ))}
         </div>
         <span className="ml-auto text-[11px] text-muted">
-          {totals.count} offerter · summa <span className="num">{sek(totals.value)}</span>
+          {totals.count} offerter · summa{" "}
+          <span className="num">{sek(totals.value)}</span>
           {totals.won > 0 ? (
             <>
               {" "}
@@ -186,9 +207,14 @@ export function QuotesPanel() {
       ) : (
         <ul className="text-xs">
           {shown.map((row) => (
-            <li key={row.id} className="border-t border-divider py-2 first:border-0">
+            <li
+              key={row.id}
+              className="border-t border-divider py-2 first:border-0"
+            >
               <div className="flex flex-wrap items-center gap-2">
-                <Tag tone={STATUS_TONE[row.status]}>{STATUS_LABEL[row.status]}</Tag>
+                <Tag tone={STATUS_TONE[row.status]}>
+                  {STATUS_LABEL[row.status]}
+                </Tag>
                 <span className="text-[13px]">{row.name}</span>
                 <span className="num text-muted">{row.reference}</span>
                 <span className="text-muted">
@@ -198,7 +224,9 @@ export function QuotesPanel() {
                 <span className="num ml-auto">
                   {row.finalSek !== row.listSek ? (
                     <>
-                      <span className="text-muted line-through">{sek(row.listSek)}</span>{" "}
+                      <span className="text-muted line-through">
+                        {sek(row.listSek)}
+                      </span>{" "}
                       <span className="text-accent">{sek(row.finalSek)}</span>
                     </>
                   ) : (
@@ -214,12 +242,49 @@ export function QuotesPanel() {
               </div>
 
               <div className="mt-1 text-muted">
-                {new Date(row.updatedAt).toLocaleString("sv-SE")} · {row.machineCount} maskiner ·{" "}
+                {new Date(row.updatedAt).toLocaleString("sv-SE")} ·{" "}
+                {row.machineCount} maskiner ·{" "}
                 {(row.totalLengthMm / 1000).toFixed(1).replace(".", ",")} m
                 {row.errorCount > 0 ? ` · ${row.errorCount} fel` : ""}
                 {row.warningCount > 0 ? ` · ${row.warningCount} varningar` : ""}
-                {row.logCount > 0 ? ` · ${row.logCount} händelser i historiken` : ""}
+                {row.logCount > 0
+                  ? ` · ${row.logCount} händelser i historiken`
+                  : ""}
               </div>
+
+              {/*
+                Inskickat av kunden, framme utan att behöva öppna raden.
+                En offert som kommit in väntar på ett svar, och vem som
+                väntar är det första säljaren behöver veta.
+              */}
+              {row.contact ? (
+                <div className="mt-1 border-l-2 border-accent pl-2 text-[11px] leading-relaxed">
+                  <span className="kicker">Inskickat av kunden</span>
+                  <div>
+                    {row.contact.name}
+                    {row.contact.company
+                      ? ` · ${row.contact.company}`
+                      : ""} ·{" "}
+                    <a
+                      href={`mailto:${row.contact.email}`}
+                      className="text-accent hover:underline"
+                    >
+                      {row.contact.email}
+                    </a>
+                    {row.contact.phone ? ` · ${row.contact.phone}` : ""} ·{" "}
+                    <span className="num">
+                      {new Date(row.contact.submittedAt).toLocaleString(
+                        "sv-SE",
+                      )}
+                    </span>
+                  </div>
+                  {row.contact.message ? (
+                    <p className="mt-0.5 whitespace-pre-wrap text-muted">
+                      {row.contact.message}
+                    </p>
+                  ) : null}
+                </div>
+              ) : null}
 
               {open === row.id ? (
                 <QuoteEditor
@@ -247,8 +312,12 @@ function QuoteEditor({
   onRemove: () => void;
 }) {
   const [name, setName] = useState(row.name);
-  const [discount, setDiscount] = useState(String(row.adjustment.discountPercent ?? ""));
-  const [fixed, setFixed] = useState(String(row.adjustment.fixedTotalSek ?? ""));
+  const [discount, setDiscount] = useState(
+    String(row.adjustment.discountPercent ?? ""),
+  );
+  const [fixed, setFixed] = useState(
+    String(row.adjustment.fixedTotalSek ?? ""),
+  );
   const [note, setNote] = useState(row.adjustment.note ?? "");
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
@@ -322,14 +391,15 @@ function QuoteEditor({
         Listpris <span className="num">{sek(preview.listSek)}</span> ·{" "}
         {preview.applied ? (
           <>
-            att betala <span className="num text-accent">{sek(preview.finalSek)}</span>, avdrag{" "}
-            <span className="num">{sek(preview.deltaSek)}</span>
+            att betala{" "}
+            <span className="num text-accent">{sek(preview.finalSek)}</span>,
+            avdrag <span className="num">{sek(preview.deltaSek)}</span>
           </>
         ) : (
           "ingen justering"
         )}
-        . Ett avtalat totalpris går före avdraget. Justeringen gäller bara den här offerten och
-        rör inte prisboken.
+        . Ett avtalat totalpris går före avdraget. Justeringen gäller bara den
+        här offerten och rör inte prisboken.
       </p>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -366,7 +436,12 @@ function QuoteEditor({
             </Button>
           </>
         ) : (
-          <Button size="sm" variant="ghost" className="ml-auto" onClick={() => setConfirm(true)}>
+          <Button
+            size="sm"
+            variant="ghost"
+            className="ml-auto"
+            onClick={() => setConfirm(true)}
+          >
             Ta bort
           </Button>
         )}

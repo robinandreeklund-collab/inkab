@@ -20,8 +20,7 @@ export function Topbar({
   autoOpenLogin?: boolean;
   onLoginHandled?: () => void;
 }) {
-  const { config, view, past, future, setView, undo, redo, update, setScreen } =
-    useConfigStore();
+  const { config, past, future, undo, redo, update, setScreen } = useConfigStore();
   const locale = useLocale();
   const setLocale = useConfigStore((s) => s.setLocale);
   const t = useT();
@@ -47,25 +46,59 @@ export function Topbar({
         />
       </button>
 
-      <div className="flex min-w-0 items-baseline gap-2">
-        <span className="kicker text-paper/50">{t("top.project")}</span>
-        <input
-          value={config.projectName}
-          onChange={(e) => update((d) => void (d.projectName = e.target.value))}
-          aria-label={t("top.projectName")}
-          className="min-w-0 max-w-[280px] border-b border-transparent bg-transparent text-sm text-paper outline-none hover:border-paper/30 focus:border-accent"
-        />
+      {/*
+        * Sidhuvudet byter inte form med språket: varje knapp har en fast bredd
+        * som rymmer den längsta översättningen, och projektnamnet tar det som
+        * blir över. Annars hoppar knapparna i sidled varje gång man byter språk.
+        */}
+      {/*
+        * Namnet är ett fält, inte en rad text.
+        *
+        * Förut låg det som ren text med en osynlig understrykning. Ingen
+        * klickar på en rubrik i ett sidhuvud, och projekten hette "Nytt
+        * projekt" hela vägen till offerten. Nu har det ram, penna och en
+        * uppmaning när det är tomt — och den egentliga frågan ställs i
+        * sista steget, där namnet hamnar överst på offerten.
+        */}
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <span className="kicker w-[56px] flex-none text-paper/50">{t("top.project")}</span>
+        <label
+          title={t("top.projectNameHint")}
+          className="group flex min-w-0 max-w-[320px] flex-1 items-center gap-1.5 border border-paper/25 px-1.5 py-0.5 transition-colors focus-within:border-accent hover:border-paper/50"
+        >
+          <svg
+            width="12"
+            height="12"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.6"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="flex-none text-paper/45 group-focus-within:text-accent"
+            aria-hidden
+          >
+            <path d="M4 20h4L19 9a2.1 2.1 0 0 0-3-3L5 17z" />
+          </svg>
+          <input
+            value={config.projectName}
+            onChange={(e) => update((d) => void (d.projectName = e.target.value))}
+            aria-label={t("top.projectName")}
+            placeholder={t("top.projectNamePlaceholder")}
+            className="min-w-0 flex-1 bg-transparent text-sm text-paper outline-none placeholder:text-accent"
+          />
+        </label>
       </div>
 
       <a
         href="tel:+46705701760"
-        className="ml-auto hidden items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
+        className="hidden flex-none items-baseline gap-2 whitespace-nowrap px-2 text-paper/80 hover:text-paper lg:flex"
       >
-        <span className="kicker text-paper/50">{t("top.questions")}</span>
+        <span className="kicker w-[72px] text-right text-paper/50">{t("top.questions")}</span>
         <span className="num text-sm">+46 70-570 17 60</span>
       </a>
 
-      <div className="flex items-center gap-2 lg:ml-0">
+      <div className="flex flex-none items-center gap-2">
         <button
           onClick={undo}
           disabled={past.length === 0}
@@ -93,28 +126,21 @@ export function Topbar({
           options={LOCALES.map((code) => ({ value: code, label: LOCALE_SHORT[code] }))}
           onChange={setLocale}
         />
-        <Segmented
-          ariaLabel={t("top.view")}
-          value={view}
-          options={[
-            { value: "2d", label: "2D" },
-            { value: "model", label: t("top.view.model") },
-          ]}
-          onChange={setView}
-        />
-
-        <button
-          onClick={() => setHistoryOpen(true)}
-          title={t("top.historyTitle")}
-          className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
-        >
-          {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
-        </button>
+        {/* Historiken hör till ett konto: en gäst har inget projekt att gå tillbaka i. */}
+        {user ? (
+          <button
+            onClick={() => setHistoryOpen(true)}
+            title={t("top.historyTitle")}
+            className="w-[112px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+          >
+            {t("top.history")}{log.length > 0 ? ` (${log.length})` : ""}
+          </button>
+        ) : null}
 
         {user?.role === "admin" ? (
           <a
             href="/admin"
-            className="inline-flex items-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+            className="inline-flex w-[72px] items-center justify-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             Admin
           </a>
@@ -124,20 +150,20 @@ export function Topbar({
           <div className="flex items-center gap-2">
             <button
               onClick={() => setProposalsOpen(true)}
-              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+              className="w-[136px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
               {t("top.myProposals")}
             </button>
-            <span className="hidden text-right leading-tight sm:block">
-              <span className="block text-xs text-paper">{user.name || user.email}</span>
-              <span className="kicker text-paper/50">{t(`role.${user.role}`)}</span>
+            <span className="hidden w-[120px] text-right leading-tight sm:block">
+              <span className="block truncate text-xs text-paper">{user.name || user.email}</span>
+              <span className="kicker block truncate text-paper/50">{t(`role.${user.role}`)}</span>
             </span>
             <button
               onClick={async () => {
                 await fetch("/api/auth/logout", { method: "POST" });
                 onUserChange(null);
               }}
-              className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+              className="w-[100px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
             >
               {t("top.logOut")}
             </button>
@@ -145,14 +171,14 @@ export function Topbar({
         ) : (
           <button
             onClick={() => setAuthOpen(true)}
-            className="border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
+            className="w-[100px] whitespace-nowrap text-center border border-paper/30 px-3 py-1.5 text-sm text-paper hover:border-accent hover:bg-accent hover:text-white"
           >
             {t("top.logIn")}
           </button>
         )}
       </div>
 
-      {historyOpen ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
+      {historyOpen && user ? <HistoryDialog onClose={() => setHistoryOpen(false)} /> : null}
 
       {proposalsOpen ? (
         <ProposalDialog

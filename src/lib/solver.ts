@@ -11,6 +11,7 @@ import {
   transformDir,
   unionBox,
 } from "./geometry";
+import { isAisle } from "./zones";
 import type {
   Aisle,
   Box,
@@ -102,9 +103,11 @@ export function resolveVariant(machine: Machine, variantId?: string): Machine {
     model: variant.model ?? machine.model,
     capacity: {
       ...machine.capacity,
-      packagesPerHour: variant.packagesPerHour ?? machine.capacity.packagesPerHour,
+      packagesPerHour:
+        variant.packagesPerHour ?? machine.capacity.packagesPerHour,
     },
-    dimensionsVerified: variant.dimensionsVerified ?? machine.dimensionsVerified,
+    dimensionsVerified:
+      variant.dimensionsVerified ?? machine.dimensionsVerified,
   };
 }
 
@@ -133,10 +136,14 @@ export function effectiveMachine(
     const raw = parameters?.[parameter.id];
     const value = typeof raw === "number" ? raw : parameter.defaultNumber;
     if (typeof value !== "number" || !Number.isFinite(value)) continue;
-    if (parameter.affects === "capacity") capacity = Math.max(0, Math.round(value));
-    if (parameter.affects === "lengthMm") lengthMm = Math.max(100, Math.round(value));
-    if (parameter.affects === "widthMm") widthMm = Math.max(100, Math.round(value));
-    if (parameter.affects === "heightMm") heightMm = Math.max(100, Math.round(value));
+    if (parameter.affects === "capacity")
+      capacity = Math.max(0, Math.round(value));
+    if (parameter.affects === "lengthMm")
+      lengthMm = Math.max(100, Math.round(value));
+    if (parameter.affects === "widthMm")
+      widthMm = Math.max(100, Math.round(value));
+    if (parameter.affects === "heightMm")
+      heightMm = Math.max(100, Math.round(value));
   }
 
   for (const optId of selectedOptions) {
@@ -163,7 +170,12 @@ export function effectiveMachine(
    * Kontrollen låg förut i solvern, som valde ut vilken maskin längden
    * gällde. Längden är maskinens egen nu, så kontrollen hör hemma här.
    */
-  if (machine.parametricLength && overrideLengthMm != null && !hasVariants && !machine.model) {
+  if (
+    machine.parametricLength &&
+    overrideLengthMm != null &&
+    !hasVariants &&
+    !machine.model
+  ) {
     lengthMm = Math.min(
       machine.parametricLength.maxMm,
       Math.max(machine.parametricLength.minMm, Math.round(overrideLengthMm)),
@@ -184,7 +196,10 @@ export function effectiveMachine(
 function scaledPorts(m: EffectiveMachine) {
   const lr = m.effLengthMm / m.footprint.lengthMm;
   const wr = m.effWidthMm / m.footprint.widthMm;
-  return m.ports.map((p) => ({ ...p, pos: { x: p.pos.x * lr, y: p.pos.y * wr } }));
+  return m.ports.map((p) => ({
+    ...p,
+    pos: { x: p.pos.x * lr, y: p.pos.y * wr },
+  }));
 }
 
 /**
@@ -194,7 +209,8 @@ function scaledPorts(m: EffectiveMachine) {
 function clearanceZone(m: EffectiveMachine): Zone | null {
   const c = m.clearance;
   if (!c) return null;
-  if (c.frontMm <= 0 && c.backMm <= 0 && c.leftMm <= 0 && c.rightMm <= 0) return null;
+  if (c.frontMm <= 0 && c.backMm <= 0 && c.leftMm <= 0 && c.rightMm <= 0)
+    return null;
   return {
     type: "clearance",
     label: `Maskinzon ${m.sku}`,
@@ -210,11 +226,10 @@ function clearanceZone(m: EffectiveMachine): Zone | null {
 /** Zoner omräknade till maskinens verkliga mått. Se scaleZones. */
 function scaledZones(m: EffectiveMachine) {
   const clearance = clearanceZone(m);
-  const zones = scaleZones(
-    m.zones,
-    m.footprint,
-    { lengthMm: m.effLengthMm, widthMm: m.effWidthMm },
-  );
+  const zones = scaleZones(m.zones, m.footprint, {
+    lengthMm: m.effLengthMm,
+    widthMm: m.effWidthMm,
+  });
   return clearance ? [...zones, clearance] : zones;
 }
 
@@ -256,7 +271,11 @@ function placeAt(
     origin,
     rotation,
     mirrored,
-    size: { lengthMm: m.effLengthMm, widthMm: m.effWidthMm, heightMm: m.effHeightMm },
+    size: {
+      lengthMm: m.effLengthMm,
+      widthMm: m.effWidthMm,
+      heightMm: m.effHeightMm,
+    },
     bbox: boxToWorld({ x: 0, y: 0, l: m.effLengthMm, w: m.effWidthMm }, full),
     ports: scaledPorts(m).map((port) => ({
       id: port.id,
@@ -265,7 +284,11 @@ function placeAt(
       dir: transformDir(port.dir, opts),
       levelMm: port.levelMm,
     })),
-    zones: scaledZones(m).map((z) => ({ type: z.type, label: z.label, box: boxToWorld(z.box, full) })),
+    zones: scaledZones(m).map((z) => ({
+      type: z.type,
+      label: z.label,
+      box: boxToWorld(z.box, full),
+    })),
     capacity: m.effCapacity,
     powerKw: m.effPowerKw,
   };
@@ -288,7 +311,8 @@ export function freeSpot(
   start: Vec2,
   hall?: { lengthMm: number; widthMm: number },
 ): Vec2 {
-  if (taken.length === 0) return { x: start.x, y: Math.round(start.y - size.w / 2) };
+  if (taken.length === 0)
+    return { x: start.x, y: Math.round(start.y - size.w / 2) };
 
   const right = Math.max(...taken.map((b) => b.x + b.l));
   const x = Math.round(right + PLACEMENT_GAP_MM);
@@ -317,14 +341,12 @@ export function claimedBox(p: Placement): Box {
  * utlastningen. Båda är samma sak för motorn: en yta som ska hållas fri.
  */
 function drawnAisles(config: Configuration): Aisle[] {
-  return config.drawn
-    .filter((d) => d.kind === "truck")
-    .map((d) => ({
-      id: d.id,
-      box: { x: d.x, y: d.y, l: d.l, w: d.w },
-      label: d.name,
-      widthMm: Math.min(d.l, d.w),
-    }));
+  return config.drawn.filter(isAisle).map((d) => ({
+    id: d.id,
+    box: { x: d.x, y: d.y, l: d.l, w: d.w },
+    label: d.name,
+    widthMm: Math.min(d.l, d.w),
+  }));
 }
 
 /**
@@ -364,7 +386,11 @@ export function suggestTruckZone(
   };
 }
 
-function computeMetrics(placements: Placement[], aisles: Aisle[], bounds: Box): Metrics {
+function computeMetrics(
+  placements: Placement[],
+  aisles: Aisle[],
+  bounds: Box,
+): Metrics {
   const line = placements.filter((p) => !p.aux);
   const withCapacity = line.filter((p) => p.capacity > 0);
   const bottleneckPlacement = withCapacity.reduce<Placement | null>(
@@ -372,14 +398,18 @@ function computeMetrics(placements: Placement[], aisles: Aisle[], bounds: Box): 
     null,
   );
 
-  const area = aisles.length ? unionBox([bounds, ...aisles.map((a) => a.box)]) : bounds;
+  const area = aisles.length
+    ? unionBox([bounds, ...aisles.map((a) => a.box)])
+    : bounds;
 
   return {
     totalLengthMm: Math.round(bounds.l),
     totalWidthMm: Math.round(bounds.w),
     maxHeightMm: Math.max(0, ...placements.map((p) => p.size.heightMm)),
     footprintM2: Math.round((area.l / 1000) * (area.w / 1000)),
-    throughputPerHour: withCapacity.length ? Math.min(...withCapacity.map((p) => p.capacity)) : 0,
+    throughputPerHour: withCapacity.length
+      ? Math.min(...withCapacity.map((p) => p.capacity))
+      : 0,
     bottleneck: bottleneckPlacement
       ? {
           instanceId: bottleneckPlacement.instanceId,
@@ -387,17 +417,31 @@ function computeMetrics(placements: Placement[], aisles: Aisle[], bounds: Box): 
           capacity: bottleneckPlacement.capacity,
         }
       : null,
-    totalPowerKw: Math.round(placements.reduce((a, p) => a + p.powerKw, 0) * 10) / 10,
-    totalAirNlPerMin: placements.reduce((a, p) => a + p.machine.utilities.airNlPerMin, 0),
-    pitCount: placements.filter((p) => p.machine.foundation.pitDepthMm > 0).length,
-    leadTimeWeeks: Math.max(0, ...placements.map((p) => p.machine.leadTimeWeeks)),
+    totalPowerKw:
+      Math.round(placements.reduce((a, p) => a + p.powerKw, 0) * 10) / 10,
+    totalAirNlPerMin: placements.reduce(
+      (a, p) => a + p.machine.utilities.airNlPerMin,
+      0,
+    ),
+    pitCount: placements.filter((p) => p.machine.foundation.pitDepthMm > 0)
+      .length,
+    leadTimeWeeks: Math.max(
+      0,
+      ...placements.map((p) => p.machine.leadTimeWeeks),
+    ),
     /*
      * Arbetstiden summeras, till skillnad från leveranstiden som är den
      * längsta: maskinerna byggs efter varandra av samma verkstad, medan de
      * beställs parallellt.
      */
-    manufacturingHours: placements.reduce((h, p) => h + (p.machine.manufacturingHours ?? 0), 0),
-    assemblyHours: placements.reduce((h, p) => h + (p.machine.assemblyHours ?? 0), 0),
+    manufacturingHours: placements.reduce(
+      (h, p) => h + (p.machine.manufacturingHours ?? 0),
+      0,
+    ),
+    assemblyHours: placements.reduce(
+      (h, p) => h + (p.machine.assemblyHours ?? 0),
+      0,
+    ),
   };
 }
 
@@ -477,7 +521,9 @@ export function solveLayout(
 
   // Tillbaka till listans ordning: den styr numrering, offert och remsa.
   const order = new Map(config.line.map((i, at) => [i.instanceId, at]));
-  placements.sort((a, b) => (order.get(a.instanceId) ?? 0) - (order.get(b.instanceId) ?? 0));
+  placements.sort(
+    (a, b) => (order.get(a.instanceId) ?? 0) - (order.get(b.instanceId) ?? 0),
+  );
 
   const linePlacements = placements.filter((p) => !p.aux);
   const lineBounds = unionBox(linePlacements.map((p) => p.bbox));

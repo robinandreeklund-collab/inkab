@@ -1,3 +1,4 @@
+import { translate } from "./i18n/translate";
 /**
  * Justering av en offert.
  *
@@ -87,8 +88,14 @@ export function applyAdjustment(
 }
 
 /** Hur justeringen skrivs i offerten. */
-export function adjustmentLabel(result: AdjustmentResult): string {
-  if (result.fixedTotalSek !== null) return "Avtalat totalpris";
-  if (result.discountPercent > 0) return `Avdrag ${String(result.discountPercent).replace(".", ",")} %`;
-  return "Justering";
+export function adjustmentLabel(
+  result: AdjustmentResult,
+  t: (key: string, vars?: Record<string, string | number>) => string = (key, vars) =>
+    translate("sv", key, vars),
+): string {
+  if (result.fixedTotalSek !== null) return t("quote.adjust.fixed");
+  if (result.discountPercent > 0) {
+    return t("quote.adjust.discount", { percent: String(result.discountPercent).replace(".", ",") });
+  }
+  return t("quote.adjust.other");
 }

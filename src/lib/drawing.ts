@@ -1,4 +1,5 @@
 import { closeCorners, fitDoorToWall, WALL_THICKNESS_MM } from "./walls";
+import { isZoneId, zoneDef, type ZoneId } from "./zones";
 import type { Box, DrawnKind, DrawnObject, Vec2 } from "./types";
 
 /**
@@ -40,21 +41,59 @@ const MARKING_HEIGHT_MM = 0;
 export const KIND_LABEL: Record<DrawnKind, string> = {
   wall: "Vägg",
   door: "Port",
-  truck: "Truckzon",
-  nogo: "No-go-zon",
+  zone: "Zon",
 };
 
-/** Namnger nästa objekt av samma slag: Port A, Port B, Vägg 1, Vägg 2 … */
-export function nextName(kind: DrawnKind, existing: DrawnObject[]): string {
+/** Zonsorternas svenska namn, för det assistenten själv ritar upp. */
+export const ZONE_LABEL_SV: Record<ZoneId, string> = {
+  truck: "Truckzon",
+  nogo: "Spärrad yta",
+  storage: "Lageryta",
+  operator: "Operatörsplats",
+  service: "Serviceyta",
+  electrical: "Elcentral",
+  foundation: "Fundament",
+  other: "Zon",
+};
+
+/**
+ * Namnger nästa objekt av samma slag: Port A, Port B, Vägg 1, Truckzon 2 …
+ *
+ * Zoner räknas per sort, inte per objekt: den andra lagerytan heter
+ * "Lageryta 2" även om det redan finns fem truckzoner i hallen.
+ */
+export function nextName(
+  kind: DrawnKind,
+  existing: DrawnObject[],
+  /** Namnet på kundens språk. Utan: svenska. */
+  t?: (key: string, vars?: Record<string, string | number>) => string,
+  zone?: ZoneId,
+): string {
+  if (kind === "zone") {
+    const id = zone ?? "other";
+    const n =
+      existing.filter((d) => d.kind === "zone" && (d.zone ?? "other") === id)
+        .length + 1;
+    return t ? `${t(`zone.${id}`)} ${n}` : `${ZONE_LABEL_SV[id]} ${n}`;
+  }
   const count = existing.filter((d) => d.kind === kind).length;
-  if (kind === "door") return `Port ${String.fromCharCode(65 + count)}`;
-  return `${KIND_LABEL[kind]} ${count + 1}`;
+  if (kind === "door") {
+    const letter = String.fromCharCode(65 + count);
+    return t ? t("draw.door", { letter }) : `Port ${letter}`;
+  }
+  return t
+    ? t(`draw.${kind}`, { n: count + 1 })
+    : `${KIND_LABEL[kind]} ${count + 1}`;
 }
 
 export type PlanWall = { name?: string; from: Vec2; to: Vec2 };
 export type PlanDoor = { name?: string; at: Vec2; widthMm: number };
-export type PlanArea = { kind: "truck" | "nogo"; name?: string; box: Box };
-export type Plan = { walls?: PlanWall[]; doors?: PlanDoor[]; areas?: PlanArea[] };
+export type PlanArea = { kind: string; name?: string; box: Box };
+export type Plan = {
+  walls?: PlanWall[];
+  doors?: PlanDoor[];
+  areas?: PlanArea[];
+};
 
 export type PlanResult = { drawn: DrawnObject[]; notes: string[] };
 
@@ -66,7 +105,10 @@ const round = (v: number) => Math.round(v);
  * Ritningar är sällan exakt vinkelräta när de mäts ur en bild, och en vägg som
  * ligger två grader snett blir en låda som inte kan möta någon annan.
  */
-export function wallFromLine(from: Vec2, to: Vec2): { box: Box; skewMm: number } | null {
+export function wallFromLine(
+  from: Vec2,
+  to: Vec2,
+): { box: Box; skewMm: number } | null {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const half = Math.round(WALL_THICKNESS_MM / 2);
@@ -75,7 +117,12 @@ export function wallFromLine(from: Vec2, to: Vec2): { box: Box; skewMm: number }
     if (Math.abs(dx) < MIN_WALL_MM) return null;
     const y = round((from.y + to.y) / 2);
     return {
-      box: { x: round(Math.min(from.x, to.x)), y: y - half, l: round(Math.abs(dx)), w: WALL_THICKNESS_MM },
+      box: {
+        x: round(Math.min(from.x, to.x)),
+        y: y - half,
+        l: round(Math.abs(dx)),
+        w: WALL_THICKNESS_MM,
+      },
       skewMm: Math.abs(dy),
     };
   }
@@ -83,7 +130,12 @@ export function wallFromLine(from: Vec2, to: Vec2): { box: Box; skewMm: number }
   if (Math.abs(dy) < MIN_WALL_MM) return null;
   const x = round((from.x + to.x) / 2);
   return {
-    box: { x: x - half, y: round(Math.min(from.y, to.y)), l: WALL_THICKNESS_MM, w: round(Math.abs(dy)) },
+    box: {
+      x: x - half,
+      y: round(Math.min(from.y, to.y)),
+      l: WALL_THICKNESS_MM,
+      w: round(Math.abs(dy)),
+    },
     skewMm: Math.abs(dx),
   };
 }
@@ -105,7 +157,8 @@ export function planToDrawn(
   const all = () => [...existing, ...drawn];
 
   let serial = 0;
-  const id = (kind: DrawnKind) => `ai-${kind}-${Date.now().toString(36)}-${(serial += 1).toString(36)}`;
+  const id = (kind: DrawnKind) =>
+    `ai-${kind}-${Date.now().toString(36)}-${(serial += 1).toString(36)}`;
 
   let clamped = 0;
   const insideHall = (point: Vec2): Vec2 => {
@@ -146,19 +199,30 @@ export function planToDrawn(
   }
 
   for (const area of plan.areas ?? []) {
+    // Okänd zonsort blir en egen zon snarare än ett tappat objekt: kunden
+    // ser ytan i planen och kan byta sort i inspektorn.
+    const zone: ZoneId = isZoneId(area.kind)
+      ? area.kind
+      : zoneDef(area.kind).id;
     if (room() <= 0) break;
     const from = insideHall({ x: area.box.x, y: area.box.y });
-    const to = insideHall({ x: area.box.x + area.box.l, y: area.box.y + area.box.w });
+    const to = insideHall({
+      x: area.box.x + area.box.l,
+      y: area.box.y + area.box.w,
+    });
     const l = Math.abs(to.x - from.x);
     const w = Math.abs(to.y - from.y);
     if (l < MIN_WALL_MM || w < MIN_WALL_MM) {
-      notes.push(`En ${KIND_LABEL[area.kind].toLowerCase()} var för liten för att ritas.`);
+      notes.push(
+        `En ${ZONE_LABEL_SV[zone].toLowerCase()} var för liten för att ritas.`,
+      );
       continue;
     }
     drawn.push({
-      id: id(area.kind),
-      kind: area.kind,
-      name: area.name?.trim() || nextName(area.kind, all()),
+      id: id("zone"),
+      kind: "zone",
+      zone,
+      name: area.name?.trim() || nextName("zone", all(), undefined, zone),
       x: round(Math.min(from.x, to.x)),
       y: round(Math.min(from.y, to.y)),
       l: round(l),
@@ -174,7 +238,12 @@ export function planToDrawn(
     const walls = all().filter((d) => d.kind === "wall");
     // Porten ritas som en kvadrat kring sin punkt; väggen bestämmer sedan
     // riktning, läge och tjocklek precis som när kunden drar den för hand.
-    const guess: Box = { x: at.x - width / 2, y: at.y - width / 2, l: width, w: width };
+    const guess: Box = {
+      x: at.x - width / 2,
+      y: at.y - width / 2,
+      l: width,
+      w: width,
+    };
     const fitted = fitDoorToWall(guess, walls, DOOR_REACH_MM);
     if (!fitted) {
       notes.push(
@@ -201,7 +270,10 @@ export function planToDrawn(
         "Stämmer hallens längd och bredd med ritningen?",
     );
   }
-  const missed = (plan.walls?.length ?? 0) + (plan.doors?.length ?? 0) + (plan.areas?.length ?? 0);
+  const missed =
+    (plan.walls?.length ?? 0) +
+    (plan.doors?.length ?? 0) +
+    (plan.areas?.length ?? 0);
   if (drawn.length + existing.length >= MAX_DRAWN && missed > drawn.length) {
     notes.push(`Ritningen rymmer ${MAX_DRAWN} objekt; resten togs inte med.`);
   }

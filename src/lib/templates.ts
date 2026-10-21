@@ -1,3 +1,4 @@
+import { translate } from "./i18n/translate";
 import { defaultStartPoint, solveLayout, suggestTruckZone } from "./solver";
 import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
 import type { Configuration, Flow, Hall, LineItem, Product } from "./types";
@@ -8,11 +9,18 @@ export function newInstanceId(machineId: string): string {
   return `${machineId}-${Date.now().toString(36)}-${counter.toString(36)}`;
 }
 
-export function lineItem(machineId: string, selectedOptions: string[] = []): LineItem {
+export function lineItem(
+  machineId: string,
+  selectedOptions: string[] = [],
+): LineItem {
   return { instanceId: newInstanceId(machineId), machineId, selectedOptions };
 }
 
-export const DEFAULT_HALL: Hall = { lengthMm: 46000, widthMm: 22500, clearHeightMm: 6000 };
+export const DEFAULT_HALL: Hall = {
+  lengthMm: 46000,
+  widthMm: 22500,
+  clearHeightMm: 6000,
+};
 
 /**
  * Utgångsvärden hämtade ur katalogen: truckströ är 800–1150 mm långa, vilket
@@ -130,12 +138,29 @@ export const TEMPLATES: Template[] = [
  * ändrat en maskin: rullbanan är tre meter i katalogen som följer med koden
  * och tolv i kundens, och då står nästa maskin mitt inne i den.
  */
+/** Översättare för namnen en mall skapar. Utan: svenska. */
+type Translate = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
+const swedish: Translate = (key, vars) => translate("sv", key, vars);
+
 export function templateConfig(
   templateId: string,
   library: MachineLibrary = BUILTIN_LIBRARY,
+  /*
+   * Projektets och de ritade objektens namn skrivs på kundens språk. De blir
+   * data i konfigurationen och står i offerten — en tysk kund ska inte få ett
+   * underlag med "Hämtzon utlastning" i ritningen.
+   */
+  t: Translate = swedish,
 ): Configuration {
-  const template = TEMPLATES.find((t) => t.id === templateId) ?? TEMPLATES[0];
-  const config = base(`${template.name} — förstudie`, template.machineIds);
+  const template =
+    TEMPLATES.find((tpl) => tpl.id === templateId) ?? TEMPLATES[0];
+  const config = base(
+    t("template.projectName", { name: t(`template.${template.id}.name`) }),
+    template.machineIds,
+  );
   Object.assign(config.hall, template.hall ?? {});
   Object.assign(config.flow, template.flow ?? {});
   // Startpunkten följer hallen och inmatningsriktningen om mallen ändrat dem.
@@ -160,7 +185,11 @@ export function templateConfig(
   }
 
   const solved = solveLayout(config, library);
-  const suggestion = suggestTruckZone(solved.lineBounds, "x+", config.flow.truckPickupSide);
+  const suggestion = suggestTruckZone(
+    solved.lineBounds,
+    "x+",
+    config.flow.truckPickupSide,
+  );
 
   /*
    * Hämtzonen dras ut till närmaste vägg, och porten sätts mitt för den.
@@ -179,8 +208,8 @@ export function templateConfig(
     upp: suggestion.y,
     ner: config.hall.widthMm - (suggestion.y + suggestion.w),
   };
-  const narmast = (Object.keys(avstand) as (keyof typeof avstand)[]).reduce((a, b) =>
-    avstand[a] <= avstand[b] ? a : b,
+  const narmast = (Object.keys(avstand) as (keyof typeof avstand)[]).reduce(
+    (a, b) => (avstand[a] <= avstand[b] ? a : b),
   );
 
   const zon = { ...suggestion };
@@ -196,14 +225,22 @@ export function templateConfig(
     zon.w = config.hall.widthMm - zon.y;
   }
 
-  config.drawn.push({ id: "truck-1", kind: "truck", name: "Hämtzon utlastning", ...zon, h: 0 });
+  config.drawn.push({
+    id: "truck-1",
+    kind: "zone",
+    zone: "truck",
+    name: t("draw.pickupOutfeed"),
+    ...zon,
+    h: 0,
+  });
 
-  const mitt = (v: number, max: number) => Math.max(0, Math.min(max - DOOR_W, v - DOOR_W / 2));
+  const mitt = (v: number, max: number) =>
+    Math.max(0, Math.min(max - DOOR_W, v - DOOR_W / 2));
   const langsvagg = narmast === "upp" || narmast === "ner";
   config.drawn.push({
     id: "door-1",
     kind: "door",
-    name: "Port A",
+    name: t("draw.door", { letter: "A" }),
     x: langsvagg
       ? mitt(zon.x + zon.l / 2, config.hall.lengthMm)
       : narmast === "vanster"
@@ -222,8 +259,8 @@ export function templateConfig(
   return config;
 }
 
-export function emptyConfig(): Configuration {
-  return base("Ny anläggning", []);
+export function emptyConfig(t: Translate = swedish): Configuration {
+  return base(t("template.newProject"), []);
 }
 
 export function defaultConfig(): Configuration {

@@ -2,9 +2,43 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { zoneDef } from "@/lib/zones";
 import { meters } from "@/lib/format";
 import { orientationEuler } from "@/lib/cad/orientation";
-import type { LayoutResult, Configuration, Placement } from "@/lib/types";
+import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
+import { useLocale, useT } from "@/lib/i18n";
+import { Tip, ViewBar } from "./ui";
+import type {
+  LayoutResult,
+  Configuration,
+  Machine,
+  Placement,
+  Vec2,
+} from "@/lib/types";
+
+/** Maskinernas färg i 3D: INKAB:s stålblå, mörk nog att synas mot golvet. */
+const MACHINE_TINT = "#3d566e";
+
+/** Maskiner snappar till samma raster som i planvyn, mm. */
+const SNAP_MM = 250;
+const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
+
+/** Fördefinierade kameravinklar. */
+export type CameraPreset = "overview" | "top" | "infeed" | "side" | "outfeed";
+
+type ViewApi = {
+  update: (c: Configuration, l: LayoutResult) => void;
+  /** Markerar en maskin utan att bygga om scenen. */
+  select: (id: string | null) => void;
+  dispose: () => void;
+  /** Punkten på golvet under en skärmkoordinat, i hallens mm. */
+  floorAt: (clientX: number, clientY: number) => Vec2 | null;
+  /** Visar fotavtrycket av en maskin som dras in ur katalogen. */
+  ghost: (machine: Machine | null, at: Vec2 | null) => void;
+  preset: (name: CameraPreset) => void;
+  orbit: (azimuthDeg: number, polarDeg: number) => void;
+  zoom: (factor: number) => void;
+};
 
 /**
  * 3D-vy med riktiga maskinmodeller.
@@ -21,12 +55,27 @@ export function ModelView() {
   const config = useConfigStore((s) => s.config);
   const layout = useConfigStore((s) => s.layout);
   const selectedId = useConfigStore((s) => s.selectedId);
+  const library = useConfigStore((s) => s.library);
+  const locale = useLocale();
+  const t = useT();
+  /*
+   * Scenen byggs en gång, så en t() fångad vid första renderingen skulle
+   * frysa måttens språk. Referensen pekar alltid på den aktuella, och
+   * effekten längst ner bygger om lagret när kunden byter språk.
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const mount = useRef<HTMLDivElement | null>(null);
-  const api = useRef<{ update: (c: Configuration, l: LayoutResult, sel: string | null) => void; dispose: () => void } | null>(null);
+  const api = useRef<ViewApi | null>(null);
+  /** Kamerans riktning runt hallen, grader — för kompassen i orbitkontrollen. */
+  const [azimuth, setAzimuth] = useState(0);
 
   const [status, setStatus] = useState("Startar 3D-vyn…");
-  const [loaded, setLoaded] = useState<{ withModel: number; total: number } | null>(null);
+  const [loaded, setLoaded] = useState<{
+    withModel: number;
+    total: number;
+  } | null>(null);
   /** Maskiner där modellens mått inte stämmer med bibliotekets. */
   const [mismatches, setMismatches] = useState<string[]>([]);
   /**
@@ -43,12 +92,13 @@ export function ModelView() {
     if (!element) return;
 
     (async () => {
-      const [THREE, { GLTFLoader }, { OrbitControls }, { MeshoptDecoder }] = await Promise.all([
-        import("three"),
-        import("three/examples/jsm/loaders/GLTFLoader.js"),
-        import("three/examples/jsm/controls/OrbitControls.js"),
-        import("three/examples/jsm/libs/meshopt_decoder.module.js"),
-      ]);
+      const [THREE, { GLTFLoader }, { OrbitControls }, { MeshoptDecoder }] =
+        await Promise.all([
+          import("three"),
+          import("three/examples/jsm/loaders/GLTFLoader.js"),
+          import("three/examples/jsm/controls/OrbitControls.js"),
+          import("three/examples/jsm/libs/meshopt_decoder.module.js"),
+        ]);
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -64,6 +114,13 @@ export function ModelView() {
       const controls = new OrbitControls(camera, renderer.domElement);
       controls.enableDamping = true;
       controls.maxPolarAngle = Math.PI / 2.05;
+      let lastAzimuth = 0;
+      controls.addEventListener("change", () => {
+        const deg = (controls.getAzimuthalAngle() * 180) / Math.PI;
+        if (Math.abs(deg - lastAzimuth) < 1) return;
+        lastAzimuth = deg;
+        setAzimuth(deg);
+      });
 
       // Enkel studioljussättning. Läsbarhet före fotorealism.
       scene.add(new THREE.HemisphereLight(0xffffff, 0x9099a5, 2.1));
@@ -72,8 +129,38 @@ export function ModelView() {
       sun.castShadow = true;
       sun.shadow.mapSize.set(2048, 2048);
       const s = 60;
-      Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 200 });
+      Object.assign(sun.shadow.camera, {
+        left: -s,
+        right: s,
+        top: s,
+        bottom: -s,
+        near: 1,
+        far: 200,
+      });
       scene.add(sun);
+
+      /*
+       * Modellerna kommer ur STEP-filerna i neutral grå och vit, och mot det
+       * ljusa golvet blev hela anläggningen en blek massa. Varje material
+       * färgas mot INKAB:s stålblå: vitt blir mörkt stålblått och mörka delar
+       * ännu mörkare, så att modellens egna skillnader syns kvar. En lätt
+       * metallisk yta gör att ljuset tar i kanterna.
+       */
+      const TINT = new THREE.Color(MACHINE_TINT);
+      const tinted = (
+        material: import("three").Material | import("three").Material[],
+      ) => {
+        const one = (m: import("three").Material) => {
+          const copy = m.clone() as import("three").MeshStandardMaterial;
+          if (copy.color) copy.color.multiply(TINT);
+          if ("metalness" in copy)
+            copy.metalness = Math.max(copy.metalness ?? 0, 0.35);
+          if ("roughness" in copy)
+            copy.roughness = Math.min(copy.roughness ?? 1, 0.6);
+          return copy;
+        };
+        return Array.isArray(material) ? material.map(one) : one(material);
+      };
 
       const loader = new GLTFLoader().setMeshoptDecoder(MeshoptDecoder);
       const cache = new Map<string, Promise<import("three").Object3D>>();
@@ -88,6 +175,7 @@ export function ModelView() {
               if (!mesh.isMesh) return;
               mesh.castShadow = true;
               mesh.receiveShadow = true;
+              mesh.material = tinted(mesh.material);
             });
             return gltf.scene;
           });
@@ -99,15 +187,236 @@ export function ModelView() {
       const world = new THREE.Group();
       scene.add(world);
 
+      /*
+       * Markering, drag och släpp.
+       *
+       * Varje maskin är en grupp märkt med sitt instans-id. Ett klick träffar
+       * en mesh någonstans i modellen; vi går uppåt tills vi hittar gruppen.
+       * Under ett drag flyttas bara gruppen i scenen — konfigurationen ändras
+       * när man släpper, så att ett drag blir ett steg att ångra och modellerna
+       * inte laddas om för varje millimeter.
+       */
+      const groups = new Map<string, import("three").Group>();
+      const origins = new Map<string, Vec2>();
+      const raycaster = new THREE.Raycaster();
+      const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+      let selection: import("three").BoxHelper | null = null;
+      let ghostMesh: import("three").Mesh | null = null;
+
+      const ndc = (clientX: number, clientY: number) => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        return new THREE.Vector2(
+          ((clientX - rect.left) / rect.width) * 2 - 1,
+          -((clientY - rect.top) / rect.height) * 2 + 1,
+        );
+      };
+      const floorAt = (clientX: number, clientY: number): Vec2 | null => {
+        raycaster.setFromCamera(ndc(clientX, clientY), camera);
+        const hit = raycaster.ray.intersectPlane(
+          floorPlane,
+          new THREE.Vector3(),
+        );
+        return hit ? { x: hit.x * 1000, y: hit.z * 1000 } : null;
+      };
+      const machineAt = (clientX: number, clientY: number): string | null => {
+        raycaster.setFromCamera(ndc(clientX, clientY), camera);
+        const hits = raycaster.intersectObjects([...groups.values()], true);
+        for (const hit of hits) {
+          let node: import("three").Object3D | null = hit.object;
+          while (node && !node.userData.instanceId) node = node.parent;
+          if (node) return node.userData.instanceId as string;
+        }
+        return null;
+      };
+      const highlight = (id: string | null) => {
+        if (selection) {
+          scene.remove(selection);
+          selection.dispose();
+          selection = null;
+        }
+        const group = id ? groups.get(id) : undefined;
+        if (!group) return;
+        selection = new THREE.BoxHelper(group, 0x5980a6);
+        scene.add(selection);
+      };
+
+      const onPointerDown = (event: PointerEvent) => {
+        if (event.button !== 0 || event.target !== renderer.domElement) return;
+        const store = useConfigStore.getState();
+        const id = machineAt(event.clientX, event.clientY);
+        const startScreen = { x: event.clientX, y: event.clientY };
+
+        if (!id) {
+          // Tomt golv: ett klick utan rörelse avmarkerar, ett drag vrider kameran.
+          const up = (e: PointerEvent) => {
+            window.removeEventListener("pointerup", up);
+            if (
+              Math.hypot(e.clientX - startScreen.x, e.clientY - startScreen.y) <
+              4
+            )
+              store.select(null);
+          };
+          window.addEventListener("pointerup", up);
+          return;
+        }
+
+        /*
+         * Gruppen hämtas före markeringen, och markeringen bygger inte om
+         * scenen (se select nedan). Förut byggde en ny markering om hela
+         * världen, och draget flyttade en grupp som inte längre fanns i den:
+         * maskinen stod still under draget och hoppade först vid släppet.
+         */
+        const group = groups.get(id);
+        const origin = origins.get(id);
+        store.select(id);
+        const start = floorAt(event.clientX, event.clientY);
+        if (!group || !origin || !start) return;
+        controls.enabled = false;
+        const from = group.position.clone();
+        let target = origin;
+
+        const move = (e: PointerEvent) => {
+          const now = floorAt(e.clientX, e.clientY);
+          if (!now) return;
+          // Positionen snappas, inte förflyttningen — samma raster som i planvyn.
+          target = {
+            x: snap(origin.x + now.x - start.x),
+            y: snap(origin.y + now.y - start.y),
+          };
+          group.position.set(
+            from.x + (target.x - origin.x) / 1000,
+            from.y,
+            from.z + (target.y - origin.y) / 1000,
+          );
+          selection?.update();
+        };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          controls.enabled = true;
+          if (target.x !== origin.x || target.y !== origin.y) {
+            useConfigStore.getState().moveMachine(id, target);
+          }
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+      };
+      // På föräldern i capture-fasen: då hinner vi stänga av orbitkontrollen
+      // innan den tar pekaren, när man tar tag i en maskin.
+      element.addEventListener("pointerdown", onPointerDown, { capture: true });
+
+      const ghost = (machine: Machine | null, at: Vec2 | null) => {
+        if (ghostMesh) {
+          scene.remove(ghostMesh);
+          ghostMesh.geometry.dispose();
+          ghostMesh = null;
+        }
+        if (!machine || !at) return;
+        const l = machine.footprint.lengthMm / 1000;
+        const w = machine.footprint.widthMm / 1000;
+        const h = Math.max(machine.footprint.heightMm, 200) / 1000;
+        ghostMesh = new THREE.Mesh(
+          new THREE.BoxGeometry(l, h, w),
+          new THREE.MeshStandardMaterial({
+            color: "#5980a6",
+            transparent: true,
+            opacity: 0.35,
+          }),
+        );
+        ghostMesh.position.set(at.x / 1000, h / 2, at.y / 1000);
+        scene.add(ghostMesh);
+      };
+
+      /*
+       * Kamerarörelser. Förinställda vyer och orbitknapparna glider dit i
+       * stället för att hoppa, så att man ser var man hamnade i förhållande
+       * till var man var.
+       */
+      let hallSize = { l: 40, w: 20 };
+      let flight: {
+        from: import("three").Vector3;
+        to: import("three").Vector3;
+        targetFrom: import("three").Vector3;
+        targetTo: import("three").Vector3;
+        start: number;
+      } | null = null;
+      const fly = (
+        to: import("three").Vector3,
+        target: import("three").Vector3,
+      ) => {
+        flight = {
+          from: camera.position.clone(),
+          to,
+          targetFrom: controls.target.clone(),
+          targetTo: target,
+          start: performance.now(),
+        };
+      };
+      const preset = (name: CameraPreset) => {
+        const centre = new THREE.Vector3(hallSize.l / 2, 0, hallSize.w / 2);
+        const span = Math.max(hallSize.l, hallSize.w);
+        const at = {
+          overview: new THREE.Vector3(
+            centre.x - span * 0.55,
+            span * 0.5,
+            centre.z + span * 0.75,
+          ),
+          // Rakt uppifrån, med en hårsmån lutning så att orbitkontrollen vet var norr är.
+          top: new THREE.Vector3(centre.x, span * 1.15, centre.z + 0.01),
+          infeed: new THREE.Vector3(
+            centre.x - span * 0.85,
+            span * 0.22,
+            centre.z,
+          ),
+          side: new THREE.Vector3(centre.x, span * 0.3, centre.z + span * 0.9),
+          outfeed: new THREE.Vector3(
+            centre.x + span * 0.85,
+            span * 0.22,
+            centre.z,
+          ),
+        }[name];
+        fly(at, centre);
+      };
+      const orbit = (azimuthDeg: number, polarDeg: number) => {
+        const offset = camera.position.clone().sub(controls.target);
+        const spherical = new THREE.Spherical().setFromVector3(offset);
+        spherical.theta += (azimuthDeg * Math.PI) / 180;
+        spherical.phi = Math.min(
+          controls.maxPolarAngle,
+          Math.max(0.05, spherical.phi + (polarDeg * Math.PI) / 180),
+        );
+        fly(
+          new THREE.Vector3().setFromSpherical(spherical).add(controls.target),
+          controls.target.clone(),
+        );
+      };
+      const zoom = (factor: number) => {
+        const offset = camera.position
+          .clone()
+          .sub(controls.target)
+          .multiplyScalar(factor);
+        fly(offset.add(controls.target), controls.target.clone());
+      };
+      let framedFor = "";
+
       const clear = (group: import("three").Object3D) => {
         while (group.children.length) group.remove(group.children[0]);
       };
 
       let generation = 0;
 
-      const update = async (cfg: Configuration, result: LayoutResult, sel: string | null) => {
+      /** Den markerade maskinen. Ändras utan ombyggnad; update läser den. */
+      let sel: string | null = null;
+      const select = (id: string | null) => {
+        sel = id;
+        highlight(id && groups.has(id) ? id : null);
+      };
+
+      const update = async (cfg: Configuration, result: LayoutResult) => {
         const mine = ++generation;
         clear(world);
+        groups.clear();
+        origins.clear();
 
         const hallL = cfg.hall.lengthMm / 1000;
         const hallW = cfg.hall.widthMm / 1000;
@@ -121,33 +430,59 @@ export function ModelView() {
         floor.receiveShadow = true;
         world.add(floor);
 
-        const grid = new THREE.GridHelper(Math.max(hallL, hallW), Math.round(Math.max(hallL, hallW)), 0xb8bec5, 0xd3d8dd);
+        const grid = new THREE.GridHelper(
+          Math.max(hallL, hallW),
+          Math.round(Math.max(hallL, hallW)),
+          0xb8bec5,
+          0xd3d8dd,
+        );
         grid.position.set(hallL / 2, 0.002, hallW / 2);
         world.add(grid);
 
-        // Ritade objekt: väggar, portar, truckzoner.
+        // Måttlagret: utan det är modellvyn en bild, inte en ritning.
+        world.add(buildDimensions(THREE, cfg, result, tRef.current));
+
+        // Ritade objekt: väggar, portar och kundens zoner.
         for (const object of cfg.drawn) {
           const l = object.l / 1000;
           const w = object.w / 1000;
           const h = Math.max(object.h, 1) / 1000;
-          const colour = { wall: "#c8ccd1", door: "#5980a6", truck: "#cfd6dd", nogo: "#c98a9a" }[object.kind];
-          const flat = object.kind === "truck" || object.kind === "nogo";
+          // Zonerna tar sin färg ur katalogen, så att en ny sorts zon syns
+          // i modellen med samma färg som i planen utan en rad här.
+          const colour =
+            object.kind === "zone"
+              ? zoneDef(object.zone).tint
+              : object.kind === "door"
+                ? "#5980a6"
+                : "#c8ccd1";
+          const flat = object.kind === "zone";
           const mesh = new THREE.Mesh(
             new THREE.BoxGeometry(l, flat ? 0.01 : h, w),
             new THREE.MeshStandardMaterial({
               color: colour,
               roughness: 0.9,
               transparent: object.kind !== "wall",
-              opacity: object.kind === "wall" ? 1 : object.kind === "door" ? 0.35 : 0.55,
+              opacity:
+                object.kind === "wall"
+                  ? 1
+                  : object.kind === "door"
+                    ? 0.35
+                    : 0.55,
             }),
           );
-          mesh.position.set(object.x / 1000 + l / 2, flat ? 0.006 : h / 2, object.y / 1000 + w / 2);
+          mesh.position.set(
+            object.x / 1000 + l / 2,
+            flat ? 0.006 : h / 2,
+            object.y / 1000 + w / 2,
+          );
           mesh.receiveShadow = true;
           if (object.kind === "wall") mesh.castShadow = true;
           world.add(mesh);
         }
 
-        const withModel = result.placements.filter((p) => p.machine.model?.glb).length;
+        const withModel = result.placements.filter(
+          (p) => p.machine.model?.glb,
+        ).length;
         const found: string[] = [];
         const absent: string[] = [];
         setLoaded({ withModel, total: result.placements.length });
@@ -164,8 +499,15 @@ export function ModelView() {
           const group = new THREE.Group();
           // Solverns origo är maskinens minhörn; modellens origo är
           // inmatningsporten i golvnivå, alltså samma punkt.
-          group.position.set(placement.bbox.x / 1000, 0, placement.bbox.y / 1000);
+          group.position.set(
+            placement.bbox.x / 1000,
+            0,
+            placement.bbox.y / 1000,
+          );
+          group.userData.instanceId = placement.instanceId;
           world.add(group);
+          groups.set(placement.instanceId, group);
+          origins.set(placement.instanceId, placement.origin);
 
           if (url) {
             try {
@@ -204,6 +546,7 @@ export function ModelView() {
                 if (mine === generation) setMismatches([...found]);
               }
               group.add(clone);
+              if (placement.instanceId === sel) highlight(sel);
               continue;
             } catch {
               // Faller igenom till lådan nedan, men tyst gör det inte.
@@ -212,10 +555,22 @@ export function ModelView() {
             }
           }
 
-          group.add(footprintBox(THREE, placement, placement.instanceId === sel));
+          group.add(footprintBox(THREE, placement, false));
+          if (placement.instanceId === sel) highlight(sel);
         }
+        if (!sel || !groups.has(sel)) highlight(null);
 
-        if (mine === generation) frameCamera(THREE, camera, controls, hallL, hallW);
+        /*
+         * Kameran ramas in när vyn öppnas och när hallen byter storlek — inte
+         * vid varje ändring. Förut hoppade den tillbaka till översikten varje
+         * gång en maskin flyttades, och man tappade bort det man tittade på.
+         */
+        hallSize = { l: hallL, w: hallW };
+        const key = `${hallL}x${hallW}`;
+        if (mine === generation && key !== framedFor) {
+          framedFor = key;
+          frameCamera(THREE, camera, controls, hallL, hallW);
+        }
       };
 
       const resize = () => {
@@ -232,6 +587,13 @@ export function ModelView() {
       let frame = 0;
       const tick = () => {
         frame = requestAnimationFrame(tick);
+        if (flight) {
+          const k = Math.min(1, (performance.now() - flight.start) / 450);
+          const ease = 1 - Math.pow(1 - k, 3);
+          camera.position.lerpVectors(flight.from, flight.to, ease);
+          controls.target.lerpVectors(flight.targetFrom, flight.targetTo, ease);
+          if (k >= 1) flight = null;
+        }
         controls.update();
         renderer.render(scene, camera);
       };
@@ -239,15 +601,25 @@ export function ModelView() {
 
       api.current = {
         update,
+        select,
+        floorAt,
+        ghost,
+        preset,
+        orbit,
+        zoom,
         dispose: () => {
           cancelAnimationFrame(frame);
+          element.removeEventListener("pointerdown", onPointerDown, {
+            capture: true,
+          });
           observer.disconnect();
           controls.dispose();
           renderer.dispose();
           element.removeChild(renderer.domElement);
         },
       };
-      update(config, layout, selectedId);
+      select(selectedId);
+      update(config, layout);
     })();
 
     return () => {
@@ -259,16 +631,116 @@ export function ModelView() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Konfigurationen bygger om scenen; en ny markering gör det inte.
   useEffect(() => {
-    api.current?.update(config, layout, selectedId);
-  }, [config, layout, selectedId]);
+    api.current?.update(config, layout);
+  }, [config, layout]);
+
+  useEffect(() => {
+    api.current?.select(selectedId);
+  }, [selectedId]);
+
+  // Byter kunden språk ska måtten byta med. Scenen byggs inte om i övrigt.
+  useEffect(() => {
+    api.current?.update(config, layout);
+    // Bara språket: konfigurationen har sin egen effekt ovanför.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+
+  const dropMachine = (event: React.DragEvent): Machine | null => {
+    const id =
+      useConfigStore.getState().draggingMachineId ??
+      event.dataTransfer.getData(MACHINE_DRAG_TYPE);
+    return id ? (library.machines.find((m) => m.id === id) ?? null) : null;
+  };
+
+  const onDragOver = (event: React.DragEvent) => {
+    if (!event.dataTransfer.types.includes(MACHINE_DRAG_TYPE)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    const at = api.current?.floorAt(event.clientX, event.clientY) ?? null;
+    api.current?.ghost(
+      dropMachine(event),
+      at ? { x: snap(at.x), y: snap(at.y) } : null,
+    );
+  };
+
+  const onDrop = (event: React.DragEvent) => {
+    api.current?.ghost(null, null);
+    // Samma källa som spöket under draget, så att det som syns är det som släpps.
+    const id = dropMachine(event)?.id;
+    if (!id) return;
+    event.preventDefault();
+    const at = api.current?.floorAt(event.clientX, event.clientY);
+    if (at)
+      useConfigStore
+        .getState()
+        .addMachine(id, { pos: { x: snap(at.x), y: snap(at.y) } });
+  };
+
+  const selected =
+    layout.placements.find((p) => p.instanceId === selectedId) ?? null;
 
   return (
-    <div className="relative h-full w-full">
+    <div
+      className="relative h-full w-full"
+      onDragOver={onDragOver}
+      onDragLeave={() => api.current?.ghost(null, null)}
+      onDrop={onDrop}
+    >
       <div ref={mount} className="h-full w-full" />
+
+      <OrbitPanel
+        azimuth={azimuth}
+        onPreset={(name) => api.current?.preset(name)}
+        onOrbit={(a, p) => api.current?.orbit(a, p)}
+        onZoom={(f) => api.current?.zoom(f)}
+      />
+
+      {selected ? (
+        <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent/60 bg-white/60 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-white/95">
+          <span className="max-w-[220px] truncate">
+            {selected.machine.name}
+          </span>
+          <span className="text-muted">{t("model.dragHint")}</span>
+          <Tip title={t("model.turnLeft")} shortcut="⇧R">
+            <button
+              onClick={() =>
+                useConfigStore.getState().turnMachine(selected.instanceId, -1)
+              }
+              className="border border-divider px-2 py-0.5 hover:border-accent"
+              aria-label={t("model.turnLeft")}
+            >
+              ↺
+            </button>
+          </Tip>
+          <Tip title={t("model.turnRight")} shortcut="R">
+            <button
+              onClick={() =>
+                useConfigStore.getState().turnMachine(selected.instanceId, 1)
+              }
+              className="border border-divider px-2 py-0.5 hover:border-accent"
+              aria-label={t("model.turnRight")}
+            >
+              ↻
+            </button>
+          </Tip>
+          <button
+            onClick={() =>
+              useConfigStore.getState().removeItem(selected.instanceId)
+            }
+            className="px-1 text-muted hover:text-danger"
+            aria-label={t("model.remove")}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
       {missing.length > 0 ? (
         <div className="absolute left-2 top-2 max-w-md border border-danger bg-white/95 p-2">
-          <div className="kicker mb-1 text-danger">Modellfilen gick inte att hämta</div>
+          <div className="kicker mb-1 text-danger">
+            Modellfilen gick inte att hämta
+          </div>
           <ul className="space-y-0.5">
             {missing.map((name, i) => (
               <li key={i} className="text-[11px] leading-relaxed text-ink">
@@ -277,14 +749,17 @@ export function ModelView() {
             ))}
           </ul>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            Maskinen ritas som sitt fotavtryck så länge. Vanligaste orsaken är att servern
-            saknar <code className="num">DATABASE_URL</code> — då ligger uppladdade modeller
-            bara i minnet och försvinner när instansen startar om.
+            Maskinen ritas som sitt fotavtryck så länge. Vanligaste orsaken är
+            att servern saknar <code className="num">DATABASE_URL</code> — då
+            ligger uppladdade modeller bara i minnet och försvinner när
+            instansen startar om.
           </p>
         </div>
       ) : mismatches.length > 0 ? (
         <div className="absolute left-2 top-2 max-w-md border border-warn bg-white/95 p-2">
-          <div className="kicker mb-1 text-warn">Modell och mått skiljer sig</div>
+          <div className="kicker mb-1 text-warn">
+            Modell och mått skiljer sig
+          </div>
           <ul className="space-y-0.5">
             {mismatches.map((m, i) => (
               <li key={i} className="text-[11px] leading-relaxed text-ink">
@@ -293,15 +768,20 @@ export function ModelView() {
             ))}
           </ul>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            Modellen visas i sin verkliga storlek — den är måttriktig ur STEP-filen, så det
-            är maskindatan som behöver rättas. Ladda upp filen igen i admin, så tas måtten
-            därifrån.
+            Modellen visas i sin verkliga storlek — den är måttriktig ur
+            STEP-filen, så det är maskindatan som behöver rättas. Ladda upp
+            filen igen i admin, så tas måtten därifrån.
           </p>
         </div>
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-2">
-        <span className="kicker max-w-[60%] bg-paper/85 px-1 leading-relaxed">{status}</span>
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          <ViewBar note={t("model.note")} />
+          <span className="kicker max-w-full bg-paper/85 px-1 leading-relaxed">
+            {status}
+          </span>
+        </div>
         {loaded ? (
           <span className="kicker bg-paper/85 px-1">
             {loaded.withModel}/{loaded.total} modeller
@@ -357,7 +837,8 @@ function footprintBox(
   const mesh = new THREE.Mesh(
     new THREE.BoxGeometry(l, h, w),
     new THREE.MeshStandardMaterial({
-      color: placement.aux ? "#dfe3e7" : "#f2f3f5",
+      // Samma stålblå som modellerna; hjälpobjekten ljusare så att de skiljer sig.
+      color: placement.aux ? "#8a9bad" : MACHINE_TINT,
       roughness: 0.8,
       transparent: placement.aux,
       opacity: placement.aux ? 0.75 : 1,
@@ -384,9 +865,390 @@ function frameCamera(
   hallL: number,
   hallW: number,
 ) {
+  /*
+   * Måttlagret ligger utanför hallen: mätstickan bortom bortre kanten,
+   * längdkedjan framför närkanten, bredd- och höjdkedjan utanför sidorna.
+   * Ramas bara hallen in hamnar måtten utanför bild, och då finns de inte
+   * för den som öppnar vyn. Marginalen är den som lagret faktiskt tar.
+   */
+  const MARGIN = 3;
   const centre = new THREE.Vector3(hallL / 2, 0, hallW / 2);
-  const span = Math.max(hallL, hallW);
-  camera.position.set(centre.x - span * 0.55, span * 0.5, centre.z + span * 0.75);
+  const span = Math.max(hallL, hallW) + MARGIN * 2;
+  camera.position.set(
+    centre.x - span * 0.55,
+    span * 0.5,
+    centre.z + span * 0.75,
+  );
   controls.target.copy(centre);
   controls.update();
+}
+
+/**
+ * Synlig orbitkontroll: en kompass som visar åt vilket håll man tittar, pilar
+ * som vrider och lutar kameran, zoom, och de vanligaste vinklarna som knappar.
+ *
+ * Musens orbit finns kvar, men den är osynlig — den som inte vet att man kan
+ * dra med höger musknapp hittar den aldrig. Här ser man vad som går att göra.
+ */
+function OrbitPanel({
+  azimuth,
+  onPreset,
+  onOrbit,
+  onZoom,
+}: {
+  azimuth: number;
+  onPreset: (name: CameraPreset) => void;
+  onOrbit: (azimuthDeg: number, polarDeg: number) => void;
+  onZoom: (factor: number) => void;
+}) {
+  const t = useT();
+  const arrow = (
+    label: string,
+    d: string,
+    onClick: () => void,
+    className: string,
+  ) => (
+    <button
+      onClick={onClick}
+      aria-label={label}
+      title={label}
+      className={`absolute flex h-7 w-7 items-center justify-center rounded-full text-steel hover:bg-accent hover:text-white ${className}`}
+    >
+      <svg width="12" height="12" viewBox="0 0 12 12" fill="currentColor">
+        <path d={d} />
+      </svg>
+    </button>
+  );
+
+  return (
+    /*
+     * Halvgenomskinlig, så att scenen syns bakom: panelen ligger över
+     * modellen och ska inte skymma den. Under musen blir den tydlig igen.
+     */
+    <div className="absolute right-3 top-3 z-10 flex w-[132px] flex-col items-center gap-2 border border-divider/60 bg-white/40 p-2 shadow-sm backdrop-blur-[2px] transition-colors hover:bg-white/90">
+      <div className="kicker">{t("model.orbit")}</div>
+      <div className="relative h-[104px] w-[104px] rounded-full border border-divider/70 bg-paper/40">
+        {/* Kompassen: pilen pekar längs hallen (X), i den riktning kameran tittar. */}
+        <svg
+          viewBox="0 0 100 100"
+          className="pointer-events-none absolute inset-0"
+          style={{ transform: `rotate(${-azimuth}deg)` }}
+        >
+          <circle cx="50" cy="50" r="30" fill="none" stroke="#d4d4d7" />
+          <path d="M50 22 L55 50 L50 46 L45 50Z" fill="#5980a6" />
+          <path d="M50 78 L55 50 L50 54 L45 50Z" fill="#d4d4d7" />
+          <text x="50" y="16" textAnchor="middle" fontSize="9" fill="#5980a6">
+            X
+          </text>
+        </svg>
+        {arrow(
+          t("model.tiltUp"),
+          "M6 2 L11 9 L1 9Z",
+          () => onOrbit(0, -15),
+          "left-1/2 top-0 -translate-x-1/2",
+        )}
+        {arrow(
+          t("model.tiltDown"),
+          "M6 10 L11 3 L1 3Z",
+          () => onOrbit(0, 15),
+          "bottom-0 left-1/2 -translate-x-1/2",
+        )}
+        {arrow(
+          t("model.rotateLeft"),
+          "M2 6 L9 1 L9 11Z",
+          () => onOrbit(-45, 0),
+          "left-0 top-1/2 -translate-y-1/2",
+        )}
+        {arrow(
+          t("model.rotateRight"),
+          "M10 6 L3 1 L3 11Z",
+          () => onOrbit(45, 0),
+          "right-0 top-1/2 -translate-y-1/2",
+        )}
+        <button
+          onClick={() => onPreset("overview")}
+          title={t("model.view.overview")}
+          className="kicker absolute left-1/2 top-1/2 h-9 w-9 -translate-x-1/2 -translate-y-1/2 rounded-full border border-divider bg-white/70 text-[9px] hover:border-accent"
+        >
+          {t("model.fit")}
+        </button>
+      </div>
+      <div className="flex w-full gap-1">
+        <button
+          onClick={() => onZoom(0.8)}
+          className="flex-1 border border-divider py-0.5 text-sm hover:border-accent"
+          aria-label={t("model.zoomIn")}
+          title={t("model.zoomIn")}
+        >
+          +
+        </button>
+        <button
+          onClick={() => onZoom(1.25)}
+          className="flex-1 border border-divider py-0.5 text-sm hover:border-accent"
+          aria-label={t("model.zoomOut")}
+          title={t("model.zoomOut")}
+        >
+          −
+        </button>
+      </div>
+      <div className="grid w-full grid-cols-1 gap-1">
+        {(["overview", "top", "infeed", "side", "outfeed"] as const).map(
+          (name) => (
+            <button
+              key={name}
+              onClick={() => onPreset(name)}
+              className="border border-divider/70 bg-white/30 px-1 py-0.5 text-left text-[11px] hover:border-accent hover:bg-white hover:text-accent"
+            >
+              {t(`model.view.${name}`)}
+            </button>
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ── Måttsättning i modellen ──────────────────────────────────────────── */
+
+/**
+ * En siffra som alltid vänder sig mot kameran.
+ *
+ * Måtten ska gå att läsa från vilket håll man än vrider vyn, och en text
+ * lagd i rummet står på huvudet halva varvet. Sprites vänder sig alltid
+ * rätt. Stödkanten mot golvets färg gör att siffran syns också där den
+ * hamnar ovanpå ett rutnät eller en zon.
+ */
+function dimLabel(
+  THREE: typeof import("three"),
+  text: string,
+  height: number,
+  colour = "#5980a6",
+) {
+  const FONT = 48;
+  const measure = document.createElement("canvas").getContext("2d");
+  if (!measure) return null;
+  const font = `600 ${FONT}px "Barlow Condensed", Barlow, sans-serif`;
+  measure.font = font;
+  const w = Math.ceil(measure.measureText(text).width) + 24;
+  const h = FONT + 20;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.font = font;
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#eceef0";
+  ctx.lineWidth = 9;
+  ctx.strokeText(text, 12, h / 2);
+  ctx.fillStyle = colour;
+  ctx.fillText(text, 12, h / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    }),
+  );
+  sprite.scale.set((w / h) * height, height, 1);
+  sprite.renderOrder = 20;
+  return sprite;
+}
+
+/**
+ * Måttlagret: rutnät i meter, mätsticka, och måttkedjor för anläggningens
+ * längd, bredd och höjd.
+ *
+ * Utan det är modellvyn en bild. Kedjorna ligger i marginalen med tunna
+ * förlängningslinjer ut till det de mäter — en kedja dragen tvärs över
+ * anläggningen korsar alltid en maskin eller en zon, och då går den inte
+ * att läsa av. Samma uppställning som på en riktig ritning.
+ */
+function buildDimensions(
+  THREE: typeof import("three"),
+  cfg: Configuration,
+  result: LayoutResult,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const group = new THREE.Group();
+  const L = cfg.hall.lengthMm / 1000;
+  const W = cfg.hall.widthMm / 1000;
+  const CLEAR = cfg.hall.clearHeightMm / 1000;
+  const ACCENT = 0x5980a6;
+  const m = (v: number) => `${v.toFixed(1).replace(".", ",")} m`;
+
+  const add = (
+    sprite: ReturnType<typeof dimLabel>,
+    x: number,
+    y: number,
+    z: number,
+  ) => {
+    if (!sprite) return;
+    sprite.position.set(x, y, z);
+    group.add(sprite);
+  };
+
+  /** Linjer på ett och samma material, så att lagret kostar ett anrop. */
+  const solid: number[] = [];
+  const seg = (
+    x1: number,
+    y1: number,
+    z1: number,
+    x2: number,
+    y2: number,
+    z2: number,
+  ) => solid.push(x1, y1, z1, x2, y2, z2);
+
+  /* Grövre linjer var femte meter, ovanpå metersrutnätet. */
+  const major: number[] = [];
+  for (let x = 0; x <= L + 0.001; x += 5) major.push(x, 0.004, 0, x, 0.004, W);
+  for (let z = 0; z <= W + 0.001; z += 5) major.push(0, 0.004, z, L, 0.004, z);
+  const majorGeom = new THREE.BufferGeometry();
+  majorGeom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(major, 3),
+  );
+  group.add(
+    new THREE.LineSegments(
+      majorGeom,
+      new THREE.LineBasicMaterial({
+        color: 0x97a0aa,
+        transparent: true,
+        opacity: 0.75,
+      }),
+    ),
+  );
+
+  /* Mätsticka längs bortre kanten: 1 m-streck, siffra var femte meter. */
+  const RY = -2.2;
+  const bar = Math.min(20, L);
+  seg(0, 0.02, RY, bar, 0.02, RY);
+  for (let x = 0; x <= bar + 0.001; x += 1) {
+    const big = Math.abs(x % 5) < 0.001;
+    seg(x, 0.02, RY, x, 0.02, RY - (big ? 0.9 : 0.45));
+    if (big)
+      add(dimLabel(THREE, String(x), 0.75, "#5980a6"), x, 0.06, RY - 1.7);
+  }
+  add(
+    dimLabel(THREE, t("model.scaleUnit"), 0.7, "#5980a6"),
+    bar + 1.3,
+    0.06,
+    RY - 0.9,
+  );
+
+  /* Metertal längs hallens vänstra kant, så att djupet går att läsa av. */
+  for (let z = 10; z <= W - 1; z += 10) {
+    add(dimLabel(THREE, String(z), 0.7, "#8e949c"), -1.2, 0.06, z);
+  }
+
+  const b = result.bounds;
+  if (b && b.l > 0) {
+    const x0 = b.x / 1000;
+    const x1 = (b.x + b.l) / 1000;
+    const z0 = b.y / 1000;
+    const z1 = (b.y + b.w) / 1000;
+
+    /*
+     * Kedjorna ligger tätt intill anläggningen, inte vid hallens kanter.
+     * På en platt ritning hör de hemma i marginalen; här kan kunden vrida
+     * och zooma, och ett mått som ligger tio meter från det det mäter går
+     * inte att läsa av när man gått nära. Höjdskillnaden mot maskinerna
+     * gör att kedjan ändå inte korsar något.
+     */
+    const CZ = z1 + 1.3;
+    seg(x0, 0.02, z1, x0, 0.02, CZ);
+    seg(x1, 0.02, z1, x1, 0.02, CZ);
+    seg(x0, 0.02, CZ, x1, 0.02, CZ);
+    seg(x0, 0.02, CZ - 0.45, x0, 0.02, CZ + 0.45);
+    seg(x1, 0.02, CZ - 0.45, x1, 0.02, CZ + 0.45);
+    add(
+      dimLabel(THREE, m(b.l / 1000), 0.95, "#5980a6"),
+      (x0 + x1) / 2,
+      0.06,
+      CZ + 1.1,
+    );
+
+    /* Bredd: kedja vid hallens högra kant. */
+    const CX = x1 + 1.3;
+    seg(x1, 0.02, z0, CX, 0.02, z0);
+    seg(x1, 0.02, z1, CX, 0.02, z1);
+    seg(CX, 0.02, z0, CX, 0.02, z1);
+    seg(CX - 0.45, 0.02, z0, CX + 0.45, 0.02, z0);
+    seg(CX - 0.45, 0.02, z1, CX + 0.45, 0.02, z1);
+    add(
+      dimLabel(THREE, m(b.w / 1000), 0.95, "#5980a6"),
+      CX + 1.7,
+      0.06,
+      (z0 + z1) / 2,
+    );
+
+    /*
+     * Höjd: kedjan står vid den högsta maskinen, inte vid anläggningens
+     * ände. Det är den maskinen frågan gäller — får den plats under taket?
+     * — och en kedja vid en rullbana som är en meter hög svarar inte på
+     * den. Den fria höjden ritas streckad i samma snitt, så att marginalen
+     * syns direkt.
+     */
+    const tall = result.placements.reduce<
+      (typeof result.placements)[number] | null
+    >(
+      (best, p) =>
+        !p.aux && (!best || p.size.heightMm > best.size.heightMm) ? p : best,
+      null,
+    );
+    if (tall) {
+      const HX = tall.bbox.x / 1000 - 1.1;
+      const HZ = (tall.bbox.y + tall.bbox.w) / 1000;
+      const h = tall.size.heightMm / 1000;
+      seg(HX, 0, HZ, HX, h, HZ);
+      seg(HX - 0.45, 0, HZ, HX + 0.45, 0, HZ);
+      seg(HX - 0.45, h, HZ, HX + 0.45, h, HZ);
+      add(dimLabel(THREE, m(h), 0.9, "#5980a6"), HX - 1.3, h / 2, HZ);
+
+      const dashed: number[] = [HX - 0.3, CLEAR, HZ, HX + 3.2, CLEAR, HZ];
+      const dashGeom = new THREE.BufferGeometry();
+      dashGeom.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(dashed, 3),
+      );
+      const dash = new THREE.LineSegments(
+        dashGeom,
+        new THREE.LineDashedMaterial({
+          color: ACCENT,
+          dashSize: 0.35,
+          gapSize: 0.25,
+          transparent: true,
+          opacity: 0.75,
+        }),
+      );
+      dash.computeLineDistances();
+      group.add(dash);
+      add(
+        dimLabel(
+          THREE,
+          t("model.clearHeight", { h: CLEAR.toFixed(1).replace(".", ",") }),
+          0.7,
+          "#5980a6",
+        ),
+        HX - 2.4,
+        CLEAR,
+        HZ,
+      );
+    }
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.Float32BufferAttribute(solid, 3));
+  group.add(
+    new THREE.LineSegments(
+      geom,
+      new THREE.LineBasicMaterial({ color: ACCENT }),
+    ),
+  );
+  return group;
 }

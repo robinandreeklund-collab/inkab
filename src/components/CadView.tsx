@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
@@ -14,10 +14,30 @@ import {
   WALL_THICKNESS_MM,
 } from "@/lib/walls";
 import { nextName } from "@/lib/drawing";
+import { zoneDef } from "@/lib/zones";
+import { HALL_LIMITS } from "@/lib/limits";
 import { markerNumber } from "@/lib/flowMarkers";
-import { ROTATE_ARC, ROTATE_TIP, TipCard } from "./ui";
+import {
+  dimensionLength,
+  makeDimension,
+  MAX_DIMENSIONS,
+  MIN_DIMENSION_MM,
+  straighten,
+} from "@/lib/dimensions";
+import { ROTATE_ARC, ROTATE_TIP, TipCard, ViewBar } from "./ui";
 import { toolHelp } from "./toolHelp";
-import type { Box, DrawnObject, DrawnKind, Flow, Machine, PlacedPort, Placement, Vec2 } from "@/lib/types";
+import { TopViewImage } from "./TopViewImage";
+import type {
+  Box,
+  Dimension,
+  DrawnObject,
+  DrawnKind,
+  Flow,
+  Machine,
+  PlacedPort,
+  Placement,
+  Vec2,
+} from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
 import { DIR_VEC } from "@/lib/geometry";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
@@ -33,13 +53,18 @@ type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 
 /** Väggens och portens tjocklek, mm. */
 
-type Measure = { from: Vec2; to: Vec2 } | null;
+/** Mätningen på ritningen. Klar när man släppt — då kan den sparas. */
+type Measure = {
+  from: Vec2;
+  to: Vec2;
+  done?: boolean;
+  /** Var notisen ska stå, i ritytans skärmkoordinater. Satt när mätningen är klar. */
+  screen?: { x: number; y: number };
+} | null;
 
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 /** Hallens mått snappar grövre än maskinerna: halvmeter räcker för en lokal. */
 const HALL_SNAP_MM = 500;
-/** Samma gränser som serverns schema. */
-const HALL_LIMITS = { lengthMm: [5000, 300000], widthMm: [5000, 150000] } as const;
 
 /** Förklaring som visas intill muspekaren när man håller den över något i ritningen. */
 type Hover = { title: string; body?: string; x: number; y: number } | null;
@@ -57,10 +82,10 @@ type TipHandlers = (
 };
 
 /** Väggar en port kan sitta i: de ritade och hallens egna kanter. */
-const doorWalls = (walls: DrawnObject[], hall: { lengthMm: number; widthMm: number }) => [
-  ...walls,
-  ...hallWalls(hall),
-];
+const doorWalls = (
+  walls: DrawnObject[],
+  hall: { lengthMm: number; widthMm: number },
+) => [...walls, ...hallWalls(hall)];
 
 /**
  * Väggar och portar låses till närmaste axel så att de alltid blir raka —
@@ -137,16 +162,44 @@ export function CadView() {
     turnDrawn,
     addDrawn,
     setTool,
+    zoneKind,
+    mirrorMachine,
     setStartPoint,
     updateFlowMarker,
     update,
-    guideOpen,
+    addDimension,
+    updateDimension,
   } = useConfigStore();
 
   const svgRef = useRef<SVGSVGElement | null>(null);
   const t = useT();
   const [draft, setDraft] = useState<Draft>(null);
   const [measure, setMeasure] = useState<Measure>(null);
+  /** Ett sparat mått vars ände dras, innan det sparas om. */
+  const [editing, setEditing] = useState<Dimension | null>(null);
+
+  /** Sparar mätningen som en måttlinje på ritningen, med kommentaren om det finns en. */
+  const saveMeasure = useCallback(
+    (note: string) => {
+      if (!measure?.done) return;
+      // Schemat tar högst MAX_DIMENSIONS; fler gjorde hela konfigurationen ogiltig.
+      if ((config.dimensions?.length ?? 0) >= MAX_DIMENSIONS) return;
+      const dimension = makeDimension(measure.from, measure.to);
+      if (dimension)
+        addDimension(
+          note.trim() ? { ...dimension, note: note.trim() } : dimension,
+        );
+      setMeasure(null);
+      setTool("select");
+    },
+    [measure, addDimension, setTool, config.dimensions],
+  );
+
+  // En mätning som inte sparats försvinner när man byter verktyg.
+  useEffect(() => {
+    if (tool !== "measure") setMeasure(null);
+  }, [tool]);
+
   /*
    * Utsnittet som gällde när ett drag började.
    *
@@ -172,8 +225,12 @@ export function CadView() {
   /** Det ritade, med portarna i hallens kant följande kanten medan den dras. */
   const drawn = followHallEdges(config.drawn, config.hall, hall);
   const contentBox: Box = useMemo(() => {
-    const boxes = [{ x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm }, layout.bounds];
-    for (const d of config.drawn) boxes.push({ x: d.x, y: d.y, l: d.l, w: d.w });
+    const boxes = [
+      { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm },
+      layout.bounds,
+    ];
+    for (const d of config.drawn)
+      boxes.push({ x: d.x, y: d.y, l: d.l, w: d.w });
     const minX = Math.min(...boxes.map((b) => b.x));
     const minY = Math.min(...boxes.map((b) => b.y));
     const maxX = Math.max(...boxes.map((b) => b.x + b.l));
@@ -183,17 +240,13 @@ export function CadView() {
 
   const viewBox = useMemo(() => {
     const framed = frozen ?? contentBox;
-    const padded = padBox(framed, PAD_MM);
-    // Guiden ligger över ritningens vänstra del. Ge den plats i stället för att
-    // låta den täcka startpunkten.
-    const guideRoom = guideOpen ? padded.l * 0.3 : 0;
-    const base = { ...padded, x: padded.x - guideRoom, l: padded.l + guideRoom };
+    const base = padBox(framed, PAD_MM);
     const cx = base.x + base.l / 2 + pan.x;
     const cy = base.y + base.w / 2 + pan.y;
     const l = base.l / zoom;
     const w = base.w / zoom;
     return { x: cx - l / 2, y: cy - w / 2, l, w };
-  }, [contentBox, frozen, zoom, pan, guideOpen]);
+  }, [contentBox, frozen, zoom, pan]);
 
   /** Skärmkoordinat → världskoordinat (mm), via SVG:ns egen transform. */
   const toWorld = useCallback(
@@ -202,7 +255,9 @@ export function CadView() {
       if (!svg) return null;
       const ctm = svg.getScreenCTM();
       if (!ctm) return null;
-      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(ctm.inverse());
+      const point = new DOMPoint(event.clientX, event.clientY).matrixTransform(
+        ctm.inverse(),
+      );
       return { x: point.x, y: point.y };
     },
     [],
@@ -214,7 +269,8 @@ export function CadView() {
 
   /** Visar en förklaring vid muspekaren. Används av allt i ritningen som har något att säga. */
   const tip: TipHandlers = (title, body) => ({
-    onPointerEnter: (e) => setHover({ title, body, x: e.clientX, y: e.clientY }),
+    onPointerEnter: (e) =>
+      setHover({ title, body, x: e.clientX, y: e.clientY }),
     onPointerMove: (e) => setHover({ title, body, x: e.clientX, y: e.clientY }),
     onPointerLeave: () => setHover(null),
   });
@@ -239,7 +295,9 @@ export function CadView() {
     if (!ctm) return;
     const frozenInverse = ctm.inverse();
     const at = (e: { clientX: number; clientY: number }): Vec2 => {
-      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+        frozenInverse,
+      );
       return { x: point.x, y: point.y };
     };
 
@@ -279,7 +337,9 @@ export function CadView() {
     if (!ctm) return;
     const frozenInverse = ctm.inverse();
     const at = (e: { clientX: number; clientY: number }): Vec2 => {
-      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      const point = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+        frozenInverse,
+      );
       return { x: point.x, y: point.y };
     };
 
@@ -287,7 +347,10 @@ export function CadView() {
     const from = { x: object.x, y: object.y };
     setFrozen(contentBox);
     setHover(null);
-    const hostWalls = doorWalls(walls.filter((w) => w.id !== object.id), config.hall);
+    const hostWalls = doorWalls(
+      walls.filter((w) => w.id !== object.id),
+      config.hall,
+    );
 
     const move = (e: PointerEvent) => {
       const now = at(e);
@@ -309,10 +372,23 @@ export function CadView() {
         };
         const width = alongX ? object.l : object.w;
         const guess: Box = alongX
-          ? { x: snap(centre.x - width / 2), y: centre.y - 250, l: width, w: 500 }
-          : { x: centre.x - 250, y: snap(centre.y - width / 2), l: 500, w: width };
+          ? {
+              x: snap(centre.x - width / 2),
+              y: centre.y - 250,
+              l: width,
+              w: 500,
+            }
+          : {
+              x: centre.x - 250,
+              y: snap(centre.y - width / 2),
+              l: 500,
+              w: width,
+            };
         const fitted = fitDoorToWall(guess, hostWalls, 1500);
-        updateDrawn(object.id, fitted ?? { ...moved, l: object.l, w: object.w });
+        updateDrawn(
+          object.id,
+          fitted ?? { ...moved, l: object.l, w: object.w },
+        );
         return;
       }
       updateDrawn(object.id, moved);
@@ -327,7 +403,10 @@ export function CadView() {
   };
 
   /* ── Dra startpunkten ────────────────────────────────────────────────── */
-  const dragStartPoint = (which: "start" | { marker: string }, event: React.PointerEvent) => {
+  const dragStartPoint = (
+    which: "start" | { marker: string },
+    event: React.PointerEvent,
+  ) => {
     event.stopPropagation();
     if (tool !== "select") return;
     setHover(null);
@@ -346,6 +425,51 @@ export function CadView() {
     window.addEventListener("pointerup", up);
   };
 
+  /* ── Sparade mått ────────────────────────────────────────────────────── */
+  /*
+   * Ett sparat mått markeras med ett klick. Den markerade måttlinjens ändar
+   * går att dra; måttet sparas om när man släpper, så att ett drag blir ett
+   * steg att ångra. Skift låser till vågrätt eller lodrätt.
+   */
+  const startDimension = (
+    dimension: Dimension,
+    end: "from" | "to" | null,
+    event: React.PointerEvent,
+  ) => {
+    event.stopPropagation();
+    select(dimension.id);
+    if (tool !== "select" || !end) return;
+    const svg = svgRef.current;
+    const ctm = svg?.getScreenCTM();
+    if (!ctm) return;
+    const inverse = ctm.inverse();
+    setFrozen(contentBox);
+    setHover(null);
+    let latest = dimension;
+    const move = (e: PointerEvent) => {
+      const pt = new DOMPoint(e.clientX, e.clientY).matrixTransform(inverse);
+      const other = end === "from" ? dimension.to : dimension.from;
+      const raw = {
+        x: Math.round(pt.x / 10) * 10,
+        y: Math.round(pt.y / 10) * 10,
+      };
+      const point = e.shiftKey ? straighten(other, raw) : raw;
+      latest = { ...dimension, [end]: point };
+      setEditing(latest);
+    };
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      setFrozen(null);
+      setEditing(null);
+      if (latest !== dimension && dimensionLength(latest) >= MIN_DIMENSION_MM) {
+        updateDimension(dimension.id, { from: latest.from, to: latest.to });
+      }
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+
   /* ── Ändra hallens yta ───────────────────────────────────────────────── */
   /*
    * Hallen visas med sin nya kant medan man drar men sparas först när man
@@ -353,7 +477,10 @@ export function CadView() {
    * under draget — annars växer ritningen under pekaren och kanten springer
    * ifrån den.
    */
-  const startHallResize = (edge: "x" | "y" | "xy", event: React.PointerEvent) => {
+  const startHallResize = (
+    edge: "x" | "y" | "xy",
+    event: React.PointerEvent,
+  ) => {
     event.stopPropagation();
     if (tool !== "select") return;
     setHover(null);
@@ -364,13 +491,24 @@ export function CadView() {
     setFrozen(contentBox);
     const clamp = (v: number, [lo, hi]: readonly [number, number]) =>
       Math.min(hi, Math.max(lo, Math.round(v / HALL_SNAP_MM) * HALL_SNAP_MM));
-    let latest = { lengthMm: config.hall.lengthMm, widthMm: config.hall.widthMm };
+    let latest = {
+      lengthMm: config.hall.lengthMm,
+      widthMm: config.hall.widthMm,
+    };
 
     const move = (e: PointerEvent) => {
-      const now = new DOMPoint(e.clientX, e.clientY).matrixTransform(frozenInverse);
+      const now = new DOMPoint(e.clientX, e.clientY).matrixTransform(
+        frozenInverse,
+      );
       latest = {
-        lengthMm: edge === "y" ? config.hall.lengthMm : clamp(now.x, HALL_LIMITS.lengthMm),
-        widthMm: edge === "x" ? config.hall.widthMm : clamp(now.y, HALL_LIMITS.widthMm),
+        lengthMm:
+          edge === "y"
+            ? config.hall.lengthMm
+            : clamp(now.x, HALL_LIMITS.lengthMm),
+        widthMm:
+          edge === "x"
+            ? config.hall.widthMm
+            : clamp(now.y, HALL_LIMITS.widthMm),
       };
       setHallDrag(latest);
     };
@@ -379,7 +517,10 @@ export function CadView() {
       window.removeEventListener("pointerup", up);
       setFrozen(null);
       setHallDrag(null);
-      if (latest.lengthMm !== config.hall.lengthMm || latest.widthMm !== config.hall.widthMm) {
+      if (
+        latest.lengthMm !== config.hall.lengthMm ||
+        latest.widthMm !== config.hall.widthMm
+      ) {
         update((d) => {
           d.drawn = followHallEdges(d.drawn, d.hall, latest);
           d.hall.lengthMm = latest.lengthMm;
@@ -401,14 +542,44 @@ export function CadView() {
     if (!start) return;
 
     if (tool === "measure") {
-      setMeasure({ from: start, to: start });
+      /*
+       * Skift låser måttet till vågrätt eller lodrätt. Släpper man ligger
+       * mätningen kvar med en knapp för att spara den på ritningen.
+       */
+      let latest = { from: start, to: start };
+      setMeasure(latest);
       const move = (e: PointerEvent) => {
         const now = toWorld(e);
-        if (now) setMeasure({ from: start, to: now });
+        if (!now) return;
+        latest = { from: start, to: e.shiftKey ? straighten(start, now) : now };
+        setMeasure(latest);
       };
       const up = () => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
+        // Samma prövning som när måttet sparas — annars kunde notisen erbjuda
+        // att spara ett mått som avrundningen sedan gjorde för kort.
+        if (!makeDimension(latest.from, latest.to)) {
+          setMeasure(null);
+          return;
+        }
+        // Notisen ställs vid måttets mitt, räknat om till ritytans pixlar.
+        const svg = svgRef.current;
+        const ctm = svg?.getScreenCTM();
+        const frame = svg?.parentElement?.getBoundingClientRect();
+        const mid = new DOMPoint(
+          (latest.from.x + latest.to.x) / 2,
+          (latest.from.y + latest.to.y) / 2,
+        );
+        const at = ctm && frame ? mid.matrixTransform(ctm) : null;
+        setMeasure({
+          ...latest,
+          done: true,
+          screen:
+            at && frame
+              ? { x: at.x - frame.left, y: at.y - frame.top }
+              : undefined,
+        });
       };
       window.addEventListener("pointermove", move);
       window.addEventListener("pointerup", up);
@@ -440,16 +611,23 @@ export function CadView() {
       const current = latest as NonNullable<Draft> | null;
       if (current && current.box.l >= 200 && current.box.w >= 100) {
         const box =
-          current.kind === "door" ? current.box : finishDraft(current.kind, current.box, walls, config.hall);
+          current.kind === "door"
+            ? current.box
+            : finishDraft(current.kind, current.box, walls, config.hall);
+        const zone = current.kind === "zone" ? zoneKind : undefined;
         const object: DrawnObject = {
-          id: `${current.kind}-${Date.now().toString(36)}`,
+          id: `${zone ?? current.kind}-${Date.now().toString(36)}`,
           kind: current.kind,
-          name: nextName(current.kind, config.drawn),
+          ...(zone ? { zone } : {}),
+          // Namnet kommer ur ordlistan, så zonen heter samma sak som
+          // knappen kunden just tryckte på — på kundens eget språk.
+          name: nextName(current.kind, config.drawn, t, zone),
           x: Math.round(box.x),
           y: Math.round(box.y),
           l: Math.round(box.l),
           w: Math.round(box.w),
-          h: current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
+          h:
+            current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
         };
         addDrawn(object);
         setTool("select");
@@ -462,7 +640,9 @@ export function CadView() {
 
   const onWheel = (event: React.WheelEvent) => {
     event.preventDefault();
-    setZoom((z) => Math.min(6, Math.max(0.4, z * (event.deltaY < 0 ? 1.12 : 0.89))));
+    setZoom((z) =>
+      Math.min(6, Math.max(0.4, z * (event.deltaY < 0 ? 1.12 : 0.89))),
+    );
   };
 
   const fit = () => {
@@ -471,10 +651,14 @@ export function CadView() {
   };
 
   const errorIds = new Set(
-    layout.diagnostics.filter((d) => d.severity === "error").flatMap((d) => d.instanceIds),
+    layout.diagnostics
+      .filter((d) => d.severity === "error")
+      .flatMap((d) => d.instanceIds),
   );
   const warnIds = new Set(
-    layout.diagnostics.filter((d) => d.severity === "warning").flatMap((d) => d.instanceIds),
+    layout.diagnostics
+      .filter((d) => d.severity === "warning")
+      .flatMap((d) => d.instanceIds),
   );
 
   const fillFor = (p: Placement) => (p.aux ? "#ffffff" : "#f7f7f8");
@@ -509,7 +693,9 @@ export function CadView() {
           drawn.filter((d) => d.kind === "wall"),
           hall,
         ),
-        doors.filter((d) => d.id !== measuredId).map((d) => ({ x: d.x, y: d.y, l: d.l, w: d.w })),
+        doors
+          .filter((d) => d.id !== measuredId)
+          .map((d) => ({ x: d.x, y: d.y, l: d.l, w: d.w })),
       )
     : null;
 
@@ -572,14 +758,47 @@ export function CadView() {
               strokeWidth={strokeUnit * 0.7}
             />
           </pattern>
-          <pattern id="aisleHatch" width="900" height="900" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <path d="M0 0v900" stroke="#1d1f20" strokeOpacity="0.14" strokeWidth={strokeUnit * 1.2} />
+          <pattern
+            id="aisleHatch"
+            width="900"
+            height="900"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <path
+              d="M0 0v900"
+              stroke="#1d1f20"
+              strokeOpacity="0.14"
+              strokeWidth={strokeUnit * 1.2}
+            />
           </pattern>
-          <pattern id="nogoHatch" width="900" height="900" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
-            <path d="M0 0v900" stroke="#9f1239" strokeOpacity="0.4" strokeWidth={strokeUnit * 1.6} />
+          <pattern
+            id="nogoHatch"
+            width="900"
+            height="900"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(-45)"
+          >
+            <path
+              d="M0 0v900"
+              stroke="#9f1239"
+              strokeOpacity="0.4"
+              strokeWidth={strokeUnit * 1.6}
+            />
           </pattern>
-          <pattern id="serviceHatch" width="700" height="700" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-            <path d="M0 0v700" stroke="#5980a6" strokeOpacity="0.3" strokeWidth={strokeUnit} />
+          <pattern
+            id="serviceHatch"
+            width="700"
+            height="700"
+            patternUnits="userSpaceOnUse"
+            patternTransform="rotate(45)"
+          >
+            <path
+              d="M0 0v700"
+              stroke="#5980a6"
+              strokeOpacity="0.3"
+              strokeWidth={strokeUnit}
+            />
           </pattern>
         </defs>
 
@@ -593,34 +812,43 @@ export function CadView() {
           onPointerDown={startGround}
         />
 
-          <Plan2D
-            hallBox={hallBox}
-            config={config}
-            drawn={drawn}
-            hall={hall}
-            onHallResize={startHallResize}
-            tip={tip}
-            tool={tool}
-            layout={layout}
-            onDrawnDown={startDragDrawn}
-            onTurnDrawn={turnDrawn}
-            turnTitle={t("cad.turn")}
-            showZones={showZones}
-            showPorts={showPorts}
-            strokeUnit={strokeUnit}
-            fillFor={fillFor}
-            strokeFor={strokeFor}
-            labelFor={labelFor}
-            onMachineDown={startDrag}
-            onTurn={turnMachine}
-            selectedId={selectedId}
-          />
+        <Plan2D
+          hallBox={hallBox}
+          config={config}
+          drawn={drawn}
+          hall={hall}
+          onHallResize={startHallResize}
+          tip={tip}
+          tool={tool}
+          layout={layout}
+          onDrawnDown={startDragDrawn}
+          onTurnDrawn={turnDrawn}
+          turnTitle={t("cad.turn")}
+          onMirror={mirrorMachine}
+          mirrorTitle={t("cad.mirror")}
+          showZones={showZones}
+          showPorts={showPorts}
+          strokeUnit={strokeUnit}
+          fillFor={fillFor}
+          strokeFor={strokeFor}
+          labelFor={labelFor}
+          onMachineDown={startDrag}
+          onTurn={turnMachine}
+          selectedId={selectedId}
+        />
 
         {draft ? <DraftShape draft={draft} strokeUnit={strokeUnit} /> : null}
 
-        {clearance ? <DoorDimensions clearance={clearance} strokeUnit={strokeUnit} /> : null}
+        {clearance ? (
+          <DoorDimensions clearance={clearance} strokeUnit={strokeUnit} />
+        ) : null}
 
-        <FlowMarkers flow={config.flow} strokeUnit={strokeUnit} onDrag={dragStartPoint} tip={tip} />
+        <FlowMarkers
+          flow={config.flow}
+          strokeUnit={strokeUnit}
+          onDrag={dragStartPoint}
+          tip={tip}
+        />
 
         {dropAt && dragged ? (
           <g pointerEvents="none">
@@ -648,12 +876,47 @@ export function CadView() {
           </g>
         ) : null}
 
-        {measure ? <MeasureLine measure={measure} strokeUnit={strokeUnit} /> : null}
+        {(config.dimensions ?? []).map((d) => {
+          const shown = editing?.id === d.id ? editing : d;
+          return (
+            <DimensionLine
+              key={d.id}
+              dimension={shown}
+              selected={selectedId === d.id}
+              strokeUnit={strokeUnit}
+              interactive={tool === "select"}
+              onDown={(end, e) => startDimension(d, end, e)}
+              tip={tip(t("dim.saved"), t("dim.savedTip"))}
+            />
+          );
+        })}
+
+        {measure ? (
+          <MeasureLine measure={measure} strokeUnit={strokeUnit} />
+        ) : null}
       </svg>
+
+      {measure?.done ? (
+        <MeasureNotice
+          key={`${measure.from.x}:${measure.from.y}:${measure.to.x}:${measure.to.y}`}
+          lengthMm={dimensionLength(measure)}
+          at={measure.screen}
+          full={(config.dimensions?.length ?? 0) >= MAX_DIMENSIONS}
+          onSave={saveMeasure}
+          onDiscard={() => setMeasure(null)}
+        />
+      ) : null}
 
       {hover ? (
         <TipCard
-          rect={{ left: hover.x, right: hover.x, top: hover.y, bottom: hover.y + 12, width: 0, height: 12 }}
+          rect={{
+            left: hover.x,
+            right: hover.x,
+            top: hover.y,
+            bottom: hover.y + 12,
+            width: 0,
+            height: 12,
+          }}
           side="bottom"
           title={hover.title}
           body={hover.body}
@@ -664,14 +927,16 @@ export function CadView() {
         <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 border border-accent bg-white px-3 py-1.5 text-xs shadow-sm">
           <span className="kicker text-accent">{toolHelp(t, tool).title}</span>
           <span>{toolHelp(t, tool).hint}</span>
-          <kbd className="num border border-divider px-1 text-[10px] text-muted">Esc</kbd>
+          <kbd className="num border border-divider px-1 text-[10px] text-muted">
+            Esc
+          </kbd>
         </div>
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
-        <span className="kicker bg-paper/80 px-1">
-          {t("cad.plan")} · {t("cad.snap", { mm: SNAP_MM })}
-        </span>
+        <ViewBar
+          note={`${t("cad.plan")} · ${t("cad.snap", { mm: SNAP_MM })}`}
+        />
         <button
           onClick={fit}
           className="pointer-events-auto kicker border border-divider bg-white px-2 py-1 hover:border-accent"
@@ -700,6 +965,8 @@ function Plan2D({
   onDrawnDown,
   onTurnDrawn,
   turnTitle,
+  onMirror,
+  mirrorTitle,
   selectedId,
   drawn,
   hall,
@@ -726,6 +993,8 @@ function Plan2D({
   onDrawnDown: (o: DrawnObject, e: React.PointerEvent) => void;
   onTurnDrawn: (id: string) => void;
   turnTitle: string;
+  onMirror: (instanceId: string) => void;
+  mirrorTitle: string;
   selectedId: string | null;
 }) {
   const bounds = layout.bounds;
@@ -859,7 +1128,11 @@ function Plan2D({
         : null}
 
       {layout.placements.map((p) => (
-        <g key={p.instanceId} onPointerDown={(e) => onMachineDown(p, e)} style={{ cursor: "grab" }}>
+        <g
+          key={p.instanceId}
+          onPointerDown={(e) => onMachineDown(p, e)}
+          style={{ cursor: "grab" }}
+        >
           <rect
             x={p.bbox.x}
             y={p.bbox.y}
@@ -868,32 +1141,48 @@ function Plan2D({
             fill={fillFor(p)}
             stroke={strokeFor(p)}
             strokeWidth={strokeUnit * (p.instanceId === selectedId ? 2.6 : 1.4)}
-            strokeDasharray={p.aux ? `${strokeUnit * 6} ${strokeUnit * 4}` : undefined}
+            strokeDasharray={
+              p.aux ? `${strokeUnit * 6} ${strokeUnit * 4}` : undefined
+            }
           />
-          <text
-            x={p.bbox.x + p.bbox.l / 2}
-            y={p.bbox.y + p.bbox.w / 2 + strokeUnit * 7}
-            textAnchor="middle"
-            fontSize={strokeUnit * (p.aux ? 14 : 20)}
-            fill="#1d1f20"
-            className="num"
-            pointerEvents="none"
-          >
-            {labelFor(p)}
-          </text>
+          <TopViewImage placement={p} />
+          <MachineLabel
+            placement={p}
+            strokeUnit={strokeUnit}
+            label={labelFor(p)}
+          />
         </g>
       ))}
 
       {(() => {
-        const maskin = layout.placements.find((p) => p.instanceId === selectedId);
+        const maskin = layout.placements.find(
+          (p) => p.instanceId === selectedId,
+        );
         if (maskin) {
           return (
-            <TurnHandle
-              box={maskin.bbox}
-              strokeUnit={strokeUnit}
-              onTurn={(steps) => onTurn(maskin.instanceId, steps)}
-              title={turnTitle}
-            />
+            <>
+              <TurnHandle
+                box={maskin.bbox}
+                strokeUnit={strokeUnit}
+                onTurn={(steps) => onTurn(maskin.instanceId, steps)}
+                title={turnTitle}
+              />
+              {/*
+                Speglingen vid maskinen, under vridhandtaget. Att vrida och
+                att spegla är samma slags handling — man ställer maskinen
+                rätt i rummet — och de hör ihop där man ser den. Maskiner
+                som inte går att spegla får inget handtag.
+              */}
+              {maskin.machine.mirrorable ? (
+                <MirrorHandle
+                  box={maskin.bbox}
+                  strokeUnit={strokeUnit}
+                  active={maskin.mirrored}
+                  onMirror={() => onMirror(maskin.instanceId)}
+                  title={mirrorTitle}
+                />
+              ) : null}
+            </>
           );
         }
         const ritat = config.drawn.find((d) => d.id === selectedId);
@@ -942,7 +1231,11 @@ function Plan2D({
         </g>
       ) : null}
 
-      <DiagnosticBadges layout={layout} strokeUnit={strokeUnit} project={(v) => v} />
+      <DiagnosticBadges
+        layout={layout}
+        strokeUnit={strokeUnit}
+        project={(v) => v}
+      />
     </g>
   );
 }
@@ -961,15 +1254,36 @@ function DiagnosticBadges({
   const toggleDiagnostics = useConfigStore((s) => s.toggleDiagnostics);
   const select = useConfigStore((s) => s.select);
 
-  const anchored = layout.diagnostics.filter((d) => d.anchor && d.severity !== "info").slice(0, 8);
+  const anchored = layout.diagnostics
+    .filter((d) => d.anchor && d.severity !== "info")
+    .slice(0, 8);
+  /** Hur många brickor som redan sitter på samma punkt, så att nästa läggs under. */
+  const stacked = new Map<string, number>();
 
   return (
     <g>
       {anchored.map((d, i) => {
         const p = project(d.anchor!);
         const isError = d.severity === "error";
-        const width = strokeUnit * 44;
-        const height = strokeUnit * 22;
+        /*
+         * Brickan ska peka ut maskinen, inte täcka den. Den är liten från
+         * början och krymper till maskinens mått när maskinen är smal — en
+         * bandomföring på 0,6 m ska fortfarande synas under sin markering.
+         */
+        const machine = layout.placements.find(
+          (pl) => pl.instanceId === d.instanceIds[0],
+        );
+        const base = strokeUnit * 30;
+        const fit = machine
+          ? Math.min(machine.bbox.l, machine.bbox.w) / base
+          : 1;
+        const k = Math.min(1, Math.max(0.6, fit));
+        const width = base * k;
+        const height = strokeUnit * 12 * k;
+        const key = `${Math.round(p.x)}:${Math.round(p.y)}`;
+        const row = stacked.get(key) ?? 0;
+        stacked.set(key, row + 1);
+        const y = p.y + row * (height + strokeUnit * 2);
         return (
           /*
            * Brickan är en markering, inte en knapp. Den sitter mitt på den
@@ -977,19 +1291,20 @@ function DiagnosticBadges({
            * att dra — man tog tag mitt i den och ingenting hände. Felen nås
            * i diagnostikpanelen; att peka på maskinen räcker här.
            */
-          <g key={`${d.code}-${i}`} pointerEvents="none">
+          <g key={`${d.code}-${i}`} pointerEvents="none" opacity={0.92}>
             <rect
               x={p.x - width / 2}
-              y={p.y - height / 2}
+              y={y - height / 2}
               width={width}
               height={height}
+              rx={height / 2}
               fill={isError ? "#9f1239" : "#b45309"}
             />
             <text
               x={p.x}
-              y={p.y + strokeUnit * 6}
+              y={y + strokeUnit * 3 * k}
               textAnchor="middle"
-              fontSize={strokeUnit * 13}
+              fontSize={strokeUnit * 8.5 * k}
               fill="#ffffff"
               className="num"
               pointerEvents="none"
@@ -1017,12 +1332,32 @@ function DrawnShape({
   onDown: (o: DrawnObject, e: React.PointerEvent) => void;
   tip: ReturnType<TipHandlers>;
 }) {
-  const style = {
-    wall: { fill: "#d4d4d7", stroke: "#1d1f20", dash: undefined as string | undefined },
-    door: { fill: "#ffffff", stroke: "#5980a6", dash: undefined },
-    truck: { fill: "url(#aisleHatch)", stroke: "#1d1f20", dash: `${strokeUnit * 6} ${strokeUnit * 4}` },
-    nogo: { fill: "url(#nogoHatch)", stroke: "#9f1239", dash: `${strokeUnit * 5} ${strokeUnit * 3}` },
-  }[object.kind];
+  /*
+   * Varje sorts objekt har sitt eget uttryck, och zonerna hämtar sitt ur
+   * katalogen: konturens färg, ytans färg och rastret för de två sorter som
+   * alltid haft ett. En ny sorts zon får sitt utseende utan en rad här.
+   */
+  const zone = object.kind === "zone" ? zoneDef(object.zone) : null;
+  const style = zone
+    ? {
+        fill: zone.pattern ? `url(#${zone.pattern})` : zone.tint,
+        fillOpacity: zone.pattern ? undefined : 0.1,
+        stroke: zone.stroke,
+        dash: `${strokeUnit * 6} ${strokeUnit * 4}`,
+      }
+    : object.kind === "door"
+      ? {
+          fill: "#ffffff",
+          fillOpacity: undefined as number | undefined,
+          stroke: "#5980a6",
+          dash: undefined as string | undefined,
+        }
+      : {
+          fill: "#d4d4d7",
+          fillOpacity: undefined,
+          stroke: "#1d1f20",
+          dash: undefined,
+        };
 
   const cx = object.x + object.l / 2;
   const cy = object.y + object.w / 2;
@@ -1037,23 +1372,31 @@ function DrawnShape({
   const marked = object.kind === "wall" && object.h === 0;
 
   return (
-    <g style={{ cursor: "grab" }} onPointerDown={(e) => onDown(object, e)} {...tip}>
+    <g
+      style={{ cursor: "grab" }}
+      onPointerDown={(e) => onDown(object, e)}
+      {...tip}
+    >
       <rect
         x={object.x}
         y={object.y}
         width={object.l}
         height={object.w}
         fill={marked ? "#1d1f20" : style.fill}
-        fillOpacity={marked ? 0.05 : undefined}
+        fillOpacity={marked ? 0.05 : style.fillOpacity}
         stroke={marked ? "none" : selected ? "#5980a6" : style.stroke}
-        strokeOpacity={object.kind === "truck" ? 0.45 : 1}
+        strokeOpacity={zone?.aisle ? 0.45 : 1}
         strokeWidth={strokeUnit * (selected ? 2.4 : 1.2)}
         strokeDasharray={style.dash}
       />
 
       {marked ? (
         <path
-          d={alongX ? `M${object.x} ${cy}h${object.l}` : `M${cx} ${object.y}v${object.w}`}
+          d={
+            alongX
+              ? `M${object.x} ${cy}h${object.l}`
+              : `M${cx} ${object.y}v${object.w}`
+          }
           stroke={selected ? "#5980a6" : "#1d1f20"}
           strokeWidth={strokeUnit * (selected ? 2.6 : 1.8)}
           strokeDasharray={`${strokeUnit * 9} ${strokeUnit * 5}`}
@@ -1076,15 +1419,28 @@ function DrawnShape({
         />
       ) : null}
 
-      {object.kind === "truck" || object.kind === "door" ? (
+      {/*
+        Zonen bär sitt namn i planen. Det är hela poängen med en zonkatalog:
+        kunden ska kunna lägga in en lageryta, en operatörsplats och en
+        elcentral i samma hall och se vilken som är vilken utan att markera
+        dem en i taget. No-go-zonens raster talade förut för sig själv — men
+        bara så länge det fanns en enda sorts yta utöver truckgatan.
+      */}
+      {object.kind === "zone" || object.kind === "door" ? (
         <text
           x={cx}
-          y={object.kind === "door" ? object.y - strokeUnit * 5 : cy + strokeUnit * 6}
+          y={
+            object.kind === "door"
+              ? object.y - strokeUnit * 5
+              : cy + strokeUnit * 6
+          }
           textAnchor="middle"
           fontSize={strokeUnit * (object.kind === "door" ? 13 : 16)}
           letterSpacing={strokeUnit}
-          fill={object.kind === "door" ? "#5980a6" : "#1d1f20"}
-          fillOpacity={object.kind === "door" ? 1 : 0.6}
+          fill={
+            object.kind === "door" ? "#5980a6" : (zone?.stroke ?? "#1d1f20")
+          }
+          fillOpacity={object.kind === "door" ? 1 : 0.75}
           className="num"
           pointerEvents="none"
         >
@@ -1165,7 +1521,10 @@ function FlowMarkers({
 }: {
   flow: Flow;
   strokeUnit: number;
-  onDrag: (which: "start" | { marker: string }, event: React.PointerEvent) => void;
+  onDrag: (
+    which: "start" | { marker: string },
+    event: React.PointerEvent,
+  ) => void;
   tip: TipHandlers;
 }) {
   const t = useT();
@@ -1182,8 +1541,13 @@ function FlowMarkers({
   ) => {
     const colour = role === "start" ? "#5980a6" : "#1d2d3d";
     const help =
-      role === "end" ? t("points.endHelp") : active ? t("points.startHelp") : t("points.altHelp");
-    const body = (comment ? `“${comment}”\n\n` : "") + help + " " + t("points.drag");
+      role === "end"
+        ? t("points.endHelp")
+        : active
+          ? t("points.startHelp")
+          : t("points.altHelp");
+    const body =
+      (comment ? `“${comment}”\n\n` : "") + help + " " + t("points.drag");
     return (
       <g
         key={key}
@@ -1199,7 +1563,11 @@ function FlowMarkers({
           fillOpacity={active ? 0.18 : 0.9}
           stroke={colour}
           strokeWidth={strokeUnit * 1.6}
-          strokeDasharray={active || role === "end" ? undefined : `${strokeUnit * 3} ${strokeUnit * 2}`}
+          strokeDasharray={
+            active || role === "end"
+              ? undefined
+              : `${strokeUnit * 3} ${strokeUnit * 2}`
+          }
         />
         {role === "start" ? (
           <circle cx={pos.x} cy={pos.y} r={strokeUnit * 2.4} fill={colour} />
@@ -1251,7 +1619,15 @@ function FlowMarkers({
           { marker: m.id },
         ),
       )}
-      {marker("start", "start", flow.startPoint, t("points.start"), flow.startComment, true, "start")}
+      {marker(
+        "start",
+        "start",
+        flow.startPoint,
+        t("points.start"),
+        flow.startComment,
+        true,
+        "start",
+      )}
     </g>
   );
 }
@@ -1274,7 +1650,8 @@ function DoorDimensions({
   const dimension = (a: number, b: number, value: number, key: string) => {
     if (value <= 0) return null;
     const at = lineAt - offset;
-    const p = (along: number, across: number) => (alongX ? { x: along, y: across } : { x: across, y: along });
+    const p = (along: number, across: number) =>
+      alongX ? { x: along, y: across } : { x: across, y: along };
     const s = p(a, at);
     const e = p(b, at);
     const label = p((a + b) / 2, at);
@@ -1282,7 +1659,14 @@ function DoorDimensions({
     const h = strokeUnit * 18;
     return (
       <g key={key}>
-        <line x1={s.x} y1={s.y} x2={e.x} y2={e.y} stroke="#5980a6" strokeWidth={strokeUnit * 1.2} />
+        <line
+          x1={s.x}
+          y1={s.y}
+          x2={e.x}
+          y2={e.y}
+          stroke="#5980a6"
+          strokeWidth={strokeUnit * 1.2}
+        />
         {[s, e].map((q, i) => (
           <line
             key={i}
@@ -1294,7 +1678,13 @@ function DoorDimensions({
             strokeWidth={strokeUnit * 1.2}
           />
         ))}
-        <rect x={label.x - w / 2} y={label.y - h / 2} width={w} height={h} fill="#5980a6" />
+        <rect
+          x={label.x - w / 2}
+          y={label.y - h / 2}
+          width={w}
+          height={h}
+          fill="#5980a6"
+        />
         <text
           x={label.x}
           y={label.y + strokeUnit * 4.5}
@@ -1326,32 +1716,247 @@ function MeasureLine({
 }) {
   const a = measure.from;
   const b = measure.to;
-  const distance = Math.hypot(measure.to.x - measure.from.x, measure.to.y - measure.from.y);
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const u = strokeUnit;
 
   return (
     <g pointerEvents="none">
-      <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#5980a6" strokeWidth={strokeUnit * 1.6} />
-      <circle cx={a.x} cy={a.y} r={strokeUnit * 3} fill="#5980a6" />
-      <circle cx={b.x} cy={b.y} r={strokeUnit * 3} fill="#5980a6" />
-      <rect
-        x={(a.x + b.x) / 2 - strokeUnit * 26}
-        y={(a.y + b.y) / 2 - strokeUnit * 14}
-        width={strokeUnit * 52}
-        height={strokeUnit * 20}
-        fill="#ffffff"
+      <line
+        x1={a.x}
+        y1={a.y}
+        x2={b.x}
+        y2={b.y}
         stroke="#5980a6"
-        strokeWidth={strokeUnit}
+        strokeWidth={u * 1.6}
+        strokeDasharray={measure.done ? `${u * 6} ${u * 3}` : undefined}
       />
-      <text
-        x={(a.x + b.x) / 2}
-        y={(a.y + b.y) / 2}
-        textAnchor="middle"
-        fontSize={strokeUnit * 14}
-        fill="#1d1f20"
-        className="num"
+      <circle cx={a.x} cy={a.y} r={u * 3} fill="#5980a6" />
+      <circle cx={b.x} cy={b.y} r={u * 3} fill="#5980a6" />
+      {measure.done ? null : (
+        <>
+          <rect
+            x={mid.x - u * 26}
+            y={mid.y - u * 14}
+            width={u * 52}
+            height={u * 20}
+            fill="#ffffff"
+            stroke="#5980a6"
+            strokeWidth={u}
+          />
+          <text
+            x={mid.x}
+            y={mid.y}
+            textAnchor="middle"
+            fontSize={u * 14}
+            fill="#1d1f20"
+            className="num"
+          >
+            {meters(dimensionLength(measure))} m
+          </text>
+        </>
+      )}
+    </g>
+  );
+}
+
+/**
+ * Notisen när en mätning är klar: längden, en rad om vad som mäts och två
+ * tydliga val — spara måttet på ritningen eller ta bort det. Kommentarfältet
+ * har fokus direkt, så att man kan skriva och trycka Enter utan att ta musen.
+ */
+function MeasureNotice({
+  lengthMm,
+  at,
+  full,
+  onSave,
+  onDiscard,
+}: {
+  lengthMm: number;
+  at?: { x: number; y: number };
+  /** Ritningen rymmer inga fler mått. */
+  full: boolean;
+  onSave: (note: string) => void;
+  onDiscard: () => void;
+}) {
+  const t = useT();
+  const [note, setNote] = useState("");
+  const width = 280;
+  // Under måttets mitt, men aldrig utanför ritytan.
+  const style: React.CSSProperties = at
+    ? {
+        left: `clamp(8px, ${at.x - width / 2}px, calc(100% - ${width + 8}px))`,
+        top: `min(${at.y + 18}px, calc(100% - 170px))`,
+      }
+    : { left: "50%", top: 64, transform: "translateX(-50%)" };
+
+  return (
+    <div
+      role="dialog"
+      aria-label={t("dim.noticeTitle")}
+      className="absolute z-30 border border-accent bg-white p-3 shadow-lg"
+      style={{ width, ...style }}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="kicker">{t("dim.noticeTitle")}</span>
+        <span className="num text-xl">{meters(lengthMm, 2)} m</span>
+      </div>
+      <label className="mb-3 block">
+        <span className="kicker mb-1 block">{t("dim.note")}</span>
+        <input
+          autoFocus
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder={t("dim.notePlaceholder")}
+          maxLength={200}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !full) onSave(note);
+            if (e.key === "Escape") onDiscard();
+          }}
+          className="w-full border border-divider bg-white px-2 py-1 text-sm outline-none focus:border-accent"
+        />
+      </label>
+      <div className="flex gap-2">
+        <button
+          onClick={() => onSave(note)}
+          disabled={full}
+          className="flex-1 border border-ink bg-ink px-3 py-1.5 text-sm text-paper hover:bg-steel disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          {t("dim.saveMeasure")}
+        </button>
+        <button
+          onClick={onDiscard}
+          className="border border-divider px-3 py-1.5 text-sm hover:border-danger hover:text-danger"
+        >
+          {t("dim.discard")}
+        </button>
+      </div>
+      <p className={`mt-2 text-[10px] ${full ? "text-warn" : "text-muted"}`}>
+        {full ? t("dim.full", { max: MAX_DIMENSIONS }) : t("dim.noticeKeys")}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Ett sparat mått som måttlinje: tvärstreck i ändarna och längden mitt på,
+ * med kommentaren under. Markerat får det handtag i ändarna som går att dra.
+ */
+function DimensionLine({
+  dimension,
+  selected,
+  strokeUnit,
+  onDown,
+  tip,
+  interactive,
+}: {
+  dimension: Dimension;
+  selected: boolean;
+  /** Bara med markeringsverktyget — annars går det inte att mäta eller rita från ett befintligt mått. */
+  interactive: boolean;
+  strokeUnit: number;
+  onDown: (end: "from" | "to" | null, e: React.PointerEvent) => void;
+  tip: ReturnType<TipHandlers>;
+}) {
+  const { from: a, to: b } = dimension;
+  const u = strokeUnit;
+  const length = dimensionLength(dimension);
+  const colour = selected ? "#5980a6" : "#1d2d3d";
+  // Enhetsvektor längs måttet och vinkelrätt mot det, för tvärstrecken.
+  const v =
+    length > 0
+      ? { x: (b.x - a.x) / length, y: (b.y - a.y) / length }
+      : { x: 1, y: 0 };
+  const n = { x: -v.y, y: v.x };
+  const tick = u * 6;
+  const mid = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+  const label = `${meters(length, 2)} m`;
+  const width = u * (label.length * 6.4 + 8);
+
+  return (
+    <g pointerEvents={interactive ? undefined : "none"}>
+      <g
+        style={{ cursor: "pointer" }}
+        onPointerDown={(e) => onDown(null, e)}
+        {...tip}
       >
-        {meters(distance)} m
-      </text>
+        {/* Bred osynlig linje så att måttet går att träffa. */}
+        <line
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          stroke="transparent"
+          strokeWidth={u * 10}
+        />
+        <line
+          x1={a.x}
+          y1={a.y}
+          x2={b.x}
+          y2={b.y}
+          stroke={colour}
+          strokeWidth={u * (selected ? 1.8 : 1.2)}
+        />
+        {[a, b].map((p, i) => (
+          <line
+            key={i}
+            x1={p.x - n.x * tick + v.x * tick * 0.6}
+            y1={p.y - n.y * tick + v.y * tick * 0.6}
+            x2={p.x + n.x * tick - v.x * tick * 0.6}
+            y2={p.y + n.y * tick - v.y * tick * 0.6}
+            stroke={colour}
+            strokeWidth={u * 1.4}
+          />
+        ))}
+        <rect
+          x={mid.x - width / 2}
+          y={mid.y - u * 9}
+          width={width}
+          height={u * 16}
+          fill="#ffffff"
+          stroke={colour}
+          strokeWidth={u * 0.8}
+        />
+        <text
+          x={mid.x}
+          y={mid.y + u * 3.5}
+          textAnchor="middle"
+          fontSize={u * 11}
+          fill={colour}
+          className="num"
+        >
+          {label}
+        </text>
+        {dimension.note ? (
+          <text
+            x={mid.x}
+            y={mid.y + u * 19}
+            textAnchor="middle"
+            fontSize={u * 9.5}
+            fill={colour}
+            fillOpacity="0.85"
+          >
+            {dimension.note.length > 40
+              ? `${dimension.note.slice(0, 39)}…`
+              : dimension.note}
+          </text>
+        ) : null}
+      </g>
+      {selected
+        ? (["from", "to"] as const).map((end) => (
+            <circle
+              key={end}
+              cx={dimension[end].x}
+              cy={dimension[end].y}
+              r={u * 4.5}
+              fill="#ffffff"
+              stroke="#5980a6"
+              strokeWidth={u * 1.6}
+              style={{ cursor: "move" }}
+              onPointerDown={(e) => onDown(end, e)}
+            />
+          ))
+        : null}
     </g>
   );
 }
@@ -1368,7 +1973,13 @@ function MeasureLine({
  * därför in i maskinen på en ingång och bort från den på en utgång, vilket
  * är precis skillnaden man vill se när man vänder en maskin.
  */
-function FlowArrow({ port, strokeUnit }: { port: PlacedPort; strokeUnit: number }) {
+function FlowArrow({
+  port,
+  strokeUnit,
+}: {
+  port: PlacedPort;
+  strokeUnit: number;
+}) {
   const v = DIR_VEC[port.dir];
   const len = strokeUnit * 26;
   const head = strokeUnit * 9;
@@ -1454,7 +2065,14 @@ function TurnHandle({
       }}
     >
       <title>{title}</title>
-      <circle cx={cx} cy={cy} r={r} fill="#fff" stroke="#1d2d3d" strokeWidth={strokeUnit * 1.2} />
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill="#fff"
+        stroke="#1d2d3d"
+        strokeWidth={strokeUnit * 1.2}
+      />
       <g
         transform={`translate(${cx} ${cy}) scale(${scale}) translate(-12 -12)`}
         fill="none"
@@ -1466,6 +2084,106 @@ function TurnHandle({
         <path d={ROTATE_ARC} />
         <path d={ROTATE_TIP} />
       </g>
+    </g>
+  );
+}
+
+/**
+ * Speglingen vid maskinen, som vridhandtaget men ett steg ner.
+ *
+ * Handlingen fanns bara som en ikon utan text i inspektorns rotationsrad.
+ * Den som inte redan visste vad den gjorde hittade den aldrig — och det är
+ * den enda åtgärden i verktyget som avgör vilken sida pulpeten står på.
+ * Här står den där man arbetar, och tecknet är samma som i inspektorn.
+ * Ringen fylls när maskinen är speglad, så läget går att läsa av i planen.
+ */
+function MirrorHandle({
+  box,
+  strokeUnit,
+  active,
+  onMirror,
+  title,
+}: {
+  box: Box;
+  strokeUnit: number;
+  active: boolean;
+  onMirror: () => void;
+  title: string;
+}) {
+  const r = strokeUnit * 12;
+  const cx = box.x + box.l + r * 1.15;
+  const cy = box.y - r * 1.15 + r * 2.6;
+  const scale = (r * 1.25) / 14;
+
+  return (
+    <g
+      style={{ cursor: "pointer" }}
+      onPointerDown={(e) => {
+        e.stopPropagation();
+        onMirror();
+      }}
+    >
+      <title>{title}</title>
+      <circle
+        cx={cx}
+        cy={cy}
+        r={r}
+        fill={active ? "#5980a6" : "#fff"}
+        stroke="#1d2d3d"
+        strokeWidth={strokeUnit * 1.2}
+      />
+      <g
+        transform={`translate(${cx} ${cy}) scale(${scale}) translate(-12 -12)`}
+        fill="none"
+        stroke={active ? "#ffffff" : "#1d2d3d"}
+        strokeWidth={(strokeUnit * 1.3) / scale}
+        strokeLinejoin="round"
+      >
+        <path d="M12 3v18" strokeDasharray="2 2.5" />
+        <path d="M9 7 4 12l5 5z" />
+        <path d="M15 7l5 5-5 5z" />
+      </g>
+    </g>
+  );
+}
+
+/** Positionsnumret, på en liten platta så att det går att läsa ovanpå modellbilden. */
+function MachineLabel({
+  placement,
+  strokeUnit,
+  label,
+}: {
+  placement: Placement;
+  strokeUnit: number;
+  label: string;
+}) {
+  const size = strokeUnit * (placement.aux ? 14 : 20);
+  const cx = placement.bbox.x + placement.bbox.l / 2;
+  const cy = placement.bbox.y + placement.bbox.w / 2;
+  const hasModel = !!placement.machine.model?.glb;
+  return (
+    <g pointerEvents="none">
+      {hasModel ? (
+        <rect
+          x={cx - size * 0.55 * Math.max(1, label.length * 0.6)}
+          y={cy - size * 0.65}
+          width={size * 1.1 * Math.max(1, label.length * 0.6)}
+          height={size * 1.2}
+          rx={size * 0.2}
+          fill="#ffffff"
+          fillOpacity="0.85"
+        />
+      ) : null}
+      <text
+        x={cx}
+        y={cy + size * 0.35}
+        textAnchor="middle"
+        fontSize={size}
+        fill="#1d1f20"
+        className="num"
+      >
+        {label}
+      </text>
     </g>
   );
 }

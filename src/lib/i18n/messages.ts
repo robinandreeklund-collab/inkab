@@ -45,20 +45,24 @@ export const MESSAGES: Record<Locale, Messages> = {
     "onboarding.lead":
       "Dra in maskinerna du vill ha, ställ dem där de ska stå och se anläggningen växa i planvy och 3D. Måtten är maskinernas egna och kontrolleras mot ett regelverk. Ingen inloggning krävs för att bygga.",
     "onboarding.template.title": "Börja från en mall",
-    "onboarding.template.body": "Fyra vanliga pakethanteringslinjer att utgå ifrån och ändra.",
+    "onboarding.template.body":
+      "Fyra vanliga pakethanteringslinjer att utgå ifrån och ändra.",
     "onboarding.template.meta": "Snabbast",
     "onboarding.scratch.title": "Bygg från grunden",
-    "onboarding.scratch.body": "Tom canvas, full kontroll över maskinval och ordning.",
+    "onboarding.scratch.body":
+      "Tom canvas, full kontroll över maskinval och ordning.",
     "onboarding.scratch.meta": "Om du vet vad du vill",
     "onboarding.templates": "Mallar",
     "onboarding.machineCount": "{count} maskiner",
     "onboarding.continue": "Fortsätt till konfiguratorn",
-    "onboarding.disclaimer": "Prototyp med placeholder-maskindata. Priser är påhittade.",
+    "onboarding.disclaimer":
+      "Prototyp med placeholder-maskindata. Priser är påhittade.",
 
     /* Katalogen och linjen */
     "sidebar.machines": "Maskiner",
     "sidebar.search": "Sök maskin…",
-    "sidebar.addHint": "Dra maskinen dit den ska stå, eller klicka för att lägga den på ledig yta.",
+    "sidebar.addHint":
+      "Dra maskinen dit den ska stå, eller klicka för att lägga den på ledig yta.",
     "sidebar.line": "Linjen",
     "sidebar.count": "{count} st",
     "sidebar.flow": "Flöde",
@@ -66,7 +70,8 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Maskinerna står där du ställer dem. Pilarna i ritningen visar åt vilket håll varje maskin tar emot och lämnar paket — de kopplar ingenting, de berättar bara vad maskinen klarar.",
     "sidebar.truckPickup": "Trucken hämtar från",
     "sidebar.newMachinesAt": "Var nya maskiner läggs",
-    "sidebar.startPointHint": "Startpunkten. Dra markören i ritningen, eller skriv måtten här.",
+    "sidebar.startPointHint":
+      "Startpunkten. Dra markören i ritningen, eller skriv måtten här.",
     "sidebar.startX": "Start X",
     "sidebar.startY": "Start Y",
     "side.right": "Höger",
@@ -90,7 +95,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.note": "Anteckning",
     "inspector.notePlaceholder":
       "T.ex. befintlig maskin som flyttas, eller något leverantören behöver veta.",
-    "inspector.noteHint": "Följer med till offertunderlaget. Påverkar varken mått eller pris.",
+    "inspector.noteHint":
+      "Följer med till offertunderlaget. Påverkar varken mått eller pris.",
     "inspector.price": "Pris",
     "inspector.priceOnRequest": "Lämnas av INKAB",
     "inspector.priceOnRequestHint": "Kontakta oss för offert på anläggningen.",
@@ -117,7 +123,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.width": "Bredd",
     "sidebar.height": "Höjd",
     "sidebar.tools": "Ritverktyg",
-    "sidebar.drawHint": "Dra maskiner, zoner och väggar i vyn. Snapp {mm} mm. Vrid med R, eller med handtaget vid det markerade objektet.",
+    "sidebar.drawHint":
+      "Dra maskiner, zoner och väggar i vyn. Snapp {mm} mm. Vrid med R, eller med handtaget vid det markerade objektet.",
     "sidebar.noMatch": "Ingen maskin matchar sökningen.",
     "sidebar.lineEmpty": "Linjen är tom. Lägg till en maskin ovanför.",
     "sidebar.product": "Paketet",
@@ -128,17 +135,93 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.quote": "Offert",
     "sidebar.share": "Kopiera delningslänk",
     "sidebar.shareCopied": "Länk kopierad",
-    "sidebar.shareLong": "Länken blev lång. Skicka den som klickbar länk — vissa e-postklienter bryter långa adresser och då går den inte att öppna.",
+    "sidebar.shareLong":
+      "Länken blev lång. Skicka den som klickbar länk — vissa e-postklienter bryter långa adresser och då går den inte att öppna.",
     "sidebar.shareCopy": "Kopiera länken:",
     "tool.select": "Markera",
     "tool.wall": "Vägg",
     "tool.door": "Port",
-    "tool.truck": "Truckgata",
-    "tool.nogo": "No-go",
+    "tool.zone": "Zon",
+
+    "sidebar.addZone": "Lägg till {zone}",
+    "sidebar.drawnCount": "{count} ritade objekt",
+    "sidebar.clear": "Rensa",
+    "common.remove": "Ta bort",
+    "zone.truck": "Truckzon",
+    "zone.truck.hint":
+      "Dra en rektangel där trucken kör eller hämtar. Ytan hålls fri, och reglerna ser den som truckgata.",
+    "zone.nogo": "Spärrad yta",
+    "zone.nogo.hint":
+      "Dra en rektangel över det som inte får byggas för: en pelare, en trappa, en ledning i golvet.",
+    "zone.storage": "Lageryta",
+    "zone.storage.hint":
+      "Upplag, buffert eller mellanlager. Ytan är kundens, och ingen maskin ska stå i den.",
+    "zone.operator": "Operatörsplats",
+    "zone.operator.hint":
+      "Där någon står och arbetar: pulpet, manöverplats, kontrollplats. Ska vara fri.",
+    "zone.service": "Serviceyta",
+    "zone.service.hint":
+      "Yta som behövs för underhåll: byta knivar, dra ut en axel, komma åt med en travers.",
+    "zone.electrical": "Elcentral",
+    "zone.electrical.hint":
+      "Elcentral, styrskåp eller frekvensomriktare. Ska stå fritt och nås utan att klättra.",
+    "zone.foundation": "Fundament",
+    "zone.foundation.hint":
+      "Grop, fundament eller förstärkt golv. En maskin får stå här — det är därför ytan finns.",
+    "zone.other": "Egen zon",
+    "zone.other.hint":
+      "En markering med eget namn. Syns i planen och följer med offerten, men varnar aldrig.",
+    "inspector.drawn": "Ritat objekt",
+    "inspector.zoneKind": "Sorts zon",
+    "inspector.name": "Namn",
+    "inspector.nothing":
+      "Inget markerat. Klicka på ett objekt i vyn eller i linjelistan.",
+    "inspector.posX": "Position X",
+    "inspector.posY": "Position Y",
+    "inspector.lengthX": "Längd (X)",
+    "inspector.widthY": "Bredd (Y)",
+    "inspector.height": "Höjd",
+    "inspector.turn90": "Vrid 90°",
+    "inspector.mirrorHint":
+      "Spegelvänder maskinen tvärs flödet, så att pulpeten hamnar på andra sidan (S)",
+    "inspector.mirrored": "Speglad",
+    "inspector.mirrorDo": "Spegla",
+    "cad.mirror": "Spegelvänd maskinen (S)",
+    "submit.title": "Skicka in offert",
+    "submit.close": "Stäng",
+    "submit.lead":
+      "Underlag {reference} med {machines} maskiner går till INKAB: maskinlistan, planritningen, zonerna och dina anteckningar. Vi hör av oss med ett prisförslag.",
+    "submit.name": "Ditt namn",
+    "submit.email": "E-post",
+    "submit.company": "Företag",
+    "submit.phone": "Telefon",
+    "submit.message": "Meddelande",
+    "submit.messagePlaceholder":
+      "Något vi bör veta? När anläggningen ska stå klar, vad som redan finns på plats, vad ni är osäkra på.",
+    "submit.send": "Skicka in",
+    "submit.sending": "Skickar…",
+    "submit.privacy":
+      "Vi använder uppgifterna för att svara på din förfrågan, inget annat. Inget konto behövs.",
+    "submit.thanks":
+      "Tack — underlag {reference} är inskickat. Vi återkommer till dig.",
+    "submit.next":
+      "Du behöver inte göra något mer. Spara gärna ner PDF:en, så har du samma underlag som vi.",
+    "submit.notPersisted":
+      "Underlaget togs emot, men den här servern sparar inte över omstart. Ladda ner PDF:en och skicka den med, så att inget går förlorat.",
+    "submit.done": "Klart",
+    "submit.failed": "Servern svarade {status}. Underlaget skickades inte.",
+    "submit.offline": "Nätverket svarade inte. Underlaget skickades inte.",
+    "submit.logged": "Skickade in offerten {reference} till INKAB",
+    "area.zones.kind": "Sorts zon",
+    "area.zones.kindHelp":
+      "Vad ytan är avgör vad regelverket säger om den. En truckzon ska hållas fri, en spärrad yta får ingen maskin stå i, ett fundament är tvärtom där en maskin ska stå.",
     "tool.measure": "Mät",
-    "tool.wallHint": "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir {mm} mm tjock.",
-    "tool.doorHint": "Dra där porten sitter, i x- eller y-led. Låses till närmaste axel.",
-    "tool.truckHint": "Dra en rektangel där trucken kör eller hämtar. Kan vara en hel gata eller bara en hämtzon.",
+    "tool.wallHint":
+      "Dra åt det håll väggen ska gå. Den låses till närmaste axel och blir {mm} mm tjock.",
+    "tool.doorHint":
+      "Dra där porten sitter, i x- eller y-led. Låses till närmaste axel.",
+    "tool.truckHint":
+      "Dra en rektangel där trucken kör eller hämtar. Kan vara en hel gata eller bara en hämtzon.",
     "tool.nogoHint": "Dra en rektangel för att spärra en yta.",
     "tool.measureHint": "Dra mellan två punkter för att mäta avståndet.",
     "inspector.aux": "Hjälpobjekt",
@@ -152,48 +235,348 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.pit": "Grop",
     "inspector.lead": "Leveranstid",
     "inspector.clearance": "Maskinzon",
-    "inspector.unverified": "Måtten är uppskattade och inte kontrollerade mot ritning.",
+    "inspector.unverified":
+      "Måtten är uppskattade och inte kontrollerade mot ritning.",
     "inspector.product": "Produktinformation",
     "inspector.settings": "Inställningar",
     "inspector.variant": "Utförande",
     "inspector.stepDownload": "Ladda ner STEP",
-    "inspector.stepLogin": "STEP-filer kräver inloggning. Prototypen levererar inga CAD-filer.",
-    "inspector.stepMissing": "{file} finns inte i prototypen. I skarpt läge levereras en signerad, loggad nedladdning.",
+    "inspector.stepLogin":
+      "STEP-filer kräver inloggning. Prototypen levererar inga CAD-filer.",
+    "inspector.stepMissing":
+      "{file} finns inte i prototypen. I skarpt läge levereras en signerad, loggad nedladdning.",
     "dialog.close": "Stäng",
     "auth.email": "E-post",
     "auth.password": "Lösenord",
     "auth.name": "Namn",
     "auth.company": "Företag",
     "auth.failed": "Kunde inte nå servern.",
+    "quote.yes": "Ja",
+    "quote.no": "Nej",
+    "auth.register": "Skapa konto",
+    "auth.minPassword": "Minst 8 tecken.",
+    "auth.busy": "Arbetar…",
+    "auth.cancel": "Avbryt",
+    "auth.missing": "Fyll i e-post och lösenord.",
+    "auth.wrong": "Fel e-postadress eller lösenord.",
+    "auth.invalid":
+      "Kontrollera uppgifterna: giltig e-post, namn och ett lösenord på minst 8 tecken.",
+    "auth.taken": "E-postadressen är redan registrerad.",
+    "auth.error": "Något gick fel.",
+    "auth.note":
+      "Konton behövs för att spara projekt, se priser och ladda ner underlag.",
 
     /* Regelverket */
+    "rule.reversed.t": "Maskinen står åt fel håll",
+    "rule.reversedOut.d":
+      "Utgången på {a} möter utgången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget så att paketen går in i nästa maskin.",
+    "rule.reversedIn.d":
+      "Ingången på {a} möter ingången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget.",
+    "rule.loose.t": "Maskinen är inte kopplad till linjen",
+    "rule.loose.d":
+      "Ingen annan maskin tar emot eller lämnar paket till {machine}. Ställ den så att portarna möts, högst {reach} m isär, eller ta bort den om den inte ska vara med.",
+    "model.dragHint": "Dra för att flytta",
+    "model.turnLeft": "Vrid moturs",
+    "model.turnRight": "Vrid medurs",
+    "model.remove": "Ta bort maskinen",
+    "model.orbit": "Kamera",
+    "model.tiltUp": "Luta uppåt",
+    "model.tiltDown": "Luta nedåt",
+    "model.rotateLeft": "Vrid vyn åt vänster",
+    "model.rotateRight": "Vrid vyn åt höger",
+    "model.fit": "Passa",
+    "model.zoomIn": "Zooma in",
+    "model.zoomOut": "Zooma ut",
+    "model.view.overview": "Översikt",
+    "model.view.top": "Uppifrån",
+    "model.view.infeed": "Från inmatningen",
+    "model.view.side": "Från sidan",
+    "model.view.outfeed": "Från utlastningen",
+    "nav.title": "Ditt projekt",
+    "area.hall.title": "Hallens mått",
+    "area.site.title": "Lokalen",
+    "area.site.why":
+      "Hallens mått, väggarna och ytorna i den. Allt som står på plats innan en enda maskin dras in.",
+    "area.plant.title": "Anläggningen",
+    "area.plant.why":
+      "Maskinerna du vill ha, var de står, och var paketen kommer in i linjen.",
+    "area.optional": "Valfritt",
+    "area.optionalStep": "Valfritt steg",
+    "area.stepOf": "Steg {n} av {total}",
+    "area.quote.name": "Projektnamn",
+    "area.quote.nameHelp":
+      "Står överst på offerten, i filnamnet på PDF:en och i det vi ser när du skickar in.",
+    "top.projectNamePlaceholder": "Namnge projektet",
+    "top.projectNameHint": "Projektnamnet står överst på offerten",
+    "nav.status.doors": "{count} portar",
+    "nav.status.noMachines": "Inga maskiner än",
+    "model.note": "Modellvy · mått i meter",
+    "model.scaleUnit": "m",
+    "model.clearHeight": "fri höjd {h} m",
+    "area.hall.why":
+      "Längd, bredd och fri höjd. Allt annat mäts mot lokalen, och offerten bygger på att anläggningen får plats.",
+    "area.walls.title": "Väggar och portar",
+    "area.walls.why":
+      "Var trucken kör in och ut, och väggar inne i hallen. Portarna avgör var paketen kan komma in och lämnas.",
+    "area.zones.title": "Zoner",
+    "area.zones.why":
+      "Allt du vill markera i hallen: truckzonen, lagerytan, operatörsplatsen, elcentralen, pelaren som inte får byggas för. Du väljer sorts zon och ritar — regelverket vet vad varje sort betyder.",
+    "area.machines.title": "Maskinkatalog",
+    "area.machines.why":
+      "Dra in maskinerna dit de ska stå, i planen eller i modellvyn. Varje maskin blir en rad i offerten.",
+    "area.line.title": "Maskinerna i linjen",
+    "area.line.why":
+      "Det du har valt, i flödesordning, och vad regelverket säger om det. Fel behöver rättas innan offerten är rimlig.",
+    "area.points.title": "Start och slut",
+    "area.points.why":
+      "Var paketen kommer in och var de ska ut, med en rad om varför. Det står i offerten så att den som läser förstår flödet.",
+    "area.product.title": "Paketet",
+    "area.product.why":
+      "Virkesbredd, paketets mått och vikt och hur många paket i timmen. Maskinerna väljs och kontrolleras mot de här siffrorna.",
+    "area.quote.title": "Offertunderlag",
+    "area.quote.why":
+      "Sammanställ pris, ritning och maskinlista i ett dokument, eller dela konfigurationen med en länk.",
+    "area.collapse": "Fäll in panelen (F)",
+    "area.panel": "Panel",
+    "area.next": "Nästa: {title}",
+    "area.previous": "Föregående",
+    "area.remove": "Ta bort",
+    "area.tools": "Verktyg",
+    "area.hall.size": "Mått",
+    "area.hall.heightTitle": "Fri höjd",
+    "area.hall.heightHelp":
+      "Den lägsta höjden under tak, balkar eller kranbanor. Regelverket varnar om en maskin är högre.",
+    "area.walls.list": "Portar och väggar",
+    "area.walls.empty":
+      "Inga portar eller väggar ännu. Välj Rita port och dra längs hallens kant.",
+    "area.zones.list": "Ritade zoner",
+    "area.zones.empty": "Inga zoner ritade än. Behövs inga kan du gå vidare.",
+    "area.line.list": "{count} maskiner",
+    "area.line.empty":
+      "Inga maskiner ännu. Öppna Maskinkatalog och dra in den första.",
+    "area.line.check": "Kontroll",
+    "area.line.clean": "Regelverket hittar inga problem.",
+    "area.line.issues":
+      "Regelverket hittar {errors} fel och {warnings} varningar.",
+    "area.line.showIssues": "Visa anmärkningarna",
+    "area.product.width": "Virkesbredd",
+    "area.product.widthHelp":
+      "Det smalaste och det bredaste virket som ska köras. Maskinernas portar måste klara hela spannet.",
+    "area.product.package": "Paketet",
+    "area.product.height": "Pakethöjd",
+    "area.product.weight": "Paketvikt",
+    "area.product.targetHelp":
+      "Hur många paket i timmen linjen ska klara. Maskiner under målet blir en varning.",
+    "area.quote.summary": "Sammanfattning",
+    "area.quote.machines": "{count} maskiner",
+    "area.quote.hall": "Hall {l} × {w} m",
+    "area.quote.errors": "{count} fel att rätta",
+    "area.quote.noErrors": "Inga fel",
+    "area.quote.disclaimer":
+      "Prisindikation, ej bindande offert. Verklig anläggning kräver platsbesök och konstruktionsgranskning.",
+    "nav.status.walls": "{doors} portar · {walls} väggar",
+    "nav.status.zones": "{count} zoner",
+    "nav.status.machines": "{count} maskiner",
+    "nav.status.lineOk": "Inga anmärkningar",
+    "nav.status.lineIssues": "{errors} fel · {warnings} varningar",
+    "nav.status.points": "{count} punkter",
+    "nav.status.quote": "Pris, ritning, delning",
+    "onboarding.loadingCatalogue":
+      "Hämtar maskinkatalogen — mallen öppnas så fort den är här.",
+    "dim.saved": "Sparat mått",
+    "dim.savedTip":
+      "Klicka för att markera. Den markerade måttlinjens ändar går att dra; Skift låser vågrätt eller lodrätt.",
+    "dim.note": "Vad mäts?",
+    "dim.notePlaceholder": "T.ex. fritt mellan pelarna",
+    "dim.from": "Från",
+    "dim.to": "Till",
+    "dim.help":
+      "Måttet syns på ritningen, i offertunderlaget och i DXF-filen. Det påverkar inte layouten.",
+    "dim.list": "Sparade mått",
+    "dim.listHelp":
+      "Mät med Mät avstånd (M) och välj Spara mått i rutan som dyker upp, så ligger måttet kvar på ritningen.",
+    "dim.empty": "Inga sparade mått. Mät med M och välj Spara mått.",
+    "dim.noticeTitle": "Uppmätt",
+    "dim.saveMeasure": "Spara mått",
+    "dim.discard": "Ta bort",
+    "dim.noticeKeys": "Enter sparar · Esc tar bort",
+    "dim.full":
+      "Ritningen rymmer högst {max} mått. Ta bort ett för att spara ett nytt.",
+    "quote.kicker": "Offertunderlag · utkast",
+    "quote.reference": "Underlag",
+    "quote.date": "Datum",
+    "quote.validUntil": "Prisindikation t.o.m.",
+    "quote.preparedBy": "Framtaget av",
+    "quote.customer": "Kund",
+    "quote.company": "Företag",
+    "quote.companyPlaceholder": "Kundens företag",
+    "quote.contact": "Kontakt",
+    "quote.contactPlaceholder": "Namn hos kunden",
+    "quote.site": "Anläggning",
+    "quote.sitePlaceholder": "Ort eller sågverk",
+    "quote.yourReference": "Er referens",
+    "quote.yourReferencePlaceholder": "Kundens eget projektnummer",
+    "quote.summary": "Sammanfattning",
+    "quote.totalSize": "Totalmått",
+    "quote.floorArea": "Golvyta inkl. gångar",
+    "quote.capacity": "Kapacitet",
+    "quote.perHour": "{count} pkt/h",
+    "quote.agreedPrice": "Avtalat pris",
+    "quote.price": "Pris",
+    "quote.priceByInkab": "Lämnas av INKAB",
+    "quote.money": "{v} kr",
+    "quote.millions": "{v} Mkr",
+    "quote.issuesBoth": "{errors} fel och {warnings} varningar i layouten.",
+    "quote.issuesErrors": "{errors} fel i layouten.",
+    "quote.issuesWarning": "{warnings} varning i layouten.",
+    "quote.issuesWarnings": "{warnings} varningar i layouten.",
+    "quote.issuesMustFix":
+      "Underlaget går att ta fram ändå, men felen måste lösas innan anläggningen kan byggas:",
+    "quote.issuesReview":
+      "Underlaget går att ta fram ändå, men punkterna bör gås igenom med konstruktör:",
+    "quote.plan": "Planritning",
+    "quote.planNote": "Skala enligt skalstock · {reference}",
+    "quote.planOf": "Planritning över {name}",
+    "quote.machineList": "Maskinlista",
+    "quote.col.pos": "Pos",
+    "quote.col.name": "Benämning",
+    "quote.col.sku": "Artikel",
+    "quote.col.size": "Mått l × b × h",
+    "quote.col.options": "Optioner",
+    "quote.col.qty": "Antal",
+    "quote.col.rowPrice": "Radpris",
+    "quote.emptyLine": "Linjen är tom",
+    "quote.total.machines": "Maskiner",
+    "quote.total.install": "Montage",
+    "quote.total.control": "El och styr",
+    "quote.total.freight": "Frakt",
+    "quote.listPrice": "Listpris",
+    "quote.sumExVat": "Summa exkl. moms",
+    "quote.margin": "Marginal (visas ej för kund)",
+    "quote.loginForPrices":
+      "Logga in för att se listpriser. Utan inloggning visas bara ett intervall.",
+    "quote.priceNote":
+      "Listpris enligt {book}, exkl. moms. Montage och styr ingår som påslag.",
+    "quote.priceNoteGuest": "Pris lämnas av INKAB. Kontakta oss för offert.",
+    "quote.adjust.fixed": "Avtalat totalpris",
+    "quote.adjust.discount": "Avdrag {percent} %",
+    "quote.adjust.other": "Justering",
+    "quote.technical": "Tekniska förutsättningar",
+    "quote.power": "Elmatning",
+    "quote.air": "Tryckluft",
+    "quote.none": "Ingen",
+    "quote.nonePlural": "Inga",
+    "quote.pits": "Gropar",
+    "quote.pitCount": "{count} st",
+    "quote.clearHeight": "Fri takhöjd",
+    "quote.hall": "Hall",
+    "quote.leadTime": "Leveranstid",
+    "quote.weeks": "{count} veckor",
+    "quote.manufacturing": "Tillverkning",
+    "quote.assembly": "Montage på plats",
+    "quote.bottleneck": "Flaskhals",
+    "quote.noBottleneck": "Ingen identifierad",
+    "quote.flowConfig": "Flöde och konfiguration",
+    "quote.assumptions": "Antaganden och avgränsningar",
+    "quote.draft": "Utkast",
+    "quote.assume.floor":
+      "Plant betonggolv med minst 25 kN/m² bärighet, och att befintlig linje lämnar paket på 900 mm höjd.",
+    "quote.assume.truck":
+      "Truckgator och hämtzoner är de kunden ritat in; ingen är antagen åt er.",
+    "quote.truck.none":
+      "Ingen truckgata är inritad — trucktrafiken är alltså inte prövad mot layouten.",
+    "quote.truck.one":
+      "{count} truckyta inritad, smalaste fria bredd {width} m.",
+    "quote.truck.many":
+      "{count} truckytor inritade, smalaste fria bredd {width} m.",
+    "quote.assume.dims": "Måtten kommer ur maskinbiblioteket.",
+    "quote.assume.unverified":
+      "{count} av {total} maskiner har uppskattade mått som inte är kontrollerade mot ritning.",
+    "quote.assume.verified":
+      "Samtliga ingående maskiner har kontrollerade mått.",
+    "quote.assume.excluded":
+      "Elprojektering, riskanalys, hallmätning, fundamentritningar och byggnadsarbeten ingår inte.",
+    "quote.assume.vat":
+      "Priser är exklusive moms och gäller leverans fritt vår fabrik om inget annat avtalas.",
+    "quote.assume.disclaimer":
+      "Underlaget är genererat ur konfiguratorn och är en prisindikation, inte en bindande offert. Det granskas av säljare innan utskick. Frågor: {phone}.",
+    "quote.footer":
+      "Underlag {reference}, {today}. Prisindikation, ej bindande offert.",
+    "quote.back": "Tillbaka till vyn",
+    "quote.downloadPdf": "Ladda ner PDF",
+    "quote.submit": "Skicka in offert",
+    "quote.toolbarHint":
+      "PDF:en är satt för A4 och sparas med webbläsarens utskrift. Skickar du in offerten går underlaget till INKAB tillsammans med dina kontaktuppgifter.",
+    "quote.legend.machine": "Maskin, siffran är positionen i maskinlistan",
+    "quote.legend.aux": "Pulpet och magasin",
+    "quote.legend.zone": "Maskinzon — fritt utrymme som måste hållas",
+    "quote.legend.note":
+      "Måtten är i meter. Ritningen är genererad ur konfigurationen och ersätter inte en måttsatt anläggningsritning.",
+    "csv.length": "Längd (m)",
+    "csv.width": "Bredd (m)",
+    "csv.height": "Höjd (m)",
+    "csv.power": "Effekt (kW)",
+    "csv.rowPrice": "Radpris (kr)",
+    "template.projectName": "{name} — förstudie",
+    "template.newProject": "Ny anläggning",
+    "template.strolinje.name": "Truckströläggning – enkel",
+    "template.strolinje.desc":
+      "Rullbana in, truckströläggare med magasin, lättpress, bandomföring och buffert ut.",
+    "template.multilinje.name": "Truckströläggning – multi",
+    "template.multilinje.desc":
+      "Multiströläggare med vakuumlyft, hydraulisk press och automatisk bandomföring.",
+    "template.underslag.name": "Underslagsläggning",
+    "template.underslag.desc":
+      "Underslagsläggare med höj- och sänkbar transportör, sidoskydd och bandning.",
+    "template.komplett.name": "Komplett pakethantering",
+    "template.komplett.desc":
+      "Ströläggning, press, sidoskydd, bandning och emballering fram till utlastning.",
+    "draw.pickupOutfeed": "Hämtzon utlastning",
+    "draw.pickup": "Hämtzon",
+    "draw.door": "Port {letter}",
+    "draw.wall": "Vägg {n}",
+
+    "diag.title": "Diagnostik · {count} poster",
+    "diag.show": "Visa i vyn",
+    "diag.close": "Stäng",
+    "rule.addFix": "Lägg till {machine}",
     "rule.overlap.t": "Maskiner överlappar",
     "rule.overlap.d": "{a} och {b} går in i varandra över {area} m².",
     "rule.service.t": "Servicezon blockerad",
-    "rule.service.d": "{other} står i servicezonen för {machine}. Underhåll blir svårt att komma åt.",
+    "rule.service.d":
+      "{other} står i servicezonen för {machine}. Underhåll blir svårt att komma åt.",
     "rule.clearance.t": "Maskinzonen är inkräktad",
-    "rule.clearance.d": "{other} står innanför maskinzonen kring {machine}. Det fria utrymmet runt maskinen måste hållas.",
+    "rule.clearance.d":
+      "{other} står innanför maskinzonen kring {machine}. Det fria utrymmet runt maskinen måste hållas.",
     "rule.clearanceObj.d": "{obj} går in i maskinzonen kring {machine}.",
     "rule.safety.t": "Skyddszon ligger i truckgatan",
-    "rule.safety.d": "Skyddszonen kring {machine} skär {aisle}. Trucken kan inte passera en aktiv skyddszon.",
+    "rule.safety.d":
+      "Skyddszonen kring {machine} skär {aisle}. Trucken kan inte passera en aktiv skyddszon.",
     "rule.aisleOut.t": "Truckgatan ligger utanför hallen",
     "rule.aisleOut.d": "{aisle} sträcker sig utanför hallens {l} × {w} m.",
     "rule.aisleNarrow.t": "Truckgatan är smal",
-    "rule.aisleNarrow.d": "{aisle} är {w} m på sitt smalaste ställe. En motviktstruck med paket behöver normalt minst {min} m.",
+    "rule.aisleNarrow.d":
+      "{aisle} är {w} m på sitt smalaste ställe. En motviktstruck med paket behöver normalt minst {min} m.",
     "rule.noAisle.t": "Ingen truckgata eller hämtzon",
-    "rule.noAisle.d": "Rita ut var trucken kör och hämtar färdiga paket. Utan den kan varken utrymme eller åtkomst kontrolleras.",
+    "rule.noAisle.d":
+      "Rita ut var trucken kör och hämtar färdiga paket. Utan den kan varken utrymme eller åtkomst kontrolleras.",
     "rule.auxAisle.t": "{machine} står i truckgatan",
     "rule.auxAisle.d": "{machine} står i {aisle}. Trucken kan inte passera.",
     "rule.magazine.t": "Magasinet nås inte utan att passera maskinerna",
-    "rule.magazine.d": "Trucken måste passera {blocking} för att fylla {magazine}.",
+    "rule.magazine.d":
+      "Trucken måste passera {blocking} för att fylla {magazine}.",
     "rule.aisleDoor.t": "Truckgatan når ingen port",
-    "rule.aisleDoor.d": "{aisle} ansluter inte till någon av hallens portar. Kontrollera hur trucken tar sig in och ut.",
+    "rule.aisleDoor.d":
+      "{aisle} ansluter inte till någon av hallens portar. Kontrollera hur trucken tar sig in och ut.",
     "rule.capacity.t": "Kapaciteten understiger målet",
-    "rule.capacity.d": "{machine} klarar {has} paket/h men linjen är dimensionerad för {target} paket/h.",
+    "rule.capacity.d":
+      "{machine} klarar {has} paket/h men linjen är dimensionerad för {target} paket/h.",
     "rule.package.t": "Paketet passar inte maskinen",
-    "rule.package.d": "Paketets {label} {value} m ligger utanför {machine}: {min}–{max} m.",
+    "rule.package.d":
+      "Paketets {label} {value} m ligger utanför {machine}: {min}–{max} m.",
     "rule.portWidth.t": "Porten täcker inte hela virkesbreddsintervallet",
-    "rule.portWidth.d": "Port {port} på {machine} tar {portMin}–{portMax} m, men linjen ska köra {prodMin}–{prodMax} m.",
+    "rule.portWidth.d":
+      "Port {port} på {machine} tar {portMin}–{portMax} m, men linjen ska köra {prodMin}–{prodMax} m.",
     "rule.weight.t": "Paketet är för tungt",
     "rule.weight.d": "{kg} kg överstiger {machine}s max {max} kg.",
     "rule.outsideHall.t": "Maskinen hamnar utanför hallen",
@@ -204,7 +587,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "rule.hitNogo.t": "Maskinen står i en no-go-zon",
     "rule.hitObj.d": "{machine} överlappar {obj}.",
     "rule.inAisle.t": "Maskinen står i truckgatan",
-    "rule.inAisle.d": "{machine} ligger i {aisle}. Flytta maskinen eller rita om zonen.",
+    "rule.inAisle.d":
+      "{machine} ligger i {aisle}. Flytta maskinen eller rita om zonen.",
     "rule.requires.t": "Maskin saknas i linjen",
     "rule.requires.d": "{machine} kräver {needs} för att fungera.",
     "rule.conflict.t": "Maskinerna kan inte kombineras",
@@ -215,44 +599,64 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "längd",
     "product.width": "bredd",
     "product.height": "höjd",
-    "fallback.withFixes": "Assistenten körs utan API-nyckel, så det här är regelmotorns egna åtgärdsförslag — inte en AI-analys. Layouten har {errors} fel och {warnings} varningar.",
-    "fallback.clean": "Assistenten körs utan API-nyckel. Regelmotorn hittar inga problem i den här layouten.",
-    "fallback.noFixes": "Assistenten körs utan API-nyckel. Regelmotorn hittar {errors} fel och {warnings} varningar, men inget av dem har ett automatiskt åtgärdsförslag.",
+    "fallback.withFixes":
+      "Assistenten körs utan API-nyckel, så det här är regelmotorns egna åtgärdsförslag — inte en AI-analys. Layouten har {errors} fel och {warnings} varningar.",
+    "fallback.clean":
+      "Assistenten körs utan API-nyckel. Regelmotorn hittar inga problem i den här layouten.",
+    "fallback.noFixes":
+      "Assistenten körs utan API-nyckel. Regelmotorn hittar {errors} fel och {warnings} varningar, men inget av dem har ett automatiskt åtgärdsförslag.",
 
     /* Guide, tips och start- och slutpunkter */
     "tip.select.title": "Markera och flytta",
-    "tip.select.body": "Klicka på en maskin, port eller zon för att se och ändra den. Dra för att flytta. Dra i hallens kant eller hörn för att ändra ytan.",
-    "tip.select.hint": "Klicka för att markera, dra för att flytta. Dra i hallens kant eller hörn för att ändra ytan.",
+    "tip.select.body":
+      "Klicka på en maskin, port eller zon för att se och ändra den. Dra för att flytta. Dra i hallens kant eller hörn för att ändra ytan.",
+    "tip.select.hint":
+      "Klicka för att markera, dra för att flytta. Dra i hallens kant eller hörn för att ändra ytan.",
     "tip.wall.title": "Rita vägg",
-    "tip.wall.body": "Mellanväggar och innerväggar. Dra åt det håll väggen går — den blir rak av sig själv och fäster i väggarna intill. Hallens ytterväggar finns redan.",
-    "tip.wall.hint": "Dra från ena änden till den andra. Väggen rätas och fäster i väggarna intill.",
+    "tip.wall.body":
+      "Mellanväggar och innerväggar. Dra åt det håll väggen går — den blir rak av sig själv och fäster i väggarna intill. Hallens ytterväggar finns redan.",
+    "tip.wall.hint":
+      "Dra från ena änden till den andra. Väggen rätas och fäster i väggarna intill.",
     "tip.door.title": "Rita port",
-    "tip.door.body": "Där trucken kör in och ut. Dra längs en vägg eller hallens kant — porten sätts in i väggen, och avståndet till närmaste vägg på båda sidor visas medan du drar.",
-    "tip.door.hint": "Dra längs en vägg eller hallens kant. Avståndet till väggen på båda sidor visas medan du drar.",
-    "tip.truck.title": "Rita truckgata eller hämtzon",
-    "tip.truck.body": "Ytan trucken kör på eller hämtar paket från. Regelverket håller maskinerna borta från den och kontrollerar att den är bred nog.",
-    "tip.truck.hint": "Dra en rektangel där trucken kör eller hämtar paket.",
-    "tip.nogo.title": "Rita no-go-zon",
-    "tip.nogo.body": "Ytor där inget får stå: pelare, trappor, elcentraler, befintlig utrustning. Hamnar en maskin där säger regelverket ifrån.",
-    "tip.nogo.hint": "Dra en rektangel över ytan som ska hållas fri.",
+    "tip.door.body":
+      "Där trucken kör in och ut. Dra längs en vägg eller hallens kant — porten sätts in i väggen, och avståndet till närmaste vägg på båda sidor visas medan du drar.",
+    "tip.door.hint":
+      "Dra längs en vägg eller hallens kant. Avståndet till väggen på båda sidor visas medan du drar.",
+    "tip.zone.title": "Rita en zon",
+    "tip.zone.body":
+      "En yta du markerar i hallen. Vilken sort den är väljer du i panelen — truckzon, spärrad yta, lageryta, operatörsplats, serviceyta, elcentral, fundament eller en egen.",
+    "tip.zone.hint": "Dra en rektangel där zonen ska ligga.",
+
     "tip.measure.title": "Mät avstånd",
-    "tip.measure.body": "Dra mellan två punkter för att se avståndet. Mätningen sparas inte.",
-    "tip.measure.hint": "Dra mellan två punkter för att mäta.",
-    "tip.zones.body": "Maskinernas service- och säkerhetszoner — ytor som måste hållas fria runt varje maskin.",
+    "tip.measure.body":
+      "Dra mellan två punkter för att se avståndet. Släpp, skriv gärna vad som mäts och välj Spara mått, så ligger måttet kvar på ritningen. Skift låser vågrätt eller lodrätt.",
+    "tip.measure.hint":
+      "Dra mellan två punkter. När du släpper kan du skriva en kommentar och välja Spara mått eller Ta bort.",
+    "tip.zones.body":
+      "Maskinernas service- och säkerhetszoner — ytor som måste hållas fria runt varje maskin.",
     "tip.arrows.body": "Visar hur paketen går in i och ut ur varje maskin.",
     "cad.hallResize.title": "Ändra hallens yta",
-    "cad.hallResize.body": "Dra i kanten eller hörnet. Måttet visas medan du drar, och allt kan också skrivas in exakt under Hall och zoner.",
-    "cad.drawn.wall": "Dra för att flytta. Markera för att ändra längd, höjd eller ta bort.",
-    "cad.drawn.door": "Dra längs väggen för att flytta porten — avståndet till väggarna på båda sidor visas medan du drar.",
-    "cad.drawn.truck": "Truckens yta. Maskiner hålls borta härifrån. Dra för att flytta.",
-    "cad.drawn.nogo": "Här får inget stå. Regelverket varnar om en maskin hamnar här. Dra för att flytta.",
+    "cad.hallResize.body":
+      "Dra i kanten eller hörnet. Måttet visas medan du drar, och allt kan också skrivas in exakt under Hall och zoner.",
+    "cad.drawn.wall":
+      "Dra för att flytta. Markera för att ändra längd, höjd eller ta bort.",
+    "cad.drawn.door":
+      "Dra längs väggen för att flytta porten — avståndet till väggarna på båda sidor visas medan du drar.",
+    "cad.drawn.truck":
+      "Truckens yta. Maskiner hålls borta härifrån. Dra för att flytta.",
+    "cad.drawn.nogo":
+      "Här får inget stå. Regelverket varnar om en maskin hamnar här. Dra för att flytta.",
     "points.title": "Start och slut",
-    "points.why": "Startpunkten är där paketen kommer in och där nya maskiner läggs. Slutpunkter visar var färdiga paket ska ut. Skriv varför punkten ligger där — det följer med i ritningen och offerten. Finns flera tänkbara lägen, lägg till fler och jämför.",
+    "points.why":
+      "Startpunkten är där paketen kommer in och där nya maskiner läggs. Slutpunkter visar var färdiga paket ska ut. Skriv varför punkten ligger där — det följer med i ritningen och offerten. Finns flera tänkbara lägen, lägg till fler och jämför.",
     "points.start": "Start",
     "points.end": "Slut",
-    "points.startHelp": "Var paketen kommer in — från sågen, en annan linje eller en truckport. Nya maskiner läggs vid den aktiva startpunkten.",
-    "points.endHelp": "Var de färdiga paketen ska ut — vid en port, en hämtzon eller ett lager.",
-    "points.altHelp": "Alternativ startpunkt. Gör den aktiv i sidopanelen för att lägga nya maskiner här.",
+    "points.startHelp":
+      "Var paketen kommer in — från sågen, en annan linje eller en truckport. Nya maskiner läggs vid den aktiva startpunkten.",
+    "points.endHelp":
+      "Var de färdiga paketen ska ut — vid en port, en hämtzon eller ett lager.",
+    "points.altHelp":
+      "Alternativ startpunkt. Gör den aktiv i sidopanelen för att lägga nya maskiner här.",
     "points.drag": "Dra för att flytta.",
     "points.why.label": "Varför här?",
     "points.startPlaceholder": "T.ex. paketen kommer från sågen via port A",
@@ -262,37 +666,50 @@ export const MESSAGES: Record<Locale, Messages> = {
     "points.addStartTip": "Lägg till en startpunkt",
     "points.addEndTip": "Lägg till en slutpunkt",
     "points.more": "Fler punkter",
-    "points.moreTip": "Fler tänkbara lägen, t.ex. från hyvleriet i stället för sågen, eller en annan port. Var och en med sin motivering.",
+    "points.moreTip":
+      "Fler tänkbara lägen, t.ex. från hyvleriet i stället för sågen, eller en annan port. Var och en med sin motivering.",
     "points.activate": "Aktivera",
-    "points.activateTip": "Nya maskiner läggs vid den här punkten. Den som var aktiv blir kvar som alternativ.",
+    "points.activateTip":
+      "Nya maskiner läggs vid den här punkten. Den som var aktiv blir kvar som alternativ.",
     "guide.kicker": "Kom igång",
     "guide.progress": "{done} av {total} steg klara",
     "guide.close": "Stäng",
-    "guide.closeTip": "Guiden kan öppnas igen med knappen Kom igång nere till vänster.",
+    "guide.closeTip":
+      "Guiden kan öppnas igen med knappen Kom igång nere till vänster.",
     "guide.openTip": "Visa stegen för att rita lokalen och bygga anläggningen.",
     "guide.next": "Nästa",
     "guide.nextStep": "Nästa steg: {title}",
     "guide.hall.title": "Ställ in hallens yta",
-    "guide.hall.why": "Allt annat mäts mot lokalen: var väggarna går, var maskinerna får stå och om trucken kommer runt.",
-    "guide.hall.drag": "Eller dra i hallens högra kant, nederkant eller hörn direkt i ritningen.",
+    "guide.hall.why":
+      "Allt annat mäts mot lokalen: var väggarna går, var maskinerna får stå och om trucken kommer runt.",
+    "guide.hall.drag":
+      "Eller dra i hallens högra kant, nederkant eller hörn direkt i ritningen.",
     "guide.hall.ok": "Måtten stämmer",
     "guide.doors.title": "Rita in portarna",
-    "guide.doors.why": "Portarna är där trucken kör in och ut. De styr var paketen kan komma in och lämnas.",
-    "guide.doors.body": "Dra längs hallens kant eller en vägg. Avståndet till närmaste vägg på båda sidor visas medan du drar, och när du flyttar porten efteråt.",
+    "guide.doors.why":
+      "Portarna är där trucken kör in och ut. De styr var paketen kan komma in och lämnas.",
+    "guide.doors.body":
+      "Dra längs hallens kant eller en vägg. Avståndet till närmaste vägg på båda sidor visas medan du drar, och när du flyttar porten efteråt.",
     "guide.doors.none": "Inga portar",
     "guide.zones.title": "Markera no-go- och truckzoner",
-    "guide.zones.why": "Pelare, trappor och elcentraler får inte byggas över, och trucken behöver sin gata. Regelverket kontrollerar båda.",
+    "guide.zones.why":
+      "Pelare, trappor och elcentraler får inte byggas över, och trucken behöver sin gata. Regelverket kontrollerar båda.",
     "guide.zones.pickup": "+ Hämtzon",
-    "guide.zones.pickupTip": "Lägger en hämtzon vid anläggningens utlastning, på den sida trucken hämtar från. Flytta eller ändra den efteråt.",
+    "guide.zones.pickupTip":
+      "Lägger en hämtzon vid anläggningens utlastning, på den sida trucken hämtar från. Flytta eller ändra den efteråt.",
     "guide.zones.none": "Behövs inte",
     "guide.points.title": "Markera start och slut",
-    "guide.points.why": "Var paketen kommer in och var de ska ut. Nya maskiner läggs vid startpunkten.",
-    "guide.points.body": "Dra START i ritningen och skriv varför den ligger där. Finns flera tänkbara lägen, lägg till fler punkter med en rad om varför.",
+    "guide.points.why":
+      "Var paketen kommer in och var de ska ut. Nya maskiner läggs vid startpunkten.",
+    "guide.points.body":
+      "Dra START i ritningen och skriv varför den ligger där. Finns flera tänkbara lägen, lägg till fler punkter med en rad om varför.",
     "guide.points.ok": "Räcker så",
     "guide.machines.title": "Dra in maskiner",
-    "guide.machines.why": "Maskinerna står där du ställer dem. Dra dem ur katalogen till vänster, eller klicka så läggs de vid startpunkten.",
+    "guide.machines.why":
+      "Maskinerna står där du ställer dem. Dra dem ur katalogen till vänster, eller klicka så läggs de vid startpunkten.",
     "guide.quote.title": "Ta fram offertunderlaget",
-    "guide.quote.why": "Pris, ritning och maskinlista i ett dokument som går att dela.",
+    "guide.quote.why":
+      "Pris, ritning och maskinlista i ett dokument som går att dela.",
     "guide.quote.go": "Sammanställ offertunderlag",
   },
 
@@ -307,7 +724,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "top.view.model": "Model",
     "top.language": "Language",
     "top.history": "History",
-    "top.historyTitle": "What has happened in this project: documents, questions, changes",
+    "top.historyTitle":
+      "What has happened in this project: documents, questions, changes",
     "top.admin": "Admin",
     "top.myProposals": "My proposals",
     "top.logIn": "Log in",
@@ -321,19 +739,23 @@ export const MESSAGES: Record<Locale, Messages> = {
     "onboarding.lead":
       "Drag in the machines you want, place them where they belong and watch the plant take shape in plan view and 3D. The dimensions are the machines' own and are checked against a rule set. No account needed to build.",
     "onboarding.template.title": "Start from a template",
-    "onboarding.template.body": "Four common package handling lines to start from and adapt.",
+    "onboarding.template.body":
+      "Four common package handling lines to start from and adapt.",
     "onboarding.template.meta": "Fastest",
     "onboarding.scratch.title": "Build from scratch",
-    "onboarding.scratch.body": "Empty canvas, full control over machines and order.",
+    "onboarding.scratch.body":
+      "Empty canvas, full control over machines and order.",
     "onboarding.scratch.meta": "If you know what you want",
     "onboarding.templates": "Templates",
     "onboarding.machineCount": "{count} machines",
     "onboarding.continue": "Continue to the configurator",
-    "onboarding.disclaimer": "Prototype with placeholder machine data. Prices are invented.",
+    "onboarding.disclaimer":
+      "Prototype with placeholder machine data. Prices are invented.",
 
     "sidebar.machines": "Machines",
     "sidebar.search": "Search machines…",
-    "sidebar.addHint": "Drag a machine where it belongs, or click to drop it on free floor.",
+    "sidebar.addHint":
+      "Drag a machine where it belongs, or click to drop it on free floor.",
     "sidebar.line": "The line",
     "sidebar.count": "{count}",
     "sidebar.flow": "Flow",
@@ -341,7 +763,8 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Machines stand where you put them. The arrows in the drawing show which way each machine takes packages in and hands them on — they connect nothing, they only tell you what the machine can do.",
     "sidebar.truckPickup": "Forklift collects from",
     "sidebar.newMachinesAt": "Where new machines land",
-    "sidebar.startPointHint": "The start point. Drag the marker in the drawing, or type the values here.",
+    "sidebar.startPointHint":
+      "The start point. Drag the marker in the drawing, or type the values here.",
     "sidebar.startX": "Start X",
     "sidebar.startY": "Start Y",
     "side.right": "Right",
@@ -363,7 +786,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.note": "Note",
     "inspector.notePlaceholder":
       "E.g. existing machine being relocated, or something the supplier needs to know.",
-    "inspector.noteHint": "Carried over to the quotation. Affects neither dimensions nor price.",
+    "inspector.noteHint":
+      "Carried over to the quotation. Affects neither dimensions nor price.",
     "inspector.price": "Price",
     "inspector.priceOnRequest": "On request from INKAB",
     "inspector.priceOnRequestHint": "Contact us for a quotation on the plant.",
@@ -389,7 +813,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.width": "Width",
     "sidebar.height": "Height",
     "sidebar.tools": "Drawing tools",
-    "sidebar.drawHint": "Drag machines, zones and walls in the view. Snap {mm} mm. Turn with R, or with the handle beside the selected object.",
+    "sidebar.drawHint":
+      "Drag machines, zones and walls in the view. Snap {mm} mm. Turn with R, or with the handle beside the selected object.",
     "sidebar.noMatch": "No machine matches the search.",
     "sidebar.lineEmpty": "The line is empty. Add a machine above.",
     "sidebar.product": "The package",
@@ -400,17 +825,95 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.quote": "Quotation",
     "sidebar.share": "Copy share link",
     "sidebar.shareCopied": "Link copied",
-    "sidebar.shareLong": "The link came out long. Send it as a clickable link — some email clients break long addresses, and then it will not open.",
+    "sidebar.shareLong":
+      "The link came out long. Send it as a clickable link — some email clients break long addresses, and then it will not open.",
     "sidebar.shareCopy": "Copy the link:",
     "tool.select": "Select",
     "tool.wall": "Wall",
     "tool.door": "Door",
-    "tool.truck": "Forklift aisle",
-    "tool.nogo": "No-go",
+    "tool.zone": "Zone",
+
+    "sidebar.addZone": "Add {zone}",
+    "sidebar.drawnCount": "{count} drawn objects",
+    "sidebar.clear": "Clear",
+    "common.remove": "Remove",
+    "zone.truck": "Forklift aisle",
+    "zone.truck.hint":
+      "Drag a rectangle where the forklift drives or collects. The area is kept clear, and the rules treat it as a forklift aisle.",
+    "zone.nogo": "No-go area",
+    "zone.nogo.hint":
+      "Drag a rectangle over anything that must stay clear: a column, a stairway, a duct in the floor.",
+    "zone.storage": "Storage area",
+    "zone.storage.hint":
+      "Stacking, buffer or intermediate storage. The area belongs to the customer, and no machine should stand in it.",
+    "zone.operator": "Operator station",
+    "zone.operator.hint":
+      "Where somebody stands and works: console, control station, inspection point. Must stay clear.",
+    "zone.service": "Service area",
+    "zone.service.hint":
+      "Space needed for maintenance: changing knives, pulling out a shaft, reaching in with a crane.",
+    "zone.electrical": "Electrical cabinet",
+    "zone.electrical.hint":
+      "Switchboard, control cabinet or drive. Must stand clear and be reachable without climbing.",
+    "zone.foundation": "Foundation",
+    "zone.foundation.hint":
+      "Pit, foundation or reinforced floor. A machine may stand here — that is what the area is for.",
+    "zone.other": "Custom zone",
+    "zone.other.hint":
+      "A marking with a name of your own. It shows in the plan and follows the quote, but never warns.",
+    "inspector.drawn": "Drawn object",
+    "inspector.zoneKind": "Zone type",
+    "inspector.name": "Name",
+    "inspector.nothing":
+      "Nothing selected. Click an object in the view or in the line list.",
+    "inspector.posX": "Position X",
+    "inspector.posY": "Position Y",
+    "inspector.lengthX": "Length (X)",
+    "inspector.widthY": "Width (Y)",
+    "inspector.height": "Height",
+    "inspector.turn90": "Turn 90°",
+    "inspector.mirrorHint":
+      "Mirrors the machine across the flow, putting the console on the other side (S)",
+    "inspector.mirrored": "Mirrored",
+    "inspector.mirrorDo": "Mirror",
+    "cad.mirror": "Mirror the machine (S)",
+    "submit.title": "Submit quote",
+    "submit.close": "Close",
+    "submit.lead":
+      "Specification {reference} with {machines} machines goes to INKAB: the machine list, the plan drawing, the zones and your notes. We will come back to you with a price proposal.",
+    "submit.name": "Your name",
+    "submit.email": "Email",
+    "submit.company": "Company",
+    "submit.phone": "Phone",
+    "submit.message": "Message",
+    "submit.messagePlaceholder":
+      "Anything we should know? When the plant is due, what is already in place, what you are unsure about.",
+    "submit.send": "Submit",
+    "submit.sending": "Sending…",
+    "submit.privacy":
+      "We use these details to answer your enquiry, nothing else. No account needed.",
+    "submit.thanks":
+      "Thank you — specification {reference} has been submitted. We will be in touch.",
+    "submit.next":
+      "Nothing more is needed from you. Do save the PDF, so you hold the same specification we do.",
+    "submit.notPersisted":
+      "The specification was received, but this server does not keep data across a restart. Download the PDF and send it along so nothing is lost.",
+    "submit.done": "Done",
+    "submit.failed":
+      "The server answered {status}. The specification was not submitted.",
+    "submit.offline":
+      "The network did not answer. The specification was not submitted.",
+    "submit.logged": "Submitted quote {reference} to INKAB",
+    "area.zones.kind": "Zone type",
+    "area.zones.kindHelp":
+      "What the area is decides what the rules say about it. A forklift aisle must stay clear, no machine may stand in a no-go area, and a foundation is the opposite — that is where a machine belongs.",
     "tool.measure": "Measure",
-    "tool.wallHint": "Drag the way the wall should run. It locks to the nearest axis and becomes {mm} mm thick.",
-    "tool.doorHint": "Drag where the door sits, along x or y. Locks to the nearest axis.",
-    "tool.truckHint": "Drag a rectangle where the forklift drives or collects. It can be a whole aisle or just a pickup bay.",
+    "tool.wallHint":
+      "Drag the way the wall should run. It locks to the nearest axis and becomes {mm} mm thick.",
+    "tool.doorHint":
+      "Drag where the door sits, along x or y. Locks to the nearest axis.",
+    "tool.truckHint":
+      "Drag a rectangle where the forklift drives or collects. It can be a whole aisle or just a pickup bay.",
     "tool.nogoHint": "Drag a rectangle to block off an area.",
     "tool.measureHint": "Drag between two points to measure the distance.",
     "inspector.aux": "Ancillary item",
@@ -424,48 +927,352 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.pit": "Pit",
     "inspector.lead": "Lead time",
     "inspector.clearance": "Machine clearance",
-    "inspector.unverified": "The dimensions are estimates and have not been checked against drawings.",
+    "inspector.unverified":
+      "The dimensions are estimates and have not been checked against drawings.",
     "inspector.product": "Product information",
     "inspector.settings": "Settings",
     "inspector.variant": "Version",
     "inspector.stepDownload": "Download STEP",
-    "inspector.stepLogin": "STEP files require a login. The prototype delivers no CAD files.",
-    "inspector.stepMissing": "{file} is not part of the prototype. In production you get a signed, logged download.",
+    "inspector.stepLogin":
+      "STEP files require a login. The prototype delivers no CAD files.",
+    "inspector.stepMissing":
+      "{file} is not part of the prototype. In production you get a signed, logged download.",
     "dialog.close": "Close",
     "auth.email": "Email",
     "auth.password": "Password",
     "auth.name": "Name",
     "auth.company": "Company",
     "auth.failed": "Could not reach the server.",
+    "quote.yes": "Yes",
+    "quote.no": "No",
+    "auth.register": "Create account",
+    "auth.minPassword": "At least 8 characters.",
+    "auth.busy": "Working…",
+    "auth.cancel": "Cancel",
+    "auth.missing": "Enter email and password.",
+    "auth.wrong": "Wrong email or password.",
+    "auth.invalid":
+      "Check your details: a valid email, a name and a password of at least 8 characters.",
+    "auth.taken": "This email address is already registered.",
+    "auth.error": "Something went wrong.",
+    "auth.note":
+      "An account is needed to save projects, see prices and download documents.",
 
     /* Regelverket */
+    "rule.reversed.t": "A machine faces the wrong way",
+    "rule.reversedOut.d":
+      "The outlet of {a} meets the outlet of {b}. One of them is turned half a turn — turn it with R or the handle so packages enter the next machine.",
+    "rule.reversedIn.d":
+      "The inlet of {a} meets the inlet of {b}. One of them is turned half a turn — turn it with R or the handle.",
+    "rule.loose.t": "The machine is not connected to the line",
+    "rule.loose.d":
+      "No other machine passes packages to or from {machine}. Place it so the ports meet, at most {reach} m apart, or remove it if it should not be included.",
+    "model.dragHint": "Drag to move",
+    "model.turnLeft": "Turn anticlockwise",
+    "model.turnRight": "Turn clockwise",
+    "model.remove": "Remove the machine",
+    "model.orbit": "Camera",
+    "model.tiltUp": "Tilt up",
+    "model.tiltDown": "Tilt down",
+    "model.rotateLeft": "Rotate view left",
+    "model.rotateRight": "Rotate view right",
+    "model.fit": "Fit",
+    "model.zoomIn": "Zoom in",
+    "model.zoomOut": "Zoom out",
+    "model.view.overview": "Overview",
+    "model.view.top": "From above",
+    "model.view.infeed": "From the infeed",
+    "model.view.side": "From the side",
+    "model.view.outfeed": "From the outfeed",
+    "nav.title": "Your project",
+    "area.hall.title": "Hall size",
+    "area.site.title": "The building",
+    "area.site.why":
+      "The hall’s dimensions, its walls and the areas inside it. Everything that is in place before a single machine is dragged in.",
+    "area.plant.title": "The plant",
+    "area.plant.why":
+      "The machines you want, where they stand, and where packages enter the line.",
+    "area.optional": "Optional",
+    "area.optionalStep": "Optional step",
+    "area.stepOf": "Step {n} of {total}",
+    "area.quote.name": "Project name",
+    "area.quote.nameHelp":
+      "It heads the quote, names the PDF file, and is what we see when you submit.",
+    "top.projectNamePlaceholder": "Name the project",
+    "top.projectNameHint": "The project name heads the quote",
+    "nav.status.doors": "{count} doors",
+    "nav.status.noMachines": "No machines yet",
+    "model.note": "Model view · dimensions in metres",
+    "model.scaleUnit": "m",
+    "model.clearHeight": "clear height {h} m",
+    "area.hall.why":
+      "Length, width and clear height. Everything else is measured against the building, and the quote relies on the plant fitting.",
+    "area.walls.title": "Walls and doors",
+    "area.walls.why":
+      "Where the forklift drives in and out, and walls inside the hall. The doors decide where packages can come in and leave.",
+    "area.zones.title": "Zones",
+    "area.zones.why":
+      "Everything you want to mark in the hall: the forklift aisle, the storage area, the operator station, the switchboard, the column nothing may be built around. Pick a zone type and draw — the rules know what each type means.",
+    "area.machines.title": "Machine catalogue",
+    "area.machines.why":
+      "Drag the machines to where they should stand, in the plan or the model view. Each machine becomes a line in the quote.",
+    "area.line.title": "Machines in the line",
+    "area.line.why":
+      "What you have chosen, in flow order, and what the rules say about it. Errors need fixing before the quote makes sense.",
+    "area.points.title": "Start and end",
+    "area.points.why":
+      "Where packages come in and where they leave, with a line on why. It goes into the quote so the reader understands the flow.",
+    "area.product.title": "The package",
+    "area.product.why":
+      "Timber width, package size and weight, and packages per hour. The machines are chosen and checked against these figures.",
+    "area.quote.title": "Quote",
+    "area.quote.why":
+      "Compile price, drawing and machine list into one document, or share the configuration with a link.",
+    "area.collapse": "Collapse the panel (F)",
+    "area.panel": "Panel",
+    "area.next": "Next: {title}",
+    "area.previous": "Previous",
+    "area.remove": "Remove",
+    "area.tools": "Tools",
+    "area.hall.size": "Size",
+    "area.hall.heightTitle": "Clear height",
+    "area.hall.heightHelp":
+      "The lowest height under roof, beams or crane rails. The rules warn if a machine is taller.",
+    "area.walls.list": "Doors and walls",
+    "area.walls.empty":
+      "No doors or walls yet. Choose Draw door and drag along the hall's edge.",
+    "area.zones.list": "Drawn zones",
+    "area.zones.empty": "No zones drawn yet. If none are needed, move on.",
+    "area.line.list": "{count} machines",
+    "area.line.empty":
+      "No machines yet. Open Machine catalogue and drag in the first.",
+    "area.line.check": "Check",
+    "area.line.clean": "The rules find no problems.",
+    "area.line.issues":
+      "The rules find {errors} errors and {warnings} warnings.",
+    "area.line.showIssues": "Show the issues",
+    "area.product.width": "Timber width",
+    "area.product.widthHelp":
+      "The narrowest and widest timber to be run. The machines' ports must handle the whole range.",
+    "area.product.package": "Package",
+    "area.product.height": "Package height",
+    "area.product.weight": "Package weight",
+    "area.product.targetHelp":
+      "How many packages per hour the line must handle. Machines below the target get a warning.",
+    "area.quote.summary": "Summary",
+    "area.quote.machines": "{count} machines",
+    "area.quote.hall": "Hall {l} × {w} m",
+    "area.quote.errors": "{count} errors to fix",
+    "area.quote.noErrors": "No errors",
+    "area.quote.disclaimer":
+      "Price indication, not a binding quote. A real plant requires a site visit and design review.",
+    "nav.status.walls": "{doors} doors · {walls} walls",
+    "nav.status.zones": "{count} zones",
+    "nav.status.machines": "{count} machines",
+    "nav.status.lineOk": "No issues",
+    "nav.status.lineIssues": "{errors} errors · {warnings} warnings",
+    "nav.status.points": "{count} points",
+    "nav.status.quote": "Price, drawing, sharing",
+    "onboarding.loadingCatalogue":
+      "Loading the machine catalogue — the template opens as soon as it arrives.",
+    "dim.saved": "Saved dimension",
+    "dim.savedTip":
+      "Click to select. The selected dimension's ends can be dragged; Shift locks it horizontal or vertical.",
+    "dim.note": "What is measured?",
+    "dim.notePlaceholder": "E.g. clear between the columns",
+    "dim.from": "From",
+    "dim.to": "To",
+    "dim.help":
+      "The dimension appears on the drawing, in the quote and in the DXF file. It does not affect the layout.",
+    "dim.list": "Saved dimensions",
+    "dim.listHelp":
+      "Measure with Measure distance (M) and choose Save dimension in the box that appears, and it stays on the drawing.",
+    "dim.empty":
+      "No saved dimensions. Measure with M and choose Save dimension.",
+    "dim.noticeTitle": "Measured",
+    "dim.saveMeasure": "Save dimension",
+    "dim.discard": "Remove",
+    "dim.noticeKeys": "Enter saves · Esc removes",
+    "dim.full":
+      "The drawing holds at most {max} dimensions. Remove one to save a new one.",
+    "quote.kicker": "Quotation basis · draft",
+    "quote.reference": "Reference",
+    "quote.date": "Date",
+    "quote.validUntil": "Price indication valid until",
+    "quote.preparedBy": "Prepared by",
+    "quote.customer": "Customer",
+    "quote.company": "Company",
+    "quote.companyPlaceholder": "Customer's company",
+    "quote.contact": "Contact",
+    "quote.contactPlaceholder": "Name at the customer",
+    "quote.site": "Site",
+    "quote.sitePlaceholder": "Town or sawmill",
+    "quote.yourReference": "Your reference",
+    "quote.yourReferencePlaceholder": "Customer's own project number",
+    "quote.summary": "Summary",
+    "quote.totalSize": "Overall size",
+    "quote.floorArea": "Floor area incl. aisles",
+    "quote.capacity": "Capacity",
+    "quote.perHour": "{count} packages/h",
+    "quote.agreedPrice": "Agreed price",
+    "quote.price": "Price",
+    "quote.priceByInkab": "Provided by INKAB",
+    "quote.money": "SEK {v}",
+    "quote.millions": "SEK {v} m",
+    "quote.issuesBoth":
+      "{errors} errors and {warnings} warnings in the layout.",
+    "quote.issuesErrors": "{errors} errors in the layout.",
+    "quote.issuesWarning": "{warnings} warning in the layout.",
+    "quote.issuesWarnings": "{warnings} warnings in the layout.",
+    "quote.issuesMustFix":
+      "The document can still be produced, but the errors must be resolved before the plant can be built:",
+    "quote.issuesReview":
+      "The document can still be produced, but the points should be reviewed with an engineer:",
+    "quote.plan": "Plan drawing",
+    "quote.planNote": "Scale per scale bar · {reference}",
+    "quote.planOf": "Plan drawing of {name}",
+    "quote.machineList": "Machine list",
+    "quote.col.pos": "Pos",
+    "quote.col.name": "Description",
+    "quote.col.sku": "Article",
+    "quote.col.size": "Size l × w × h",
+    "quote.col.options": "Options",
+    "quote.col.qty": "Qty",
+    "quote.col.rowPrice": "Line price",
+    "quote.emptyLine": "The line is empty",
+    "quote.total.machines": "Machines",
+    "quote.total.install": "Installation",
+    "quote.total.control": "Electrics and control",
+    "quote.total.freight": "Freight",
+    "quote.listPrice": "List price",
+    "quote.sumExVat": "Total excl. VAT",
+    "quote.margin": "Margin (not shown to customer)",
+    "quote.loginForPrices":
+      "Log in to see list prices. Without logging in, only a range is shown.",
+    "quote.priceNote":
+      "List price per {book}, excl. VAT. Installation and control are included as surcharges.",
+    "quote.priceNoteGuest": "Price provided by INKAB. Contact us for a quote.",
+    "quote.adjust.fixed": "Agreed total price",
+    "quote.adjust.discount": "Discount {percent} %",
+    "quote.adjust.other": "Adjustment",
+    "quote.technical": "Technical requirements",
+    "quote.power": "Power supply",
+    "quote.air": "Compressed air",
+    "quote.none": "None",
+    "quote.nonePlural": "None",
+    "quote.pits": "Pits",
+    "quote.pitCount": "{count}",
+    "quote.clearHeight": "Clear ceiling height",
+    "quote.hall": "Hall",
+    "quote.leadTime": "Lead time",
+    "quote.weeks": "{count} weeks",
+    "quote.manufacturing": "Manufacturing",
+    "quote.assembly": "On-site assembly",
+    "quote.bottleneck": "Bottleneck",
+    "quote.noBottleneck": "None identified",
+    "quote.flowConfig": "Flow and configuration",
+    "quote.assumptions": "Assumptions and exclusions",
+    "quote.draft": "Draft",
+    "quote.assume.floor":
+      "Level concrete floor with a load capacity of at least 25 kN/m², and the existing line delivering packages at 900 mm height.",
+    "quote.assume.truck":
+      "Forklift aisles and pickup bays are those drawn by the customer; none are assumed on your behalf.",
+    "quote.truck.none":
+      "No forklift aisle is drawn — forklift traffic has therefore not been checked against the layout.",
+    "quote.truck.one":
+      "{count} forklift area drawn, narrowest clear width {width} m.",
+    "quote.truck.many":
+      "{count} forklift areas drawn, narrowest clear width {width} m.",
+    "quote.assume.dims": "The dimensions come from the machine library.",
+    "quote.assume.unverified":
+      "{count} of {total} machines have estimated dimensions not checked against drawings.",
+    "quote.assume.verified": "All included machines have verified dimensions.",
+    "quote.assume.excluded":
+      "Electrical design, risk assessment, hall survey, foundation drawings and building works are not included.",
+    "quote.assume.vat":
+      "Prices exclude VAT and apply to delivery ex works unless otherwise agreed.",
+    "quote.assume.disclaimer":
+      "This document is generated by the configurator and is a price indication, not a binding quote. It is reviewed by sales before being sent. Questions: {phone}.",
+    "quote.footer":
+      "Reference {reference}, {today}. Price indication, not a binding quote.",
+    "quote.back": "Back to the view",
+    "quote.downloadPdf": "Download PDF",
+    "quote.submit": "Submit quote",
+    "quote.toolbarHint":
+      "The PDF is set for A4 and saved through your browser’s print dialog. Submitting the quote sends the specification to INKAB along with your contact details.",
+    "quote.legend.machine":
+      "Machine; the number is its position in the machine list",
+    "quote.legend.aux": "Control desk and magazine",
+    "quote.legend.zone": "Machine zone — clear space that must be kept",
+    "quote.legend.note":
+      "Dimensions are in metres. The drawing is generated from the configuration and does not replace a dimensioned plant drawing.",
+    "csv.length": "Length (m)",
+    "csv.width": "Width (m)",
+    "csv.height": "Height (m)",
+    "csv.power": "Power (kW)",
+    "csv.rowPrice": "Line price (SEK)",
+    "template.projectName": "{name} — pre-study",
+    "template.newProject": "New plant",
+    "template.strolinje.name": "Forklift sticker stacking – single",
+    "template.strolinje.desc":
+      "Roller conveyor in, sticker stacker with magazine, light press, strapping and buffer out.",
+    "template.multilinje.name": "Forklift sticker stacking – multi",
+    "template.multilinje.desc":
+      "Multi sticker stacker with vacuum lift, hydraulic press and automatic strapping.",
+    "template.underslag.name": "Bearer placement",
+    "template.underslag.desc":
+      "Bearer placer with height-adjustable conveyor, side protection and strapping.",
+    "template.komplett.name": "Complete package handling",
+    "template.komplett.desc":
+      "Sticker stacking, press, side protection, strapping and wrapping through to outfeed.",
+    "draw.pickupOutfeed": "Outfeed pickup bay",
+    "draw.pickup": "Pickup bay",
+    "draw.door": "Door {letter}",
+    "draw.wall": "Wall {n}",
+
+    "diag.title": "Diagnostics · {count} items",
+    "diag.show": "Show in view",
+    "diag.close": "Close",
+    "rule.addFix": "Add {machine}",
     "rule.overlap.t": "Machines overlap",
     "rule.overlap.d": "{a} and {b} run into each other over {area} m².",
     "rule.service.t": "Service zone blocked",
-    "rule.service.d": "{other} stands in the service zone of {machine}. Maintenance access becomes difficult.",
+    "rule.service.d":
+      "{other} stands in the service zone of {machine}. Maintenance access becomes difficult.",
     "rule.clearance.t": "Machine clearance intruded",
-    "rule.clearance.d": "{other} stands inside the clearance around {machine}. The free space around the machine must be kept.",
+    "rule.clearance.d":
+      "{other} stands inside the clearance around {machine}. The free space around the machine must be kept.",
     "rule.clearanceObj.d": "{obj} reaches into the clearance around {machine}.",
     "rule.safety.t": "Safety zone lies in the forklift aisle",
-    "rule.safety.d": "The safety zone around {machine} cuts across {aisle}. A forklift cannot pass through an active safety zone.",
+    "rule.safety.d":
+      "The safety zone around {machine} cuts across {aisle}. A forklift cannot pass through an active safety zone.",
     "rule.aisleOut.t": "The forklift aisle lies outside the hall",
     "rule.aisleOut.d": "{aisle} extends beyond the hall's {l} × {w} m.",
     "rule.aisleNarrow.t": "The forklift aisle is narrow",
-    "rule.aisleNarrow.d": "{aisle} is {w} m at its narrowest. A counterbalance truck carrying a package normally needs at least {min} m.",
+    "rule.aisleNarrow.d":
+      "{aisle} is {w} m at its narrowest. A counterbalance truck carrying a package normally needs at least {min} m.",
     "rule.noAisle.t": "No forklift aisle or pickup bay",
-    "rule.noAisle.d": "Draw where the forklift drives and collects finished packages. Without it, neither space nor access can be checked.",
+    "rule.noAisle.d":
+      "Draw where the forklift drives and collects finished packages. Without it, neither space nor access can be checked.",
     "rule.auxAisle.t": "{machine} stands in the forklift aisle",
-    "rule.auxAisle.d": "{machine} stands in {aisle}. The forklift cannot get past.",
-    "rule.magazine.t": "The magazine cannot be reached without passing the machines",
-    "rule.magazine.d": "The forklift has to pass {blocking} to refill {magazine}.",
+    "rule.auxAisle.d":
+      "{machine} stands in {aisle}. The forklift cannot get past.",
+    "rule.magazine.t":
+      "The magazine cannot be reached without passing the machines",
+    "rule.magazine.d":
+      "The forklift has to pass {blocking} to refill {magazine}.",
     "rule.aisleDoor.t": "The forklift aisle reaches no door",
-    "rule.aisleDoor.d": "{aisle} does not connect to any of the hall's doors. Check how the forklift gets in and out.",
+    "rule.aisleDoor.d":
+      "{aisle} does not connect to any of the hall's doors. Check how the forklift gets in and out.",
     "rule.capacity.t": "Capacity falls short of the target",
-    "rule.capacity.d": "{machine} handles {has} packages/h but the line is dimensioned for {target} packages/h.",
+    "rule.capacity.d":
+      "{machine} handles {has} packages/h but the line is dimensioned for {target} packages/h.",
     "rule.package.t": "The package does not fit the machine",
-    "rule.package.d": "The package {label} of {value} m falls outside {machine}: {min}–{max} m.",
+    "rule.package.d":
+      "The package {label} of {value} m falls outside {machine}: {min}–{max} m.",
     "rule.portWidth.t": "The port does not cover the whole timber width range",
-    "rule.portWidth.d": "Port {port} on {machine} takes {portMin}–{portMax} m, but the line is to run {prodMin}–{prodMax} m.",
+    "rule.portWidth.d":
+      "Port {port} on {machine} takes {portMin}–{portMax} m, but the line is to run {prodMin}–{prodMax} m.",
     "rule.weight.t": "The package is too heavy",
     "rule.weight.d": "{kg} kg exceeds the {max} kg maximum of {machine}.",
     "rule.outsideHall.t": "The machine ends up outside the hall",
@@ -476,7 +1283,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "rule.hitNogo.t": "The machine stands in a no-go area",
     "rule.hitObj.d": "{machine} overlaps {obj}.",
     "rule.inAisle.t": "The machine stands in the forklift aisle",
-    "rule.inAisle.d": "{machine} lies in {aisle}. Move the machine or redraw the zone.",
+    "rule.inAisle.d":
+      "{machine} lies in {aisle}. Move the machine or redraw the zone.",
     "rule.requires.t": "A required machine is missing",
     "rule.requires.d": "{machine} needs {needs} in order to work.",
     "rule.conflict.t": "The machines cannot be combined",
@@ -487,44 +1295,64 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "length",
     "product.width": "width",
     "product.height": "height",
-    "fallback.withFixes": "The assistant is running without an API key, so these are the rule engine's own suggested fixes — not an AI analysis. The layout has {errors} errors and {warnings} warnings.",
-    "fallback.clean": "The assistant is running without an API key. The rule engine finds no problems in this layout.",
-    "fallback.noFixes": "The assistant is running without an API key. The rule engine finds {errors} errors and {warnings} warnings, but none of them has an automatic fix.",
+    "fallback.withFixes":
+      "The assistant is running without an API key, so these are the rule engine's own suggested fixes — not an AI analysis. The layout has {errors} errors and {warnings} warnings.",
+    "fallback.clean":
+      "The assistant is running without an API key. The rule engine finds no problems in this layout.",
+    "fallback.noFixes":
+      "The assistant is running without an API key. The rule engine finds {errors} errors and {warnings} warnings, but none of them has an automatic fix.",
 
     /* Guide, tips och start- och slutpunkter */
     "tip.select.title": "Select and move",
-    "tip.select.body": "Click a machine, door or zone to see and change it. Drag to move. Drag the hall's edge or corner to resize it.",
-    "tip.select.hint": "Click to select, drag to move. Drag the hall's edge or corner to resize it.",
+    "tip.select.body":
+      "Click a machine, door or zone to see and change it. Drag to move. Drag the hall's edge or corner to resize it.",
+    "tip.select.hint":
+      "Click to select, drag to move. Drag the hall's edge or corner to resize it.",
     "tip.wall.title": "Draw wall",
-    "tip.wall.body": "Partition and inner walls. Drag the way the wall runs — it straightens itself and snaps to neighbouring walls. The hall's outer walls are already there.",
-    "tip.wall.hint": "Drag from one end to the other. The wall straightens and snaps to neighbouring walls.",
+    "tip.wall.body":
+      "Partition and inner walls. Drag the way the wall runs — it straightens itself and snaps to neighbouring walls. The hall's outer walls are already there.",
+    "tip.wall.hint":
+      "Drag from one end to the other. The wall straightens and snaps to neighbouring walls.",
     "tip.door.title": "Draw door",
-    "tip.door.body": "Where the forklift drives in and out. Drag along a wall or the hall's edge — the door is set into the wall, and the distance to the nearest wall on both sides is shown while you drag.",
-    "tip.door.hint": "Drag along a wall or the hall's edge. The distance to the wall on both sides is shown while you drag.",
-    "tip.truck.title": "Draw forklift aisle or pickup bay",
-    "tip.truck.body": "The area the forklift drives on or collects packages from. The rules keep machines out of it and check that it is wide enough.",
-    "tip.truck.hint": "Drag a rectangle where the forklift drives or collects packages.",
-    "tip.nogo.title": "Draw no-go zone",
-    "tip.nogo.body": "Areas where nothing may stand: columns, stairs, switchboards, existing equipment. If a machine ends up there, the rules object.",
-    "tip.nogo.hint": "Drag a rectangle over the area to keep clear.",
+    "tip.door.body":
+      "Where the forklift drives in and out. Drag along a wall or the hall's edge — the door is set into the wall, and the distance to the nearest wall on both sides is shown while you drag.",
+    "tip.door.hint":
+      "Drag along a wall or the hall's edge. The distance to the wall on both sides is shown while you drag.",
+    "tip.zone.title": "Draw a zone",
+    "tip.zone.body":
+      "An area you mark in the hall. You pick its type in the panel — forklift aisle, no-go area, storage, operator station, service area, switchboard, foundation or one of your own.",
+    "tip.zone.hint": "Drag a rectangle where the zone belongs.",
+
     "tip.measure.title": "Measure distance",
-    "tip.measure.body": "Drag between two points to see the distance. The measurement is not saved.",
-    "tip.measure.hint": "Drag between two points to measure.",
-    "tip.zones.body": "The machines' service and safety zones — areas that must be kept clear around each machine.",
+    "tip.measure.body":
+      "Drag between two points to see the distance. Release, optionally note what is measured, and choose Save dimension to keep it on the drawing. Shift locks it horizontal or vertical.",
+    "tip.measure.hint":
+      "Drag between two points. When you release you can add a comment and choose Save dimension or Remove.",
+    "tip.zones.body":
+      "The machines' service and safety zones — areas that must be kept clear around each machine.",
     "tip.arrows.body": "Shows how packages enter and leave each machine.",
     "cad.hallResize.title": "Resize the hall",
-    "cad.hallResize.body": "Drag the edge or corner. The size is shown while you drag, and everything can also be typed in exactly under Hall and zones.",
-    "cad.drawn.wall": "Drag to move. Select to change length, height or delete.",
-    "cad.drawn.door": "Drag along the wall to move the door — the distance to the walls on both sides is shown while you drag.",
-    "cad.drawn.truck": "The forklift's area. Machines are kept out of it. Drag to move.",
-    "cad.drawn.nogo": "Nothing may stand here. The rules warn if a machine ends up here. Drag to move.",
+    "cad.hallResize.body":
+      "Drag the edge or corner. The size is shown while you drag, and everything can also be typed in exactly under Hall and zones.",
+    "cad.drawn.wall":
+      "Drag to move. Select to change length, height or delete.",
+    "cad.drawn.door":
+      "Drag along the wall to move the door — the distance to the walls on both sides is shown while you drag.",
+    "cad.drawn.truck":
+      "The forklift's area. Machines are kept out of it. Drag to move.",
+    "cad.drawn.nogo":
+      "Nothing may stand here. The rules warn if a machine ends up here. Drag to move.",
     "points.title": "Start and end",
-    "points.why": "The start point is where packages come in and where new machines are placed. End points show where finished packages leave. Write why the point is there — it goes into the drawing and the quote. If there are several possible locations, add more and compare.",
+    "points.why":
+      "The start point is where packages come in and where new machines are placed. End points show where finished packages leave. Write why the point is there — it goes into the drawing and the quote. If there are several possible locations, add more and compare.",
     "points.start": "Start",
     "points.end": "End",
-    "points.startHelp": "Where packages come in — from the saw, another line or a forklift door. New machines are placed at the active start point.",
-    "points.endHelp": "Where finished packages leave — at a door, a pickup bay or a store.",
-    "points.altHelp": "Alternative start point. Make it active in the side panel to place new machines here.",
+    "points.startHelp":
+      "Where packages come in — from the saw, another line or a forklift door. New machines are placed at the active start point.",
+    "points.endHelp":
+      "Where finished packages leave — at a door, a pickup bay or a store.",
+    "points.altHelp":
+      "Alternative start point. Make it active in the side panel to place new machines here.",
     "points.drag": "Drag to move.",
     "points.why.label": "Why here?",
     "points.startPlaceholder": "E.g. packages come from the saw through door A",
@@ -534,37 +1362,51 @@ export const MESSAGES: Record<Locale, Messages> = {
     "points.addStartTip": "Add a start point",
     "points.addEndTip": "Add an end point",
     "points.more": "More points",
-    "points.moreTip": "More possible locations, e.g. from the planer instead of the saw, or another door. Each with its own reason.",
+    "points.moreTip":
+      "More possible locations, e.g. from the planer instead of the saw, or another door. Each with its own reason.",
     "points.activate": "Activate",
-    "points.activateTip": "New machines are placed at this point. The previous one is kept as an alternative.",
+    "points.activateTip":
+      "New machines are placed at this point. The previous one is kept as an alternative.",
     "guide.kicker": "Get started",
     "guide.progress": "{done} of {total} steps done",
     "guide.close": "Close",
-    "guide.closeTip": "The guide can be reopened with the Get started button at the bottom left.",
-    "guide.openTip": "Show the steps for drawing the building and building the plant.",
+    "guide.closeTip":
+      "The guide can be reopened with the Get started button at the bottom left.",
+    "guide.openTip":
+      "Show the steps for drawing the building and building the plant.",
     "guide.next": "Next",
     "guide.nextStep": "Next step: {title}",
     "guide.hall.title": "Set the hall size",
-    "guide.hall.why": "Everything else is measured against the building: where the walls run, where machines may stand and whether the forklift can get round.",
-    "guide.hall.drag": "Or drag the hall's right edge, bottom edge or corner directly in the drawing.",
+    "guide.hall.why":
+      "Everything else is measured against the building: where the walls run, where machines may stand and whether the forklift can get round.",
+    "guide.hall.drag":
+      "Or drag the hall's right edge, bottom edge or corner directly in the drawing.",
     "guide.hall.ok": "The size is right",
     "guide.doors.title": "Draw the doors",
-    "guide.doors.why": "The doors are where the forklift drives in and out. They decide where packages can come in and leave.",
-    "guide.doors.body": "Drag along the hall's edge or a wall. The distance to the nearest wall on both sides is shown while you drag, and when you move the door later.",
+    "guide.doors.why":
+      "The doors are where the forklift drives in and out. They decide where packages can come in and leave.",
+    "guide.doors.body":
+      "Drag along the hall's edge or a wall. The distance to the nearest wall on both sides is shown while you drag, and when you move the door later.",
     "guide.doors.none": "No doors",
     "guide.zones.title": "Mark no-go and forklift zones",
-    "guide.zones.why": "Columns, stairs and switchboards must not be built over, and the forklift needs its aisle. The rules check both.",
+    "guide.zones.why":
+      "Columns, stairs and switchboards must not be built over, and the forklift needs its aisle. The rules check both.",
     "guide.zones.pickup": "+ Pickup bay",
-    "guide.zones.pickupTip": "Adds a pickup bay at the plant's outfeed, on the side the forklift collects from. Move or change it afterwards.",
+    "guide.zones.pickupTip":
+      "Adds a pickup bay at the plant's outfeed, on the side the forklift collects from. Move or change it afterwards.",
     "guide.zones.none": "Not needed",
     "guide.points.title": "Mark start and end",
-    "guide.points.why": "Where packages come in and where they leave. New machines are placed at the start point.",
-    "guide.points.body": "Drag START in the drawing and write why it is there. If there are several possible locations, add more points with a line on why.",
+    "guide.points.why":
+      "Where packages come in and where they leave. New machines are placed at the start point.",
+    "guide.points.body":
+      "Drag START in the drawing and write why it is there. If there are several possible locations, add more points with a line on why.",
     "guide.points.ok": "That's enough",
     "guide.machines.title": "Drag in machines",
-    "guide.machines.why": "Machines stand where you put them. Drag them from the catalogue on the left, or click to place them at the start point.",
+    "guide.machines.why":
+      "Machines stand where you put them. Drag them from the catalogue on the left, or click to place them at the start point.",
     "guide.quote.title": "Prepare the quote",
-    "guide.quote.why": "Price, drawing and machine list in one shareable document.",
+    "guide.quote.why":
+      "Price, drawing and machine list in one shareable document.",
     "guide.quote.go": "Compile quote",
   },
 
@@ -579,7 +1421,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "top.view.model": "Modell",
     "top.language": "Sprache",
     "top.history": "Verlauf",
-    "top.historyTitle": "Was im Projekt geschehen ist: Unterlagen, Fragen, Änderungen",
+    "top.historyTitle":
+      "Was im Projekt geschehen ist: Unterlagen, Fragen, Änderungen",
     "top.admin": "Admin",
     "top.myProposals": "Meine Entwürfe",
     "top.logIn": "Anmelden",
@@ -597,12 +1440,14 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Vier gängige Paketförderlinien als Ausgangspunkt, frei anpassbar.",
     "onboarding.template.meta": "Am schnellsten",
     "onboarding.scratch.title": "Von Grund auf bauen",
-    "onboarding.scratch.body": "Leere Fläche, volle Kontrolle über Maschinen und Reihenfolge.",
+    "onboarding.scratch.body":
+      "Leere Fläche, volle Kontrolle über Maschinen und Reihenfolge.",
     "onboarding.scratch.meta": "Wenn Sie wissen, was Sie wollen",
     "onboarding.templates": "Vorlagen",
     "onboarding.machineCount": "{count} Maschinen",
     "onboarding.continue": "Weiter zum Konfigurator",
-    "onboarding.disclaimer": "Prototyp mit Platzhalterdaten. Die Preise sind erfunden.",
+    "onboarding.disclaimer":
+      "Prototyp mit Platzhalterdaten. Die Preise sind erfunden.",
 
     "sidebar.machines": "Maschinen",
     "sidebar.search": "Maschine suchen…",
@@ -642,7 +1487,8 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Wird ins Angebot übernommen. Beeinflusst weder Maße noch Preis.",
     "inspector.price": "Preis",
     "inspector.priceOnRequest": "Auf Anfrage bei INKAB",
-    "inspector.priceOnRequestHint": "Sprechen Sie uns für ein Angebot zur Anlage an.",
+    "inspector.priceOnRequestHint":
+      "Sprechen Sie uns für ein Angebot zur Anlage an.",
     "inspector.options": "Optionen",
     "inspector.variants": "Ausführungen",
     "inspector.nudge": "Feinjustieren",
@@ -665,9 +1511,11 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.width": "Breite",
     "sidebar.height": "Höhe",
     "sidebar.tools": "Zeichenwerkzeuge",
-    "sidebar.drawHint": "Ziehen Sie Maschinen, Zonen und Wände in der Ansicht. Raster {mm} mm. Drehen mit R oder mit dem Griff am ausgewählten Objekt.",
+    "sidebar.drawHint":
+      "Ziehen Sie Maschinen, Zonen und Wände in der Ansicht. Raster {mm} mm. Drehen mit R oder mit dem Griff am ausgewählten Objekt.",
     "sidebar.noMatch": "Keine Maschine passt zur Suche.",
-    "sidebar.lineEmpty": "Die Linie ist leer. Fügen Sie oben eine Maschine hinzu.",
+    "sidebar.lineEmpty":
+      "Die Linie ist leer. Fügen Sie oben eine Maschine hinzu.",
     "sidebar.product": "Das Paket",
     "sidebar.packageLength": "Paketlänge",
     "sidebar.widthMin": "Kleinste Holzbreite",
@@ -676,19 +1524,98 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.quote": "Angebot",
     "sidebar.share": "Freigabelink kopieren",
     "sidebar.shareCopied": "Link kopiert",
-    "sidebar.shareLong": "Der Link ist lang geworden. Senden Sie ihn als klickbaren Link — manche E-Mail-Programme brechen lange Adressen um, dann lässt er sich nicht öffnen.",
+    "sidebar.shareLong":
+      "Der Link ist lang geworden. Senden Sie ihn als klickbaren Link — manche E-Mail-Programme brechen lange Adressen um, dann lässt er sich nicht öffnen.",
     "sidebar.shareCopy": "Link kopieren:",
     "tool.select": "Auswählen",
     "tool.wall": "Wand",
     "tool.door": "Tor",
-    "tool.truck": "Staplergasse",
-    "tool.nogo": "Sperrfläche",
+    "tool.zone": "Zone",
+
+    "sidebar.addZone": "{zone} hinzufügen",
+    "sidebar.drawnCount": "{count} gezeichnete Objekte",
+    "sidebar.clear": "Löschen",
+    "common.remove": "Entfernen",
+    "zone.truck": "Staplergasse",
+    "zone.truck.hint":
+      "Ziehen Sie ein Rechteck dort, wo der Stapler fährt oder abholt. Die Fläche bleibt frei und gilt in den Regeln als Staplergasse.",
+    "zone.nogo": "Sperrfläche",
+    "zone.nogo.hint":
+      "Ziehen Sie ein Rechteck über alles, was frei bleiben muss: eine Stütze, eine Treppe, einen Kanal im Boden.",
+    "zone.storage": "Lagerfläche",
+    "zone.storage.hint":
+      "Stapelplatz, Puffer oder Zwischenlager. Die Fläche gehört dem Kunden, und keine Maschine soll darin stehen.",
+    "zone.operator": "Bedienplatz",
+    "zone.operator.hint":
+      "Wo jemand steht und arbeitet: Pult, Steuerstand, Kontrollplatz. Muss frei bleiben.",
+    "zone.service": "Servicefläche",
+    "zone.service.hint":
+      "Platz für die Wartung: Messerwechsel, Welle herausziehen, Zugang mit dem Kran.",
+    "zone.electrical": "Schaltschrank",
+    "zone.electrical.hint":
+      "Schaltanlage, Steuerschrank oder Umrichter. Muss frei stehen und ohne Klettern erreichbar sein.",
+    "zone.foundation": "Fundament",
+    "zone.foundation.hint":
+      "Grube, Fundament oder verstärkter Boden. Hier darf eine Maschine stehen — dafür ist die Fläche da.",
+    "zone.other": "Eigene Zone",
+    "zone.other.hint":
+      "Eine Markierung mit eigenem Namen. Sie erscheint im Plan und im Angebot, warnt aber nie.",
+    "inspector.drawn": "Gezeichnetes Objekt",
+    "inspector.zoneKind": "Zonenart",
+    "inspector.name": "Name",
+    "inspector.nothing":
+      "Nichts ausgewählt. Klicken Sie ein Objekt in der Ansicht oder in der Linienliste an.",
+    "inspector.posX": "Position X",
+    "inspector.posY": "Position Y",
+    "inspector.lengthX": "Länge (X)",
+    "inspector.widthY": "Breite (Y)",
+    "inspector.height": "Höhe",
+    "inspector.turn90": "Um 90° drehen",
+    "inspector.mirrorHint":
+      "Spiegelt die Maschine quer zum Fluss, sodass das Pult auf der anderen Seite steht (S)",
+    "inspector.mirrored": "Gespiegelt",
+    "inspector.mirrorDo": "Spiegeln",
+    "cad.mirror": "Maschine spiegeln (S)",
+    "submit.title": "Angebot anfragen",
+    "submit.close": "Schließen",
+    "submit.lead":
+      "Planung {reference} mit {machines} Maschinen geht an INKAB: Maschinenliste, Grundrissplan, Zonen und Ihre Notizen. Wir melden uns mit einem Preisvorschlag.",
+    "submit.name": "Ihr Name",
+    "submit.email": "E-Mail",
+    "submit.company": "Unternehmen",
+    "submit.phone": "Telefon",
+    "submit.message": "Nachricht",
+    "submit.messagePlaceholder":
+      "Etwas, das wir wissen sollten? Wann die Anlage stehen soll, was bereits vorhanden ist, wo Sie unsicher sind.",
+    "submit.send": "Anfrage senden",
+    "submit.sending": "Wird gesendet…",
+    "submit.privacy":
+      "Wir verwenden die Angaben, um Ihre Anfrage zu beantworten, sonst nichts. Ein Konto ist nicht nötig.",
+    "submit.thanks":
+      "Danke — Planung {reference} ist eingegangen. Wir melden uns bei Ihnen.",
+    "submit.next":
+      "Mehr ist von Ihnen nicht nötig. Speichern Sie gern das PDF, dann haben Sie dieselbe Planung wie wir.",
+    "submit.notPersisted":
+      "Die Planung ist angekommen, aber dieser Server speichert sie nicht über einen Neustart hinaus. Laden Sie das PDF herunter und senden Sie es mit, damit nichts verloren geht.",
+    "submit.done": "Fertig",
+    "submit.failed":
+      "Der Server antwortete {status}. Die Planung wurde nicht gesendet.",
+    "submit.offline":
+      "Das Netzwerk antwortete nicht. Die Planung wurde nicht gesendet.",
+    "submit.logged": "Angebot {reference} an INKAB gesendet",
+    "area.zones.kind": "Zonenart",
+    "area.zones.kindHelp":
+      "Was die Fläche ist, entscheidet, was das Regelwerk dazu sagt. Eine Staplergasse muss frei bleiben, in einer Sperrfläche darf keine Maschine stehen, ein Fundament ist das Gegenteil — dort gehört eine Maschine hin.",
     "tool.measure": "Messen",
-    "tool.wallHint": "Ziehen Sie in Richtung der Wand. Sie rastet auf der nächsten Achse ein und wird {mm} mm dick.",
-    "tool.doorHint": "Ziehen Sie dort, wo das Tor sitzt, in x- oder y-Richtung. Rastet auf der nächsten Achse ein.",
-    "tool.truckHint": "Ziehen Sie ein Rechteck dort, wo der Stapler fährt oder abholt. Das kann eine ganze Gasse oder nur eine Abholzone sein.",
+    "tool.wallHint":
+      "Ziehen Sie in Richtung der Wand. Sie rastet auf der nächsten Achse ein und wird {mm} mm dick.",
+    "tool.doorHint":
+      "Ziehen Sie dort, wo das Tor sitzt, in x- oder y-Richtung. Rastet auf der nächsten Achse ein.",
+    "tool.truckHint":
+      "Ziehen Sie ein Rechteck dort, wo der Stapler fährt oder abholt. Das kann eine ganze Gasse oder nur eine Abholzone sein.",
     "tool.nogoHint": "Ziehen Sie ein Rechteck, um eine Fläche zu sperren.",
-    "tool.measureHint": "Ziehen Sie zwischen zwei Punkten, um den Abstand zu messen.",
+    "tool.measureHint":
+      "Ziehen Sie zwischen zwei Punkten, um den Abstand zu messen.",
     "inspector.aux": "Nebenobjekt",
     "inspector.catalogue": "Katalog",
     "inspector.pos": "Position",
@@ -700,59 +1627,369 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.pit": "Grube",
     "inspector.lead": "Lieferzeit",
     "inspector.clearance": "Maschinenfreiraum",
-    "inspector.unverified": "Die Maße sind geschätzt und nicht gegen Zeichnungen geprüft.",
+    "inspector.unverified":
+      "Die Maße sind geschätzt und nicht gegen Zeichnungen geprüft.",
     "inspector.product": "Produktinformation",
     "inspector.settings": "Einstellungen",
     "inspector.variant": "Ausführung",
     "inspector.stepDownload": "STEP herunterladen",
-    "inspector.stepLogin": "STEP-Dateien erfordern eine Anmeldung. Der Prototyp liefert keine CAD-Dateien.",
-    "inspector.stepMissing": "{file} ist im Prototyp nicht enthalten. Im Betrieb erhalten Sie einen signierten, protokollierten Download.",
+    "inspector.stepLogin":
+      "STEP-Dateien erfordern eine Anmeldung. Der Prototyp liefert keine CAD-Dateien.",
+    "inspector.stepMissing":
+      "{file} ist im Prototyp nicht enthalten. Im Betrieb erhalten Sie einen signierten, protokollierten Download.",
     "dialog.close": "Schließen",
     "auth.email": "E-Mail",
     "auth.password": "Passwort",
     "auth.name": "Name",
     "auth.company": "Firma",
     "auth.failed": "Der Server war nicht erreichbar.",
+    "quote.yes": "Ja",
+    "quote.no": "Nein",
+    "auth.register": "Konto erstellen",
+    "auth.minPassword": "Mindestens 8 Zeichen.",
+    "auth.busy": "Bitte warten…",
+    "auth.cancel": "Abbrechen",
+    "auth.missing": "Bitte E-Mail und Passwort eingeben.",
+    "auth.wrong": "Falsche E-Mail-Adresse oder falsches Passwort.",
+    "auth.invalid":
+      "Bitte Angaben prüfen: gültige E-Mail, Name und ein Passwort mit mindestens 8 Zeichen.",
+    "auth.taken": "Diese E-Mail-Adresse ist bereits registriert.",
+    "auth.error": "Etwas ist schiefgelaufen.",
+    "auth.note":
+      "Ein Konto wird benötigt, um Projekte zu speichern, Preise zu sehen und Unterlagen herunterzuladen.",
 
     /* Regelverket */
+    "rule.reversed.t": "Maschine steht falsch herum",
+    "rule.reversedOut.d":
+      "Der Ausgang von {a} trifft auf den Ausgang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff, damit die Pakete in die nächste Maschine laufen.",
+    "rule.reversedIn.d":
+      "Der Eingang von {a} trifft auf den Eingang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff.",
+    "rule.loose.t": "Die Maschine ist nicht mit der Linie verbunden",
+    "rule.loose.d":
+      "Keine andere Maschine übergibt Pakete an {machine} oder übernimmt sie. Stellen Sie sie so, dass die Ports aufeinandertreffen, höchstens {reach} m auseinander, oder entfernen Sie sie, falls sie nicht dazugehört.",
+    "model.dragHint": "Zum Verschieben ziehen",
+    "model.turnLeft": "Gegen den Uhrzeigersinn drehen",
+    "model.turnRight": "Im Uhrzeigersinn drehen",
+    "model.remove": "Maschine entfernen",
+    "model.orbit": "Kamera",
+    "model.tiltUp": "Nach oben neigen",
+    "model.tiltDown": "Nach unten neigen",
+    "model.rotateLeft": "Ansicht nach links drehen",
+    "model.rotateRight": "Ansicht nach rechts drehen",
+    "model.fit": "Passen",
+    "model.zoomIn": "Vergrößern",
+    "model.zoomOut": "Verkleinern",
+    "model.view.overview": "Übersicht",
+    "model.view.top": "Von oben",
+    "model.view.infeed": "Von der Einspeisung",
+    "model.view.side": "Von der Seite",
+    "model.view.outfeed": "Von der Auslagerung",
+    "nav.title": "Ihr Projekt",
+    "area.hall.title": "Hallenmaße",
+    "area.site.title": "Die Halle",
+    "area.site.why":
+      "Die Maße der Halle, ihre Wände und die Flächen darin. Alles, was steht, bevor eine einzige Maschine hineingezogen wird.",
+    "area.plant.title": "Die Anlage",
+    "area.plant.why":
+      "Die Maschinen, die Sie wollen, wo sie stehen, und wo die Pakete in die Linie kommen.",
+    "area.optional": "Optional",
+    "area.optionalStep": "Optionaler Schritt",
+    "area.stepOf": "Schritt {n} von {total}",
+    "area.quote.name": "Projektname",
+    "area.quote.nameHelp":
+      "Er steht oben im Angebot, benennt die PDF-Datei und ist das, was wir bei der Anfrage sehen.",
+    "top.projectNamePlaceholder": "Projekt benennen",
+    "top.projectNameHint": "Der Projektname steht oben im Angebot",
+    "nav.status.doors": "{count} Tore",
+    "nav.status.noMachines": "Noch keine Maschinen",
+    "model.note": "Modellansicht · Maße in Metern",
+    "model.scaleUnit": "m",
+    "model.clearHeight": "lichte Höhe {h} m",
+    "area.hall.why":
+      "Länge, Breite und lichte Höhe. Alles andere wird an der Halle gemessen, und das Angebot setzt voraus, dass die Anlage hineinpasst.",
+    "area.walls.title": "Wände und Tore",
+    "area.walls.why":
+      "Wo der Stapler ein- und ausfährt, und Wände in der Halle. Die Tore bestimmen, wo Pakete herein- und hinausgehen können.",
+    "area.zones.title": "Zonen",
+    "area.zones.why":
+      "Alles, was Sie in der Halle markieren wollen: Staplergasse, Lagerfläche, Bedienplatz, Schaltschrank, die Säule, die frei bleiben muss. Sie wählen die Zonenart und zeichnen — das Regelwerk weiß, was jede Art bedeutet.",
+    "area.machines.title": "Maschinenkatalog",
+    "area.machines.why":
+      "Ziehen Sie die Maschinen an ihren Platz, im Grundriss oder in der Modellansicht. Jede Maschine wird eine Zeile im Angebot.",
+    "area.line.title": "Maschinen in der Linie",
+    "area.line.why":
+      "Ihre Auswahl in Flussreihenfolge und was das Regelwerk dazu sagt. Fehler müssen behoben werden, bevor das Angebot sinnvoll ist.",
+    "area.points.title": "Start und Ende",
+    "area.points.why":
+      "Wo die Pakete hereinkommen und wo sie hinausgehen, mit einer Begründung. Das steht im Angebot, damit der Leser den Fluss versteht.",
+    "area.product.title": "Das Paket",
+    "area.product.why":
+      "Holzbreite, Paketmaße und -gewicht sowie Pakete pro Stunde. Die Maschinen werden anhand dieser Werte ausgewählt und geprüft.",
+    "area.quote.title": "Angebotsunterlage",
+    "area.quote.why":
+      "Preis, Zeichnung und Maschinenliste in einem Dokument zusammenstellen oder die Konfiguration per Link teilen.",
+    "area.collapse": "Seitenleiste einklappen (F)",
+    "area.panel": "Leiste",
+    "area.next": "Weiter: {title}",
+    "area.previous": "Zurück",
+    "area.remove": "Entfernen",
+    "area.tools": "Werkzeuge",
+    "area.hall.size": "Maße",
+    "area.hall.heightTitle": "Lichte Höhe",
+    "area.hall.heightHelp":
+      "Die niedrigste Höhe unter Dach, Trägern oder Kranbahnen. Das Regelwerk warnt, wenn eine Maschine höher ist.",
+    "area.walls.list": "Tore und Wände",
+    "area.walls.empty":
+      "Noch keine Tore oder Wände. Wählen Sie Tor zeichnen und ziehen Sie entlang der Hallenkante.",
+    "area.zones.list": "Gezeichnete Zonen",
+    "area.zones.empty":
+      "Noch keine Zonen gezeichnet. Wenn keine nötig sind, gehen Sie weiter.",
+    "area.line.list": "{count} Maschinen",
+    "area.line.empty":
+      "Noch keine Maschinen. Öffnen Sie den Maschinenkatalog und ziehen Sie die erste hinein.",
+    "area.line.check": "Prüfung",
+    "area.line.clean": "Das Regelwerk findet keine Probleme.",
+    "area.line.issues":
+      "Das Regelwerk findet {errors} Fehler und {warnings} Warnungen.",
+    "area.line.showIssues": "Hinweise anzeigen",
+    "area.product.width": "Holzbreite",
+    "area.product.widthHelp":
+      "Das schmalste und das breiteste Holz, das gefahren wird. Die Ports der Maschinen müssen den ganzen Bereich abdecken.",
+    "area.product.package": "Paket",
+    "area.product.height": "Pakethöhe",
+    "area.product.weight": "Paketgewicht",
+    "area.product.targetHelp":
+      "Wie viele Pakete pro Stunde die Linie schaffen soll. Maschinen unter dem Ziel erhalten eine Warnung.",
+    "area.quote.summary": "Zusammenfassung",
+    "area.quote.machines": "{count} Maschinen",
+    "area.quote.hall": "Halle {l} × {w} m",
+    "area.quote.errors": "{count} Fehler zu beheben",
+    "area.quote.noErrors": "Keine Fehler",
+    "area.quote.disclaimer":
+      "Preisindikation, kein verbindliches Angebot. Eine reale Anlage erfordert Besichtigung und Konstruktionsprüfung.",
+    "nav.status.walls": "{doors} Tore · {walls} Wände",
+    "nav.status.zones": "{count} Zonen",
+    "nav.status.machines": "{count} Maschinen",
+    "nav.status.lineOk": "Keine Hinweise",
+    "nav.status.lineIssues": "{errors} Fehler · {warnings} Warnungen",
+    "nav.status.points": "{count} Punkte",
+    "nav.status.quote": "Preis, Zeichnung, Teilen",
+    "onboarding.loadingCatalogue":
+      "Maschinenkatalog wird geladen — die Vorlage öffnet sich, sobald er da ist.",
+    "dim.saved": "Gespeichertes Maß",
+    "dim.savedTip":
+      "Zum Auswählen klicken. Die Enden des ausgewählten Maßes lassen sich ziehen; Umschalt fixiert waagerecht oder senkrecht.",
+    "dim.note": "Was wird gemessen?",
+    "dim.notePlaceholder": "Z. B. frei zwischen den Säulen",
+    "dim.from": "Von",
+    "dim.to": "Bis",
+    "dim.help":
+      "Das Maß erscheint in der Zeichnung, im Angebot und in der DXF-Datei. Es beeinflusst das Layout nicht.",
+    "dim.list": "Gespeicherte Maße",
+    "dim.listHelp":
+      "Messen Sie mit Abstand messen (M) und wählen Sie im erscheinenden Feld Maß speichern, dann bleibt es in der Zeichnung.",
+    "dim.empty":
+      "Keine gespeicherten Maße. Mit M messen und Maß speichern wählen.",
+    "dim.noticeTitle": "Gemessen",
+    "dim.saveMeasure": "Maß speichern",
+    "dim.discard": "Entfernen",
+    "dim.noticeKeys": "Enter speichert · Esc entfernt",
+    "dim.full":
+      "Die Zeichnung fasst höchstens {max} Maße. Entfernen Sie eines, um ein neues zu speichern.",
+    "quote.kicker": "Angebotsunterlage · Entwurf",
+    "quote.reference": "Unterlage",
+    "quote.date": "Datum",
+    "quote.validUntil": "Preisindikation gültig bis",
+    "quote.preparedBy": "Erstellt von",
+    "quote.customer": "Kunde",
+    "quote.company": "Firma",
+    "quote.companyPlaceholder": "Firma des Kunden",
+    "quote.contact": "Ansprechpartner",
+    "quote.contactPlaceholder": "Name beim Kunden",
+    "quote.site": "Standort",
+    "quote.sitePlaceholder": "Ort oder Sägewerk",
+    "quote.yourReference": "Ihre Referenz",
+    "quote.yourReferencePlaceholder": "Eigene Projektnummer des Kunden",
+    "quote.summary": "Zusammenfassung",
+    "quote.totalSize": "Gesamtmaße",
+    "quote.floorArea": "Bodenfläche inkl. Gänge",
+    "quote.capacity": "Leistung",
+    "quote.perHour": "{count} Pakete/h",
+    "quote.agreedPrice": "Vereinbarter Preis",
+    "quote.price": "Preis",
+    "quote.priceByInkab": "Wird von INKAB angegeben",
+    "quote.money": "{v} SEK",
+    "quote.millions": "{v} Mio. SEK",
+    "quote.issuesBoth": "{errors} Fehler und {warnings} Warnungen im Layout.",
+    "quote.issuesErrors": "{errors} Fehler im Layout.",
+    "quote.issuesWarning": "{warnings} Warnung im Layout.",
+    "quote.issuesWarnings": "{warnings} Warnungen im Layout.",
+    "quote.issuesMustFix":
+      "Die Unterlage kann trotzdem erstellt werden, aber die Fehler müssen vor dem Bau der Anlage behoben werden:",
+    "quote.issuesReview":
+      "Die Unterlage kann trotzdem erstellt werden, aber die Punkte sollten mit einem Konstrukteur durchgegangen werden:",
+    "quote.plan": "Grundriss",
+    "quote.planNote": "Maßstab laut Maßstabsleiste · {reference}",
+    "quote.planOf": "Grundriss von {name}",
+    "quote.machineList": "Maschinenliste",
+    "quote.col.pos": "Pos",
+    "quote.col.name": "Bezeichnung",
+    "quote.col.sku": "Artikel",
+    "quote.col.size": "Maße L × B × H",
+    "quote.col.options": "Optionen",
+    "quote.col.qty": "Anzahl",
+    "quote.col.rowPrice": "Positionspreis",
+    "quote.emptyLine": "Die Linie ist leer",
+    "quote.total.machines": "Maschinen",
+    "quote.total.install": "Montage",
+    "quote.total.control": "Elektrik und Steuerung",
+    "quote.total.freight": "Fracht",
+    "quote.listPrice": "Listenpreis",
+    "quote.sumExVat": "Summe exkl. MwSt.",
+    "quote.margin": "Marge (für Kunden nicht sichtbar)",
+    "quote.loginForPrices":
+      "Melden Sie sich an, um Listenpreise zu sehen. Ohne Anmeldung wird nur eine Spanne angezeigt.",
+    "quote.priceNote":
+      "Listenpreis gemäß {book}, exkl. MwSt. Montage und Steuerung sind als Zuschläge enthalten.",
+    "quote.priceNoteGuest":
+      "Preis wird von INKAB angegeben. Kontaktieren Sie uns für ein Angebot.",
+    "quote.adjust.fixed": "Vereinbarter Gesamtpreis",
+    "quote.adjust.discount": "Rabatt {percent} %",
+    "quote.adjust.other": "Anpassung",
+    "quote.technical": "Technische Voraussetzungen",
+    "quote.power": "Stromversorgung",
+    "quote.air": "Druckluft",
+    "quote.none": "Keine",
+    "quote.nonePlural": "Keine",
+    "quote.pits": "Gruben",
+    "quote.pitCount": "{count} Stk.",
+    "quote.clearHeight": "Lichte Deckenhöhe",
+    "quote.hall": "Halle",
+    "quote.leadTime": "Lieferzeit",
+    "quote.weeks": "{count} Wochen",
+    "quote.manufacturing": "Fertigung",
+    "quote.assembly": "Montage vor Ort",
+    "quote.bottleneck": "Engpass",
+    "quote.noBottleneck": "Keiner erkannt",
+    "quote.flowConfig": "Fluss und Konfiguration",
+    "quote.assumptions": "Annahmen und Abgrenzungen",
+    "quote.draft": "Entwurf",
+    "quote.assume.floor":
+      "Ebener Betonboden mit mindestens 25 kN/m² Tragfähigkeit, und die bestehende Linie übergibt Pakete in 900 mm Höhe.",
+    "quote.assume.truck":
+      "Staplergassen und Abholzonen sind die vom Kunden eingezeichneten; keine wird für Sie angenommen.",
+    "quote.truck.none":
+      "Keine Staplergasse eingezeichnet — der Staplerverkehr wurde also nicht gegen das Layout geprüft.",
+    "quote.truck.one":
+      "{count} Staplerfläche eingezeichnet, schmalste freie Breite {width} m.",
+    "quote.truck.many":
+      "{count} Staplerflächen eingezeichnet, schmalste freie Breite {width} m.",
+    "quote.assume.dims": "Die Maße stammen aus der Maschinenbibliothek.",
+    "quote.assume.unverified":
+      "{count} von {total} Maschinen haben geschätzte Maße, die nicht anhand von Zeichnungen geprüft wurden.",
+    "quote.assume.verified": "Alle enthaltenen Maschinen haben geprüfte Maße.",
+    "quote.assume.excluded":
+      "Elektroplanung, Risikobeurteilung, Hallenaufmaß, Fundamentzeichnungen und Bauarbeiten sind nicht enthalten.",
+    "quote.assume.vat":
+      "Preise verstehen sich exkl. MwSt. und gelten ab Werk, sofern nicht anders vereinbart.",
+    "quote.assume.disclaimer":
+      "Diese Unterlage wurde vom Konfigurator erstellt und ist eine Preisindikation, kein verbindliches Angebot. Sie wird vor dem Versand vom Vertrieb geprüft. Fragen: {phone}.",
+    "quote.footer":
+      "Unterlage {reference}, {today}. Preisindikation, kein verbindliches Angebot.",
+    "quote.back": "Zurück zur Ansicht",
+    "quote.downloadPdf": "PDF herunterladen",
+    "quote.submit": "Angebot anfragen",
+    "quote.toolbarHint":
+      "Das PDF ist für A4 gesetzt und wird über den Druckdialog des Browsers gespeichert. Mit der Anfrage geht die Planung samt Ihren Kontaktdaten an INKAB.",
+    "quote.legend.machine":
+      "Maschine; die Zahl ist die Position in der Maschinenliste",
+    "quote.legend.aux": "Steuerpult und Magazin",
+    "quote.legend.zone":
+      "Maschinenzone — Freiraum, der freigehalten werden muss",
+    "quote.legend.note":
+      "Maße in Metern. Die Zeichnung wird aus der Konfiguration erzeugt und ersetzt keine bemaßte Anlagenzeichnung.",
+    "csv.length": "Länge (m)",
+    "csv.width": "Breite (m)",
+    "csv.height": "Höhe (m)",
+    "csv.power": "Leistung (kW)",
+    "csv.rowPrice": "Positionspreis (SEK)",
+    "template.projectName": "{name} — Vorstudie",
+    "template.newProject": "Neue Anlage",
+    "template.strolinje.name": "Stapelleistenleger – einfach",
+    "template.strolinje.desc":
+      "Rollenbahn rein, Stapelleistenleger mit Magazin, Leichtpresse, Umreifung und Puffer raus.",
+    "template.multilinje.name": "Stapelleistenleger – Multi",
+    "template.multilinje.desc":
+      "Multi-Stapelleistenleger mit Vakuumheber, hydraulischer Presse und automatischer Umreifung.",
+    "template.underslag.name": "Unterlagenlegung",
+    "template.underslag.desc":
+      "Unterlagenleger mit höhenverstellbarem Förderer, Kantenschutz und Umreifung.",
+    "template.komplett.name": "Komplettes Pakethandling",
+    "template.komplett.desc":
+      "Stapelleistenlegung, Presse, Kantenschutz, Umreifung und Verpackung bis zur Auslagerung.",
+    "draw.pickupOutfeed": "Abholzone Auslagerung",
+    "draw.pickup": "Abholzone",
+    "draw.door": "Tor {letter}",
+    "draw.wall": "Wand {n}",
+
+    "diag.title": "Diagnose · {count} Einträge",
+    "diag.show": "In der Ansicht zeigen",
+    "diag.close": "Schließen",
+    "rule.addFix": "{machine} hinzufügen",
     "rule.overlap.t": "Maschinen überlappen",
     "rule.overlap.d": "{a} und {b} überschneiden sich auf {area} m².",
     "rule.service.t": "Servicezone blockiert",
-    "rule.service.d": "{other} steht in der Servicezone von {machine}. Der Wartungszugang wird schwierig.",
+    "rule.service.d":
+      "{other} steht in der Servicezone von {machine}. Der Wartungszugang wird schwierig.",
     "rule.clearance.t": "Maschinenfreiraum verletzt",
-    "rule.clearance.d": "{other} steht im Freiraum um {machine}. Der freie Raum um die Maschine muss eingehalten werden.",
+    "rule.clearance.d":
+      "{other} steht im Freiraum um {machine}. Der freie Raum um die Maschine muss eingehalten werden.",
     "rule.clearanceObj.d": "{obj} ragt in den Freiraum um {machine} hinein.",
     "rule.safety.t": "Schutzzone liegt in der Staplergasse",
-    "rule.safety.d": "Die Schutzzone um {machine} schneidet {aisle}. Ein Stapler kann eine aktive Schutzzone nicht durchfahren.",
+    "rule.safety.d":
+      "Die Schutzzone um {machine} schneidet {aisle}. Ein Stapler kann eine aktive Schutzzone nicht durchfahren.",
     "rule.aisleOut.t": "Die Staplergasse liegt außerhalb der Halle",
     "rule.aisleOut.d": "{aisle} reicht über die Halle von {l} × {w} m hinaus.",
     "rule.aisleNarrow.t": "Die Staplergasse ist schmal",
-    "rule.aisleNarrow.d": "{aisle} ist an der schmalsten Stelle {w} m. Ein Gegengewichtsstapler mit Paket braucht in der Regel mindestens {min} m.",
+    "rule.aisleNarrow.d":
+      "{aisle} ist an der schmalsten Stelle {w} m. Ein Gegengewichtsstapler mit Paket braucht in der Regel mindestens {min} m.",
     "rule.noAisle.t": "Keine Staplergasse und keine Abholzone",
-    "rule.noAisle.d": "Zeichnen Sie ein, wo der Stapler fährt und fertige Pakete abholt. Ohne das lassen sich weder Platz noch Zugang prüfen.",
+    "rule.noAisle.d":
+      "Zeichnen Sie ein, wo der Stapler fährt und fertige Pakete abholt. Ohne das lassen sich weder Platz noch Zugang prüfen.",
     "rule.auxAisle.t": "{machine} steht in der Staplergasse",
-    "rule.auxAisle.d": "{machine} steht in {aisle}. Der Stapler kommt nicht vorbei.",
+    "rule.auxAisle.d":
+      "{machine} steht in {aisle}. Der Stapler kommt nicht vorbei.",
     "rule.magazine.t": "Das Magazin ist nur über die Maschinen erreichbar",
-    "rule.magazine.d": "Der Stapler muss an {blocking} vorbei, um {magazine} zu füllen.",
+    "rule.magazine.d":
+      "Der Stapler muss an {blocking} vorbei, um {magazine} zu füllen.",
     "rule.aisleDoor.t": "Die Staplergasse erreicht kein Tor",
-    "rule.aisleDoor.d": "{aisle} ist an kein Hallentor angebunden. Prüfen Sie, wie der Stapler hinein- und hinauskommt.",
+    "rule.aisleDoor.d":
+      "{aisle} ist an kein Hallentor angebunden. Prüfen Sie, wie der Stapler hinein- und hinauskommt.",
     "rule.capacity.t": "Die Leistung liegt unter dem Ziel",
-    "rule.capacity.d": "{machine} schafft {has} Pakete/h, die Linie ist aber auf {target} Pakete/h ausgelegt.",
+    "rule.capacity.d":
+      "{machine} schafft {has} Pakete/h, die Linie ist aber auf {target} Pakete/h ausgelegt.",
     "rule.package.t": "Das Paket passt nicht zur Maschine",
-    "rule.package.d": "Das Paketmaß {label} von {value} m liegt außerhalb von {machine}: {min}–{max} m.",
-    "rule.portWidth.t": "Der Port deckt nicht den gesamten Holzbreitenbereich ab",
-    "rule.portWidth.d": "Port {port} an {machine} nimmt {portMin}–{portMax} m auf, die Linie soll aber {prodMin}–{prodMax} m fahren.",
+    "rule.package.d":
+      "Das Paketmaß {label} von {value} m liegt außerhalb von {machine}: {min}–{max} m.",
+    "rule.portWidth.t":
+      "Der Port deckt nicht den gesamten Holzbreitenbereich ab",
+    "rule.portWidth.d":
+      "Port {port} an {machine} nimmt {portMin}–{portMax} m auf, die Linie soll aber {prodMin}–{prodMax} m fahren.",
     "rule.weight.t": "Das Paket ist zu schwer",
-    "rule.weight.d": "{kg} kg übersteigen das Maximum von {max} kg für {machine}.",
+    "rule.weight.d":
+      "{kg} kg übersteigen das Maximum von {max} kg für {machine}.",
     "rule.outsideHall.t": "Die Maschine liegt außerhalb der Halle",
-    "rule.outsideHall.d": "{machine} liegt außerhalb der Halle von {l} × {w} m.",
+    "rule.outsideHall.d":
+      "{machine} liegt außerhalb der Halle von {l} × {w} m.",
     "rule.tooTall.t": "Die Maschine ist höher als die Halle",
-    "rule.tooTall.d": "{machine} ist {h} m hoch, die lichte Höhe beträgt {clear} m.",
+    "rule.tooTall.d":
+      "{machine} ist {h} m hoch, die lichte Höhe beträgt {clear} m.",
     "rule.hitWall.t": "Die Maschine kollidiert mit einer Wand",
     "rule.hitNogo.t": "Die Maschine steht in einer Sperrfläche",
     "rule.hitObj.d": "{machine} überlappt {obj}.",
     "rule.inAisle.t": "Die Maschine steht in der Staplergasse",
-    "rule.inAisle.d": "{machine} liegt in {aisle}. Verschieben Sie die Maschine oder zeichnen Sie die Zone neu.",
+    "rule.inAisle.d":
+      "{machine} liegt in {aisle}. Verschieben Sie die Maschine oder zeichnen Sie die Zone neu.",
     "rule.requires.t": "Eine benötigte Maschine fehlt",
     "rule.requires.d": "{machine} benötigt {needs}, um zu funktionieren.",
     "rule.conflict.t": "Die Maschinen lassen sich nicht kombinieren",
@@ -763,44 +2000,65 @@ export const MESSAGES: Record<Locale, Messages> = {
     "product.length": "Länge",
     "product.width": "Breite",
     "product.height": "Höhe",
-    "fallback.withFixes": "Der Assistent läuft ohne API-Schlüssel, dies sind also die Vorschläge des Regelwerks selbst — keine KI-Analyse. Das Layout hat {errors} Fehler und {warnings} Warnungen.",
-    "fallback.clean": "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet keine Probleme in diesem Layout.",
-    "fallback.noFixes": "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet {errors} Fehler und {warnings} Warnungen, für keine davon gibt es einen automatischen Vorschlag.",
+    "fallback.withFixes":
+      "Der Assistent läuft ohne API-Schlüssel, dies sind also die Vorschläge des Regelwerks selbst — keine KI-Analyse. Das Layout hat {errors} Fehler und {warnings} Warnungen.",
+    "fallback.clean":
+      "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet keine Probleme in diesem Layout.",
+    "fallback.noFixes":
+      "Der Assistent läuft ohne API-Schlüssel. Das Regelwerk findet {errors} Fehler und {warnings} Warnungen, für keine davon gibt es einen automatischen Vorschlag.",
 
     /* Guide, tips och start- och slutpunkter */
     "tip.select.title": "Auswählen und verschieben",
-    "tip.select.body": "Klicken Sie auf eine Maschine, ein Tor oder eine Zone, um sie anzuzeigen und zu ändern. Ziehen zum Verschieben. Ziehen Sie an Kante oder Ecke der Halle, um die Fläche zu ändern.",
-    "tip.select.hint": "Klicken zum Auswählen, ziehen zum Verschieben. An Kante oder Ecke der Halle ziehen, um die Fläche zu ändern.",
+    "tip.select.body":
+      "Klicken Sie auf eine Maschine, ein Tor oder eine Zone, um sie anzuzeigen und zu ändern. Ziehen zum Verschieben. Ziehen Sie an Kante oder Ecke der Halle, um die Fläche zu ändern.",
+    "tip.select.hint":
+      "Klicken zum Auswählen, ziehen zum Verschieben. An Kante oder Ecke der Halle ziehen, um die Fläche zu ändern.",
     "tip.wall.title": "Wand zeichnen",
-    "tip.wall.body": "Trenn- und Innenwände. Ziehen Sie in Richtung der Wand — sie wird automatisch gerade und rastet an benachbarten Wänden ein. Die Außenwände der Halle sind bereits vorhanden.",
-    "tip.wall.hint": "Von einem Ende zum anderen ziehen. Die Wand wird begradigt und rastet an benachbarten Wänden ein.",
+    "tip.wall.body":
+      "Trenn- und Innenwände. Ziehen Sie in Richtung der Wand — sie wird automatisch gerade und rastet an benachbarten Wänden ein. Die Außenwände der Halle sind bereits vorhanden.",
+    "tip.wall.hint":
+      "Von einem Ende zum anderen ziehen. Die Wand wird begradigt und rastet an benachbarten Wänden ein.",
     "tip.door.title": "Tor zeichnen",
-    "tip.door.body": "Wo der Stapler ein- und ausfährt. Ziehen Sie entlang einer Wand oder der Hallenkante — das Tor wird in die Wand gesetzt, und der Abstand zur nächsten Wand auf beiden Seiten wird beim Ziehen angezeigt.",
-    "tip.door.hint": "Entlang einer Wand oder der Hallenkante ziehen. Der Abstand zur Wand auf beiden Seiten wird beim Ziehen angezeigt.",
-    "tip.truck.title": "Staplergasse oder Abholzone zeichnen",
-    "tip.truck.body": "Die Fläche, auf der der Stapler fährt oder Pakete abholt. Das Regelwerk hält Maschinen davon fern und prüft, ob sie breit genug ist.",
-    "tip.truck.hint": "Ziehen Sie ein Rechteck, wo der Stapler fährt oder Pakete abholt.",
-    "tip.nogo.title": "Sperrzone zeichnen",
-    "tip.nogo.body": "Flächen, auf denen nichts stehen darf: Säulen, Treppen, Schaltschränke, vorhandene Anlagen. Landet eine Maschine dort, meldet sich das Regelwerk.",
-    "tip.nogo.hint": "Ziehen Sie ein Rechteck über die freizuhaltende Fläche.",
+    "tip.door.body":
+      "Wo der Stapler ein- und ausfährt. Ziehen Sie entlang einer Wand oder der Hallenkante — das Tor wird in die Wand gesetzt, und der Abstand zur nächsten Wand auf beiden Seiten wird beim Ziehen angezeigt.",
+    "tip.door.hint":
+      "Entlang einer Wand oder der Hallenkante ziehen. Der Abstand zur Wand auf beiden Seiten wird beim Ziehen angezeigt.",
+    "tip.zone.title": "Eine Zone zeichnen",
+    "tip.zone.body":
+      "Eine Fläche, die Sie in der Halle markieren. Die Art wählen Sie im Panel — Staplergasse, Sperrfläche, Lagerfläche, Bedienplatz, Servicefläche, Schaltschrank, Fundament oder eine eigene.",
+    "tip.zone.hint": "Ziehen Sie ein Rechteck dort, wo die Zone liegen soll.",
+
     "tip.measure.title": "Abstand messen",
-    "tip.measure.body": "Ziehen Sie zwischen zwei Punkten, um den Abstand zu sehen. Die Messung wird nicht gespeichert.",
-    "tip.measure.hint": "Zum Messen zwischen zwei Punkten ziehen.",
-    "tip.zones.body": "Service- und Sicherheitszonen der Maschinen — Flächen, die um jede Maschine frei bleiben müssen.",
-    "tip.arrows.body": "Zeigt, wie Pakete in jede Maschine hinein- und herauslaufen.",
+    "tip.measure.body":
+      "Ziehen Sie zwischen zwei Punkten, um den Abstand zu sehen. Loslassen, optional notieren, was gemessen wird, und Maß speichern wählen, dann bleibt es in der Zeichnung. Umschalt fixiert waagerecht oder senkrecht.",
+    "tip.measure.hint":
+      "Zwischen zwei Punkten ziehen. Nach dem Loslassen können Sie einen Kommentar eingeben und Maß speichern oder Entfernen wählen.",
+    "tip.zones.body":
+      "Service- und Sicherheitszonen der Maschinen — Flächen, die um jede Maschine frei bleiben müssen.",
+    "tip.arrows.body":
+      "Zeigt, wie Pakete in jede Maschine hinein- und herauslaufen.",
     "cad.hallResize.title": "Hallenfläche ändern",
-    "cad.hallResize.body": "Ziehen Sie an Kante oder Ecke. Das Maß wird beim Ziehen angezeigt und kann unter Halle und Zonen auch exakt eingegeben werden.",
-    "cad.drawn.wall": "Zum Verschieben ziehen. Auswählen, um Länge, Höhe zu ändern oder zu löschen.",
-    "cad.drawn.door": "Entlang der Wand ziehen, um das Tor zu verschieben — der Abstand zu den Wänden auf beiden Seiten wird beim Ziehen angezeigt.",
-    "cad.drawn.truck": "Die Fläche des Staplers. Maschinen bleiben fern. Zum Verschieben ziehen.",
-    "cad.drawn.nogo": "Hier darf nichts stehen. Das Regelwerk warnt, wenn eine Maschine hier landet. Zum Verschieben ziehen.",
+    "cad.hallResize.body":
+      "Ziehen Sie an Kante oder Ecke. Das Maß wird beim Ziehen angezeigt und kann unter Halle und Zonen auch exakt eingegeben werden.",
+    "cad.drawn.wall":
+      "Zum Verschieben ziehen. Auswählen, um Länge, Höhe zu ändern oder zu löschen.",
+    "cad.drawn.door":
+      "Entlang der Wand ziehen, um das Tor zu verschieben — der Abstand zu den Wänden auf beiden Seiten wird beim Ziehen angezeigt.",
+    "cad.drawn.truck":
+      "Die Fläche des Staplers. Maschinen bleiben fern. Zum Verschieben ziehen.",
+    "cad.drawn.nogo":
+      "Hier darf nichts stehen. Das Regelwerk warnt, wenn eine Maschine hier landet. Zum Verschieben ziehen.",
     "points.title": "Start und Ende",
-    "points.why": "Der Startpunkt ist, wo die Pakete hereinkommen und neue Maschinen platziert werden. Endpunkte zeigen, wo fertige Pakete hinausgehen. Schreiben Sie, warum der Punkt dort liegt — das erscheint in Zeichnung und Angebot. Gibt es mehrere mögliche Lagen, fügen Sie weitere hinzu und vergleichen Sie.",
+    "points.why":
+      "Der Startpunkt ist, wo die Pakete hereinkommen und neue Maschinen platziert werden. Endpunkte zeigen, wo fertige Pakete hinausgehen. Schreiben Sie, warum der Punkt dort liegt — das erscheint in Zeichnung und Angebot. Gibt es mehrere mögliche Lagen, fügen Sie weitere hinzu und vergleichen Sie.",
     "points.start": "Start",
     "points.end": "Ende",
-    "points.startHelp": "Wo die Pakete hereinkommen — von der Säge, einer anderen Linie oder einem Staplertor. Neue Maschinen werden am aktiven Startpunkt platziert.",
-    "points.endHelp": "Wo die fertigen Pakete hinausgehen — an einem Tor, einer Abholzone oder einem Lager.",
-    "points.altHelp": "Alternativer Startpunkt. Aktivieren Sie ihn in der Seitenleiste, um neue Maschinen hier zu platzieren.",
+    "points.startHelp":
+      "Wo die Pakete hereinkommen — von der Säge, einer anderen Linie oder einem Staplertor. Neue Maschinen werden am aktiven Startpunkt platziert.",
+    "points.endHelp":
+      "Wo die fertigen Pakete hinausgehen — an einem Tor, einer Abholzone oder einem Lager.",
+    "points.altHelp":
+      "Alternativer Startpunkt. Aktivieren Sie ihn in der Seitenleiste, um neue Maschinen hier zu platzieren.",
     "points.drag": "Zum Verschieben ziehen.",
     "points.why.label": "Warum hier?",
     "points.startPlaceholder": "Z. B. Pakete kommen von der Säge durch Tor A",
@@ -810,37 +2068,51 @@ export const MESSAGES: Record<Locale, Messages> = {
     "points.addStartTip": "Startpunkt hinzufügen",
     "points.addEndTip": "Endpunkt hinzufügen",
     "points.more": "Weitere Punkte",
-    "points.moreTip": "Weitere mögliche Lagen, z. B. vom Hobelwerk statt von der Säge oder ein anderes Tor. Jede mit eigener Begründung.",
+    "points.moreTip":
+      "Weitere mögliche Lagen, z. B. vom Hobelwerk statt von der Säge oder ein anderes Tor. Jede mit eigener Begründung.",
     "points.activate": "Aktivieren",
-    "points.activateTip": "Neue Maschinen werden an diesem Punkt platziert. Der bisherige bleibt als Alternative erhalten.",
+    "points.activateTip":
+      "Neue Maschinen werden an diesem Punkt platziert. Der bisherige bleibt als Alternative erhalten.",
     "guide.kicker": "Erste Schritte",
     "guide.progress": "{done} von {total} Schritten erledigt",
     "guide.close": "Schließen",
-    "guide.closeTip": "Die Anleitung lässt sich unten links mit Erste Schritte wieder öffnen.",
-    "guide.openTip": "Die Schritte zum Zeichnen der Halle und Aufbau der Anlage anzeigen.",
+    "guide.closeTip":
+      "Die Anleitung lässt sich unten links mit Erste Schritte wieder öffnen.",
+    "guide.openTip":
+      "Die Schritte zum Zeichnen der Halle und Aufbau der Anlage anzeigen.",
     "guide.next": "Weiter",
     "guide.nextStep": "Nächster Schritt: {title}",
     "guide.hall.title": "Hallenfläche festlegen",
-    "guide.hall.why": "Alles andere wird an der Halle gemessen: wo die Wände verlaufen, wo Maschinen stehen dürfen und ob der Stapler herumkommt.",
-    "guide.hall.drag": "Oder ziehen Sie direkt in der Zeichnung an rechter Kante, Unterkante oder Ecke der Halle.",
+    "guide.hall.why":
+      "Alles andere wird an der Halle gemessen: wo die Wände verlaufen, wo Maschinen stehen dürfen und ob der Stapler herumkommt.",
+    "guide.hall.drag":
+      "Oder ziehen Sie direkt in der Zeichnung an rechter Kante, Unterkante oder Ecke der Halle.",
     "guide.hall.ok": "Maße stimmen",
     "guide.doors.title": "Tore einzeichnen",
-    "guide.doors.why": "Die Tore sind dort, wo der Stapler ein- und ausfährt. Sie bestimmen, wo Pakete hereinkommen und hinausgehen können.",
-    "guide.doors.body": "Ziehen Sie entlang der Hallenkante oder einer Wand. Der Abstand zur nächsten Wand auf beiden Seiten wird beim Ziehen und beim späteren Verschieben angezeigt.",
+    "guide.doors.why":
+      "Die Tore sind dort, wo der Stapler ein- und ausfährt. Sie bestimmen, wo Pakete hereinkommen und hinausgehen können.",
+    "guide.doors.body":
+      "Ziehen Sie entlang der Hallenkante oder einer Wand. Der Abstand zur nächsten Wand auf beiden Seiten wird beim Ziehen und beim späteren Verschieben angezeigt.",
     "guide.doors.none": "Keine Tore",
     "guide.zones.title": "Sperr- und Staplerzonen markieren",
-    "guide.zones.why": "Säulen, Treppen und Schaltschränke dürfen nicht überbaut werden, und der Stapler braucht seine Gasse. Das Regelwerk prüft beides.",
+    "guide.zones.why":
+      "Säulen, Treppen und Schaltschränke dürfen nicht überbaut werden, und der Stapler braucht seine Gasse. Das Regelwerk prüft beides.",
     "guide.zones.pickup": "+ Abholzone",
-    "guide.zones.pickupTip": "Legt eine Abholzone an der Auslagerung der Anlage an, auf der Seite, von der der Stapler abholt. Danach verschieben oder ändern.",
+    "guide.zones.pickupTip":
+      "Legt eine Abholzone an der Auslagerung der Anlage an, auf der Seite, von der der Stapler abholt. Danach verschieben oder ändern.",
     "guide.zones.none": "Nicht nötig",
     "guide.points.title": "Start und Ende markieren",
-    "guide.points.why": "Wo die Pakete hereinkommen und wo sie hinausgehen. Neue Maschinen werden am Startpunkt platziert.",
-    "guide.points.body": "Ziehen Sie START in der Zeichnung und schreiben Sie, warum er dort liegt. Gibt es mehrere mögliche Lagen, fügen Sie weitere Punkte mit einer Begründung hinzu.",
+    "guide.points.why":
+      "Wo die Pakete hereinkommen und wo sie hinausgehen. Neue Maschinen werden am Startpunkt platziert.",
+    "guide.points.body":
+      "Ziehen Sie START in der Zeichnung und schreiben Sie, warum er dort liegt. Gibt es mehrere mögliche Lagen, fügen Sie weitere Punkte mit einer Begründung hinzu.",
     "guide.points.ok": "Genügt so",
     "guide.machines.title": "Maschinen hineinziehen",
-    "guide.machines.why": "Die Maschinen stehen, wo Sie sie abstellen. Ziehen Sie sie aus dem Katalog links, oder klicken Sie, um sie am Startpunkt zu platzieren.",
+    "guide.machines.why":
+      "Die Maschinen stehen, wo Sie sie abstellen. Ziehen Sie sie aus dem Katalog links, oder klicken Sie, um sie am Startpunkt zu platzieren.",
     "guide.quote.title": "Angebotsunterlage erstellen",
-    "guide.quote.why": "Preis, Zeichnung und Maschinenliste in einem teilbaren Dokument.",
+    "guide.quote.why":
+      "Preis, Zeichnung und Maschinenliste in einem teilbaren Dokument.",
     "guide.quote.go": "Angebotsunterlage zusammenstellen",
   },
 };

@@ -2,61 +2,95 @@
 
 import { useEffect, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { ZONES, zoneDef } from "@/lib/zones";
 import { meters, parseMeters } from "@/lib/format";
-import { Button, Field, MirrorIcon, NumberInput, RotateIcon, Row, Tag } from "./ui";
+import {
+  Button,
+  Field,
+  MirrorIcon,
+  NumberInput,
+  RotateIcon,
+  Row,
+  Tag,
+} from "./ui";
 import { useT } from "@/lib/i18n";
 import { MachineParameters } from "./MachineParameters";
 import { MachineImages } from "./MachineImages";
 import type { PriceResult, Role } from "@/lib/server/pricing";
+import type { Dimension } from "@/lib/types";
+import { dimensionLength } from "@/lib/dimensions";
 
-export function Inspector({ price, role }: { price: PriceResult | null; role: Role }) {
+/**
+ * Det markerade objektet. Visas i högerpanelen i stället för ytan så länge
+ * något är markerat; "tillbaka" släpper markeringen och visar ytan igen.
+ */
+export function Inspector({
+  price,
+  role,
+  backLabel,
+}: {
+  price: PriceResult | null;
+  role: Role;
+  /** Namnet på ytan man kommer tillbaka till. */
+  backLabel: string;
+}) {
   const {
     config,
     layout,
     selectedId,
-    toggleInspector,
+    select,
     toggleOption,
     setVariant,
     turnMachine,
     setNote,
     mirrorMachine,
+    setDrawnZone,
     removeItem,
     removeDrawn,
     updateDrawn,
     nudge,
   } = useConfigStore();
 
-  const placement = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
+  const placement =
+    layout.placements.find((p) => p.instanceId === selectedId) ?? null;
   const t = useT();
   const drawn = config.drawn.find((d) => d.id === selectedId) ?? null;
+  const dimension = config.dimensions?.find((d) => d.id === selectedId) ?? null;
   const item = config.line.find((i) => i.instanceId === selectedId) ?? null;
   const priceLine = price?.lines.find((l) => l.instanceId === selectedId);
 
   return (
-    <aside className="scroll-thin flex h-full w-[300px] flex-none flex-col overflow-y-auto border-l border-divider bg-white p-3">
+    <div className="p-3">
       <div className="mb-3 flex items-center justify-between">
+        <button
+          onClick={() => select(null)}
+          className="text-xs text-accent hover:underline"
+        >
+          ‹ {backLabel}
+        </button>
         <h2 className="kicker">{t("inspector.title")}</h2>
-        <Button variant="ghost" size="sm" onClick={toggleInspector}>
-          {t("inspector.collapse")}
-        </Button>
       </div>
 
-      {!placement && !drawn ? (
+      {dimension ? <DimensionInspector dimension={dimension} /> : null}
+
+      {!placement && !drawn && !dimension ? (
         <p className="border border-dashed border-divider px-3 py-6 text-xs text-muted">
-          Inget markerat. Klicka på ett objekt i vyn eller i linjelistan.
+          {t("inspector.nothing")}
         </p>
       ) : null}
 
       {drawn ? (
         <div>
           <div className="kicker">
-            Ritat objekt ·{" "}
-            {{ wall: "vägg", door: "port", truck: "truckgata", nogo: "no-go" }[drawn.kind]}
+            {t("inspector.drawn")} ·{" "}
+            {drawn.kind === "zone"
+              ? t(zoneDef(drawn.zone).labelKey)
+              : t(drawn.kind === "wall" ? "tool.wall" : "tool.door")}
           </div>
           <input
             value={drawn.name}
             onChange={(e) => updateDrawn(drawn.id, { name: e.target.value })}
-            aria-label="Namn"
+            aria-label={t("inspector.name")}
             className="mb-3 w-full border-b border-transparent bg-transparent text-lg outline-none hover:border-divider focus:border-accent"
           />
 
@@ -64,10 +98,10 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           <div className="grid grid-cols-2 gap-2">
             {(
               [
-                ["Position X", "x"],
-                ["Position Y", "y"],
-                ["Längd (X)", "l"],
-                ["Bredd (Y)", "w"],
+                [t("inspector.posX"), "x"],
+                [t("inspector.posY"), "y"],
+                [t("inspector.lengthX"), "l"],
+                [t("inspector.widthY"), "w"],
               ] as const
             ).map(([label, key]) => (
               <Field key={key} label={`${label} m`}>
@@ -75,21 +109,72 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                   value={meters(drawn[key])}
                   onCommit={(raw) => {
                     const mm = parseMeters(raw);
-                    if (mm !== null) updateDrawn(drawn.id, { [key]: Math.max(0, mm) });
+                    if (mm !== null)
+                      updateDrawn(drawn.id, { [key]: Math.max(0, mm) });
                   }}
                 />
               </Field>
             ))}
           </div>
 
-          {drawn.kind !== "truck" && drawn.kind !== "nogo" ? (
+          {/*
+            Sorten går att byta efteråt.
+
+            Kunden ritar en yta först och bestämmer sedan vad den är — eller
+            ändrar sig: hämtzonen blev en lageryta när trucken fick en annan
+            väg. Att behöva rita om den vore att straffa den som tänker om.
+          */}
+          {drawn.kind === "zone" ? (
+            <div className="mt-3">
+              <span className="kicker mb-1 block">
+                {t("inspector.zoneKind")}
+              </span>
+              <div className="grid grid-cols-2 gap-1">
+                {ZONES.map((zone) => {
+                  const on = (drawn.zone ?? "other") === zone.id;
+                  return (
+                    <button
+                      key={zone.id}
+                      onClick={() =>
+                        setDrawnZone(drawn.id, zone.id, t(zone.labelKey))
+                      }
+                      title={t(zone.hintKey)}
+                      className={`flex items-center gap-1.5 border px-2 py-1 text-left text-xs transition-colors ${
+                        on
+                          ? "border-accent bg-accent text-white"
+                          : "border-divider bg-white hover:border-accent"
+                      }`}
+                    >
+                      <span
+                        aria-hidden
+                        className="h-2.5 w-2.5 flex-none border"
+                        style={{
+                          borderColor: on ? "#ffffff" : zone.stroke,
+                          background: on ? "#ffffff" : `${zone.tint}26`,
+                        }}
+                      />
+                      <span className="min-w-0 truncate">
+                        {t(zone.labelKey)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+                {t(zoneDef(drawn.zone).hintKey)}
+              </p>
+            </div>
+          ) : null}
+
+          {drawn.kind !== "zone" ? (
             <div className="mt-2">
-              <Field label="Höjd m">
+              <Field label={`${t("inspector.height")} m`}>
                 <NumberInput
                   value={meters(drawn.h)}
                   onCommit={(raw) => {
                     const mm = parseMeters(raw);
-                    if (mm !== null) updateDrawn(drawn.id, { h: Math.max(0, mm) });
+                    if (mm !== null)
+                      updateDrawn(drawn.id, { h: Math.max(0, mm) });
                   }}
                 />
               </Field>
@@ -99,14 +184,16 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           <div className="mt-3 space-y-2">
             <Button
               className="w-full"
-              onClick={() =>
-                updateDrawn(drawn.id, { l: drawn.w, w: drawn.l })
-              }
+              onClick={() => updateDrawn(drawn.id, { l: drawn.w, w: drawn.l })}
             >
-              Vrid 90°
+              {t("inspector.turn90")}
             </Button>
-            <Button className="w-full" variant="ghost" onClick={() => removeDrawn(drawn.id)}>
-              Ta bort
+            <Button
+              className="w-full"
+              variant="ghost"
+              onClick={() => removeDrawn(drawn.id)}
+            >
+              {t("common.remove")}
             </Button>
           </div>
         </div>
@@ -115,20 +202,30 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
       {placement ? (
         <div>
           <div className="kicker">
-            {placement.machine.catalogueNumber && placement.machine.catalogueNumber !== "—"
+            {placement.machine.catalogueNumber &&
+            placement.machine.catalogueNumber !== "—"
               ? `${t("inspector.catalogue")} ${placement.machine.catalogueNumber} · `
               : ""}
             {placement.machine.sku} ·{" "}
-            {placement.aux ? t("inspector.aux") : `${t("inspector.pos")} ${placement.pos}`}
+            {placement.aux
+              ? t("inspector.aux")
+              : `${t("inspector.pos")} ${placement.pos}`}
           </div>
-          <h3 className="mb-1 text-lg leading-tight">{placement.machine.name}</h3>
-          <p className="mb-3 text-xs leading-relaxed text-muted">{placement.machine.summary}</p>
+          <h3 className="mb-1 text-lg leading-tight">
+            {placement.machine.name}
+          </h3>
+          <p className="mb-3 text-xs leading-relaxed text-muted">
+            {placement.machine.summary}
+          </p>
 
           <Row
             label={t("inspector.dims")}
             value={`${meters(placement.size.lengthMm)} × ${meters(placement.size.widthMm)} × ${meters(placement.size.heightMm)} m`}
           />
-          <Row label={t("inspector.position")} value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`} />
+          <Row
+            label={t("inspector.position")}
+            value={`${meters(placement.bbox.x)} , ${meters(placement.bbox.y)} m`}
+          />
           {item ? (
             <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
               <span className="text-muted">{t("inspector.rotation")}</span>
@@ -152,23 +249,43 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                 >
                   <RotateIcon size={15} />
                 </Button>
-                {placement.machine.mirrorable ? (
-                  <Button
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    active={item.mirrored}
-                    title={t("inspector.mirror")}
-                    onClick={() => mirrorMachine(item.instanceId)}
-                  >
-                    <MirrorIcon size={15} />
-                  </Button>
-                ) : null}
               </div>
             </div>
           ) : (
-            <Row label={t("inspector.rotation")} value={`${placement.rotation}°`} />
+            <Row
+              label={t("inspector.rotation")}
+              value={`${placement.rotation}°`}
+            />
           )}
-          <Row label={t("inspector.capacity")} value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"} />
+          {/*
+            Speglingen får en egen rad, med namn och läge utskrivet.
+
+            Förut satt den som en ikon utan text inklämd bland
+            vridknapparna, och gick varken att hitta eller att läsa av: man
+            såg inte om maskinen var speglad eller inte. Nu står det vilken
+            sida pulpeten hamnar på, och knappen säger vad den gör.
+          */}
+          {item && placement.machine.mirrorable ? (
+            <div className="flex items-center justify-between gap-2 border-b border-divider/60 py-1.5 text-[13px]">
+              <span className="text-muted">{t("inspector.mirror")}</span>
+              <Button
+                size="sm"
+                active={item.mirrored}
+                title={t("inspector.mirrorHint")}
+                onClick={() => mirrorMachine(item.instanceId)}
+                className="flex items-center gap-1.5"
+              >
+                <MirrorIcon size={14} />
+                {item.mirrored
+                  ? t("inspector.mirrored")
+                  : t("inspector.mirrorDo")}
+              </Button>
+            </div>
+          ) : null}
+          <Row
+            label={t("inspector.capacity")}
+            value={placement.capacity > 0 ? `${placement.capacity} pkt/h` : "—"}
+          />
           <Row label={t("inspector.power")} value={`${placement.powerKw} kW`} />
           <Row
             label={t("inspector.air")}
@@ -186,7 +303,10 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                 : "Ingen"
             }
           />
-          <Row label={t("inspector.lead")} value={`${placement.machine.leadTimeWeeks} v`} />
+          <Row
+            label={t("inspector.lead")}
+            value={`${placement.machine.leadTimeWeeks} v`}
+          />
           {placement.machine.clearance ? (
             <Row
               label={t("inspector.clearance")}
@@ -194,7 +314,9 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
             />
           ) : null}
           {placement.machine.dimensionsVerified === false ? (
-            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">{t("inspector.unverified")}</p>
+            <p className="mt-2 border border-warn px-2 py-1 text-[11px] leading-relaxed text-warn">
+              {t("inspector.unverified")}
+            </p>
           ) : null}
 
           {item ? (
@@ -219,13 +341,17 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                     <input
                       type="radio"
                       name={`variant-${item.instanceId}`}
-                      checked={(item.variantId ?? placement.machine.variants![0].id) === variant.id}
+                      checked={
+                        (item.variantId ??
+                          placement.machine.variants![0].id) === variant.id
+                      }
                       onChange={() => setVariant(item.instanceId, variant.id)}
                       className="accent-accent"
                     />
                     <span className="flex-1">{variant.name}</span>
                     <span className="num text-[11px] text-muted">
-                      {meters(variant.footprint.lengthMm)} × {meters(variant.footprint.widthMm)} m
+                      {meters(variant.footprint.lengthMm)} ×{" "}
+                      {meters(variant.footprint.widthMm)} m
                     </span>
                   </label>
                 ))}
@@ -258,9 +384,19 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           {item ? (
             <div className="mt-4">
               <div className="kicker mb-2">{t("inspector.note")}</div>
+              {/*
+               * Texten skrivs lokalt och sparas när fältet lämnas. Storen
+               * trimmar anteckningen; gjorde den det vid varje tangent gick
+               * det inte att skriva ett mellanslag, och varje bokstav blev
+               * ett eget ångra-steg. Nyckeln läser om fältet vid ångra.
+               */}
               <textarea
-                value={item.note ?? ""}
-                onChange={(e) => setNote(item.instanceId, e.target.value)}
+                key={`${item.instanceId}:${item.note ?? ""}`}
+                defaultValue={item.note ?? ""}
+                onBlur={(e) => {
+                  if (e.target.value.trim() !== (item.note ?? ""))
+                    setNote(item.instanceId, e.target.value);
+                }}
                 rows={3}
                 maxLength={1000}
                 placeholder={t("inspector.notePlaceholder")}
@@ -273,18 +409,22 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
           ) : null}
 
           {/*
-            * Priset står här bara för den som får se belopp. Rutan säger inte
-            * längre "logga in för prisuppgift": inloggning räcker inte, och
-            * ska inte räcka — priset lämnas av INKAB.
-            */}
+           * Priset står här bara för den som får se belopp. Rutan säger inte
+           * längre "logga in för prisuppgift": inloggning räcker inte, och
+           * ska inte räcka — priset lämnas av INKAB.
+           */}
           <div className="blueprint mt-4 p-3">
             <div className="kicker">{t("inspector.price")}</div>
             {priceLine?.rowTotal != null ? (
               <>
-                <div className="num text-xl">{formatSek(priceLine.rowTotal)}</div>
+                <div className="num text-xl">
+                  {formatSek(priceLine.rowTotal)}
+                </div>
                 <div className="text-[11px] text-muted">
                   {price?.priceBookName}
-                  {priceLine.optionsPrice ? ` · optioner ${formatSek(priceLine.optionsPrice)}` : ""}
+                  {priceLine.optionsPrice
+                    ? ` · optioner ${formatSek(priceLine.optionsPrice)}`
+                    : ""}
                 </div>
               </>
             ) : (
@@ -309,20 +449,32 @@ export function Inspector({ price, role }: { price: PriceResult | null; role: Ro
                     ["↓", { x: 0, y: 250 }],
                   ] as const
                 ).map(([label, delta]) => (
-                  <Button key={label} size="sm" onClick={() => nudge(item.instanceId, delta)}>
+                  <Button
+                    key={label}
+                    size="sm"
+                    onClick={() => nudge(item.instanceId, delta)}
+                  >
                     {label}
                   </Button>
                 ))}
               </div>
-              <StepButton file={placement.machine.stepFile} name={placement.machine.name} role={role} />
-              <Button className="w-full" variant="ghost" onClick={() => removeItem(item.instanceId)}>
+              <StepButton
+                file={placement.machine.stepFile}
+                name={placement.machine.name}
+                role={role}
+              />
+              <Button
+                className="w-full"
+                variant="ghost"
+                onClick={() => removeItem(item.instanceId)}
+              >
                 {t("inspector.remove")}
               </Button>
             </div>
           ) : null}
         </div>
       ) : null}
-    </aside>
+    </div>
   );
 }
 
@@ -359,7 +511,9 @@ function StepButton({
       >
         {t("inspector.stepDownload")}
       </Button>
-      {message ? <p className="mt-1 text-[11px] leading-relaxed text-muted">{message}</p> : null}
+      {message ? (
+        <p className="mt-1 text-[11px] leading-relaxed text-muted">{message}</p>
+      ) : null}
     </div>
   );
 }
@@ -368,3 +522,62 @@ function formatSek(amount: number): string {
   return `${new Intl.NumberFormat("sv-SE", { maximumFractionDigits: 0 }).format(amount)} kr`;
 }
 
+/** Ett sparat mått: längden, en rad om vad som mäts, och ändpunkterna exakt. */
+function DimensionInspector({ dimension }: { dimension: Dimension }) {
+  const t = useT();
+  const { updateDimension, removeDimension } = useConfigStore();
+  const point = (end: "from" | "to", axis: "x" | "y") => (
+    <NumberInput
+      value={meters(dimension[end][axis], 2)}
+      onCommit={(raw) => {
+        const mm = parseMeters(raw);
+        if (mm !== null)
+          updateDimension(dimension.id, {
+            [end]: { ...dimension[end], [axis]: mm },
+          });
+      }}
+    />
+  );
+  return (
+    <div>
+      <div className="kicker">{t("dim.saved")}</div>
+      <div className="num mb-3 text-2xl">
+        {meters(dimensionLength(dimension), 2)} m
+      </div>
+      <label className="mb-3 block">
+        <span className="kicker mb-1 block">{t("dim.note")}</span>
+        <input
+          key={dimension.note ?? ""}
+          defaultValue={dimension.note ?? ""}
+          placeholder={t("dim.notePlaceholder")}
+          maxLength={200}
+          onBlur={(e) => {
+            const note = e.currentTarget.value.trim();
+            if (note !== (dimension.note ?? ""))
+              updateDimension(dimension.id, { note: note || undefined });
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+          className="w-full border border-divider bg-white px-2 py-1 text-sm outline-none focus:border-accent"
+        />
+      </label>
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <Field label={`${t("dim.from")} X m`}>{point("from", "x")}</Field>
+        <Field label={`${t("dim.from")} Y m`}>{point("from", "y")}</Field>
+        <Field label={`${t("dim.to")} X m`}>{point("to", "x")}</Field>
+        <Field label={`${t("dim.to")} Y m`}>{point("to", "y")}</Field>
+      </div>
+      <p className="mb-3 text-[11px] leading-relaxed text-muted">
+        {t("dim.help")}
+      </p>
+      <Button
+        className="w-full"
+        variant="ghost"
+        onClick={() => removeDimension(dimension.id)}
+      >
+        {t("area.remove")}
+      </Button>
+    </div>
+  );
+}

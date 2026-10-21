@@ -115,6 +115,15 @@ export function describeChange(
     );
   }
 
+  const dimsBefore = before.dimensions?.length ?? 0;
+  const dimsAfter = after.dimensions?.length ?? 0;
+  if (dimsBefore !== dimsAfter) {
+    return logEntry(
+      "draw",
+      dimsAfter > dimsBefore ? "Sparade ett mått på ritningen" : "Tog bort ett mått från ritningen",
+    );
+  }
+
   if (before.drawn.length !== after.drawn.length) {
     const added = after.drawn.filter((o) => !before.drawn.some((old) => old.id === o.id));
     if (added.length === 1) return logEntry("draw", `Ritade ${added[0].name}`);

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { computeLayout } from "@/lib/layout";
-import { TEMPLATES, defaultConfig, lineItem, templateConfig } from "@/lib/templates";
+import {
+  TEMPLATES,
+  defaultConfig,
+  lineItem,
+  templateConfig,
+} from "@/lib/templates";
 import { BUILTIN_LIBRARY } from "@/lib/library";
 
 const codes = (c: Parameters<typeof computeLayout>[0]) =>
@@ -31,7 +36,8 @@ describe("regelmotorn", () => {
     const target = layout.placements[1].bbox;
     config.drawn.push({
       id: "z1",
-      kind: "nogo",
+      kind: "zone",
+      zone: "nogo",
       name: "No-go · pelarrad",
       x: target.x + 200,
       y: target.y + 200,
@@ -54,7 +60,6 @@ describe("regelmotorn", () => {
       label: "Lägg till Ströfacksmagasin",
     });
   });
-
 
   it("R-302 när paketet är för långt för maskinerna", () => {
     const config = defaultConfig();
@@ -84,10 +89,13 @@ describe("regelmotorn", () => {
 
   it("R-203 när pulpeten hamnar i en ritad truckzon", () => {
     const config = defaultConfig();
-    const desk = computeLayout(config).placements.find((p) => p.machine.category === "control")!;
+    const desk = computeLayout(config).placements.find(
+      (p) => p.machine.category === "control",
+    )!;
     config.drawn.push({
       id: "truck-over-desk",
-      kind: "truck",
+      kind: "zone",
+      zone: "truck",
       name: "Hämtzon",
       x: desk.bbox.x - 500,
       y: desk.bbox.y - 500,
@@ -97,14 +105,16 @@ describe("regelmotorn", () => {
     });
     // Åtgärden är att dra pulpeten ur zonen, inte att svara om på en
     // flödesfråga — därför bär regeln inget färdigt förslag längre.
-    const diag = computeLayout(config).diagnostics.find((d) => d.code === "R-203");
+    const diag = computeLayout(config).diagnostics.find(
+      (d) => d.code === "R-203",
+    );
     expect(diag).toBeDefined();
     expect(diag!.fix).toBeUndefined();
   });
 
   it("R-205 när ingen truckgata är ritad", () => {
     const config = defaultConfig();
-    config.drawn = config.drawn.filter((d) => d.kind !== "truck");
+    config.drawn = config.drawn.filter((d) => d.zone !== "truck");
     expect(codes(config)).toContain("R-205");
   });
 
@@ -113,7 +123,8 @@ describe("regelmotorn", () => {
     const machine = computeLayout(config).placements.find((p) => !p.aux)!;
     config.drawn.push({
       id: "truck-over-machine",
-      kind: "truck",
+      kind: "zone",
+      zone: "truck",
       name: "Hämtzon",
       x: machine.bbox.x,
       y: machine.bbox.y,
@@ -140,10 +151,11 @@ describe("regelmotorn", () => {
     expect(codes(config)).not.toContain("R-403");
   });
 
-
   it("diagnostik dubbletteras inte", () => {
     const list = computeLayout(defaultConfig()).diagnostics;
-    const keys = list.map((d) => `${d.code}|${[...d.instanceIds].sort().join(",")}|${d.title}`);
+    const keys = list.map(
+      (d) => `${d.code}|${[...d.instanceIds].sort().join(",")}|${d.title}`,
+    );
     expect(new Set(keys).size).toBe(keys.length);
   });
 
@@ -153,14 +165,17 @@ describe("regelmotorn", () => {
     config.product.targetPackagesPerHour = 40;
     const severities = computeLayout(config).diagnostics.map((d) => d.severity);
     const firstWarning = severities.indexOf("warning");
-    if (firstWarning >= 0) expect(severities.slice(firstWarning)).not.toContain("error");
+    if (firstWarning >= 0)
+      expect(severities.slice(firstWarning)).not.toContain("error");
   });
 
   it("alla mallar är giltiga", () => {
     for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
       const layout = computeLayout(templateConfig(id));
       const errors = layout.diagnostics.filter((d) => d.severity === "error");
-      expect(errors, `${id}: ${JSON.stringify(errors, null, 2)}`).toHaveLength(0);
+      expect(errors, `${id}: ${JSON.stringify(errors, null, 2)}`).toHaveLength(
+        0,
+      );
     }
   });
 });
@@ -181,10 +196,48 @@ describe("serverns validering", () => {
     const { configurationSchema } = await import("@/lib/schema");
     const config = defaultConfig();
     config.drawn.push(
-      { id: "w", kind: "wall", name: "Vägg", x: 0, y: 0, l: 5000, w: 300, h: 3000 },
-      { id: "d", kind: "door", name: "Port B", x: 0, y: 0, l: 300, w: 4000, h: 5000 },
-      { id: "t", kind: "truck", name: "Hämtzon", x: 0, y: 0, l: 9000, w: 5000, h: 0 },
-      { id: "n", kind: "nogo", name: "No-go", x: 0, y: 0, l: 2000, w: 2000, h: 0 },
+      {
+        id: "w",
+        kind: "wall",
+        name: "Vägg",
+        x: 0,
+        y: 0,
+        l: 5000,
+        w: 300,
+        h: 3000,
+      },
+      {
+        id: "d",
+        kind: "door",
+        name: "Port B",
+        x: 0,
+        y: 0,
+        l: 300,
+        w: 4000,
+        h: 5000,
+      },
+      {
+        id: "t",
+        kind: "zone",
+        zone: "truck",
+        name: "Hämtzon",
+        x: 0,
+        y: 0,
+        l: 9000,
+        w: 5000,
+        h: 0,
+      },
+      {
+        id: "n",
+        kind: "zone",
+        zone: "nogo",
+        name: "No-go",
+        x: 0,
+        y: 0,
+        l: 2000,
+        w: 2000,
+        h: 0,
+      },
     );
     const result = configurationSchema.safeParse(config);
     expect(result.success, JSON.stringify(result.error?.issues)).toBe(true);
@@ -194,7 +247,10 @@ describe("serverns validering", () => {
     const { configurationSchema } = await import("@/lib/schema");
     for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
       const result = configurationSchema.safeParse(templateConfig(id));
-      expect(result.success, `${id}: ${JSON.stringify(result.error?.issues)}`).toBe(true);
+      expect(
+        result.success,
+        `${id}: ${JSON.stringify(result.error?.issues)}`,
+      ).toBe(true);
     }
   });
 });
@@ -247,7 +303,10 @@ describe("maskinzonen skiljer ändar från sidor", () => {
 describe("mallarna öppnar utan anmärkning", () => {
   it("varje mall är ren från start", () => {
     for (const template of TEMPLATES) {
-      const layout = computeLayout(templateConfig(template.id), BUILTIN_LIBRARY);
+      const layout = computeLayout(
+        templateConfig(template.id),
+        BUILTIN_LIBRARY,
+      );
       expect(
         layout.diagnostics.map((d) => `${template.id}: ${d.code} ${d.detail}`),
       ).toEqual([]);

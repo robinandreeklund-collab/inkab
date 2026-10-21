@@ -6,8 +6,7 @@ const SHORTCUT: Record<Tool, string> = {
   select: "V",
   wall: "W",
   door: "D",
-  truck: "T",
-  nogo: "N",
+  zone: "Z",
   measure: "M",
 };
 

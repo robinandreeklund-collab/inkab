@@ -24,7 +24,7 @@ import {
   MIN_DIMENSION_MM,
   straighten,
 } from "@/lib/dimensions";
-import { ROTATE_ARC, ROTATE_TIP, TipCard } from "./ui";
+import { ROTATE_ARC, ROTATE_TIP, TipCard, ViewBar } from "./ui";
 import { toolHelp } from "./toolHelp";
 import { TopViewImage } from "./TopViewImage";
 import type {
@@ -934,9 +934,9 @@ export function CadView() {
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-between p-2">
-        <span className="kicker bg-paper/80 px-1">
-          {t("cad.plan")} · {t("cad.snap", { mm: SNAP_MM })}
-        </span>
+        <ViewBar
+          note={`${t("cad.plan")} · ${t("cad.snap", { mm: SNAP_MM })}`}
+        />
         <button
           onClick={fit}
           className="pointer-events-auto kicker border border-divider bg-white px-2 py-1 hover:border-accent"

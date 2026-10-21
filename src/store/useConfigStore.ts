@@ -12,7 +12,19 @@ import { defaultConfig, lineItem } from "@/lib/templates";
 import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
 import { translate } from "@/lib/i18n/translate";
 import { claimedBox, freeSpot } from "@/lib/solver";
-import { AREA_ORDER, type Area } from "@/lib/areas";
+import { AREA_ORDER, migrateArea, type Area } from "@/lib/areas";
+
+/**
+ * Delarna inuti ett steg. Vilka som står öppna ligger i butiken, inte i
+ * panelen, så att det överlever ett byte av steg och tillbaka.
+ */
+export type SectionId =
+  | "hall"
+  | "walls"
+  | "zones"
+  | "machines"
+  | "line"
+  | "points";
 import { localizeMachines } from "@/lib/machineText";
 import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
 import {
@@ -125,6 +137,8 @@ type State = {
   proposalId: string | null;
   /** Ytan som är öppen i högerpanelen. Se lib/areas.ts. */
   area: Area;
+  /** Utfällda delar i stegets panel. Se SectionId. */
+  openSections: SectionId[];
   /** Ytor kunden har bockat av för hand. */
   confirmedAreas: Area[];
 };
@@ -145,6 +159,7 @@ type Actions = {
   togglePorts: () => void;
   /** Öppnar en yta i högerpanelen och släpper markeringen, så att ytan syns. */
   setArea: (area: Area) => void;
+  toggleSection: (id: SectionId) => void;
   confirmArea: (area: Area) => void;
   setDraggingMachine: (machineId: string | null) => void;
   setLocale: (locale: Locale) => void;
@@ -359,7 +374,9 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     shareNotice: null,
     log: [],
     proposalId: null,
-    area: "hall",
+    area: "site",
+    // Första delen i varje steg står öppen; resten är ett klick bort.
+    openSections: ["hall", "machines", "line"],
     confirmedAreas: [],
 
     setScreen: (screen) => set({ screen }),
@@ -380,6 +397,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
     setArea: (area) => set({ area, selectedId: null, inspectorOpen: true }),
+    toggleSection: (id) =>
+      set((state) => ({
+        openSections: state.openSections.includes(id)
+          ? state.openSections.filter((s) => s !== id)
+          : [...state.openSections, id],
+      })),
     confirmArea: (area) => {
       const confirmedAreas = [...new Set([...get().confirmedAreas, area])];
       set({ confirmedAreas });
@@ -457,7 +480,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
          * visade ytor som klara som ingen ens hade öppnat.
          */
         if (!options.keepProgress) {
-          set({ confirmedAreas: [], area: "hall" });
+          set({ confirmedAreas: [], area: "site" });
           persistAreas([]);
         }
         if (options.note) note(logEntry("start", options.note));
@@ -775,11 +798,23 @@ export const useConfigStore = create<State & Actions>((set, get) => {
           window.localStorage.getItem(AREAS_KEY) ?? "[]",
         );
         if (Array.isArray(saved)) {
-          set({
-            confirmedAreas: saved.filter((a): a is Area =>
-              AREA_ORDER.includes(a),
-            ),
-          });
+          /*
+           * Bockar sparade när det fanns nio ytor pekar på ytor som nu är
+           * delar av ett steg. De mappas till sitt steg, och lokalen räknas
+           * som bekräftad bara om kunden bockat av hela den gamla gruppen —
+           * en bock på "Väggar och portar" säger inget om hallens mått.
+           */
+          const migrated = saved
+            .map((a: unknown) =>
+              typeof a === "string" ? migrateArea(a) : null,
+            )
+            .filter((a: Area | null): a is Area => a !== null);
+          const siteOld = ["hall", "walls", "zones", "truck"];
+          const keep = migrated.filter(
+            (a: Area) =>
+              a !== "site" || siteOld.every((o) => saved.includes(o)),
+          );
+          set({ confirmedAreas: [...new Set(keep)] });
         }
       } catch {
         /* utan lagring börjar bockarna om — konfigurationen är orörd */

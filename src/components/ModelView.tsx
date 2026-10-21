@@ -6,8 +6,8 @@ import { zoneDef } from "@/lib/zones";
 import { meters } from "@/lib/format";
 import { orientationEuler } from "@/lib/cad/orientation";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
-import { useT } from "@/lib/i18n";
-import { Tip } from "./ui";
+import { useLocale, useT } from "@/lib/i18n";
+import { Tip, ViewBar } from "./ui";
 import type {
   LayoutResult,
   Configuration,
@@ -56,7 +56,15 @@ export function ModelView() {
   const layout = useConfigStore((s) => s.layout);
   const selectedId = useConfigStore((s) => s.selectedId);
   const library = useConfigStore((s) => s.library);
+  const locale = useLocale();
   const t = useT();
+  /*
+   * Scenen byggs en gång, så en t() fångad vid första renderingen skulle
+   * frysa måttens språk. Referensen pekar alltid på den aktuella, och
+   * effekten längst ner bygger om lagret när kunden byter språk.
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
 
   const mount = useRef<HTMLDivElement | null>(null);
   const api = useRef<ViewApi | null>(null);
@@ -431,6 +439,9 @@ export function ModelView() {
         grid.position.set(hallL / 2, 0.002, hallW / 2);
         world.add(grid);
 
+        // Måttlagret: utan det är modellvyn en bild, inte en ritning.
+        world.add(buildDimensions(THREE, cfg, result, tRef.current));
+
         // Ritade objekt: väggar, portar och kundens zoner.
         for (const object of cfg.drawn) {
           const l = object.l / 1000;
@@ -629,6 +640,13 @@ export function ModelView() {
     api.current?.select(selectedId);
   }, [selectedId]);
 
+  // Byter kunden språk ska måtten byta med. Scenen byggs inte om i övrigt.
+  useEffect(() => {
+    api.current?.update(config, layout);
+    // Bara språket: konfigurationen har sin egen effekt ovanför.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locale]);
+
   const dropMachine = (event: React.DragEvent): Machine | null => {
     const id =
       useConfigStore.getState().draggingMachineId ??
@@ -758,9 +776,12 @@ export function ModelView() {
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-2">
-        <span className="kicker max-w-[60%] bg-paper/85 px-1 leading-relaxed">
-          {status}
-        </span>
+        <div className="flex min-w-0 flex-col items-start gap-1">
+          <ViewBar note={t("model.note")} />
+          <span className="kicker max-w-full bg-paper/85 px-1 leading-relaxed">
+            {status}
+          </span>
+        </div>
         {loaded ? (
           <span className="kicker bg-paper/85 px-1">
             {loaded.withModel}/{loaded.total} modeller
@@ -844,8 +865,15 @@ function frameCamera(
   hallL: number,
   hallW: number,
 ) {
+  /*
+   * Måttlagret ligger utanför hallen: mätstickan bortom bortre kanten,
+   * längdkedjan framför närkanten, bredd- och höjdkedjan utanför sidorna.
+   * Ramas bara hallen in hamnar måtten utanför bild, och då finns de inte
+   * för den som öppnar vyn. Marginalen är den som lagret faktiskt tar.
+   */
+  const MARGIN = 3;
   const centre = new THREE.Vector3(hallL / 2, 0, hallW / 2);
-  const span = Math.max(hallL, hallW);
+  const span = Math.max(hallL, hallW) + MARGIN * 2;
   camera.position.set(
     centre.x - span * 0.55,
     span * 0.5,
@@ -978,4 +1006,249 @@ function OrbitPanel({
       </div>
     </div>
   );
+}
+
+/* ── Måttsättning i modellen ──────────────────────────────────────────── */
+
+/**
+ * En siffra som alltid vänder sig mot kameran.
+ *
+ * Måtten ska gå att läsa från vilket håll man än vrider vyn, och en text
+ * lagd i rummet står på huvudet halva varvet. Sprites vänder sig alltid
+ * rätt. Stödkanten mot golvets färg gör att siffran syns också där den
+ * hamnar ovanpå ett rutnät eller en zon.
+ */
+function dimLabel(
+  THREE: typeof import("three"),
+  text: string,
+  height: number,
+  colour = "#5980a6",
+) {
+  const FONT = 48;
+  const measure = document.createElement("canvas").getContext("2d");
+  if (!measure) return null;
+  const font = `600 ${FONT}px "Barlow Condensed", Barlow, sans-serif`;
+  measure.font = font;
+  const w = Math.ceil(measure.measureText(text).width) + 24;
+  const h = FONT + 20;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.font = font;
+  ctx.textBaseline = "middle";
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = "#eceef0";
+  ctx.lineWidth = 9;
+  ctx.strokeText(text, 12, h / 2);
+  ctx.fillStyle = colour;
+  ctx.fillText(text, 12, h / 2);
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.minFilter = THREE.LinearFilter;
+  const sprite = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+    }),
+  );
+  sprite.scale.set((w / h) * height, height, 1);
+  sprite.renderOrder = 20;
+  return sprite;
+}
+
+/**
+ * Måttlagret: rutnät i meter, mätsticka, och måttkedjor för anläggningens
+ * längd, bredd och höjd.
+ *
+ * Utan det är modellvyn en bild. Kedjorna ligger i marginalen med tunna
+ * förlängningslinjer ut till det de mäter — en kedja dragen tvärs över
+ * anläggningen korsar alltid en maskin eller en zon, och då går den inte
+ * att läsa av. Samma uppställning som på en riktig ritning.
+ */
+function buildDimensions(
+  THREE: typeof import("three"),
+  cfg: Configuration,
+  result: LayoutResult,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+) {
+  const group = new THREE.Group();
+  const L = cfg.hall.lengthMm / 1000;
+  const W = cfg.hall.widthMm / 1000;
+  const CLEAR = cfg.hall.clearHeightMm / 1000;
+  const ACCENT = 0x5980a6;
+  const m = (v: number) => `${v.toFixed(1).replace(".", ",")} m`;
+
+  const add = (
+    sprite: ReturnType<typeof dimLabel>,
+    x: number,
+    y: number,
+    z: number,
+  ) => {
+    if (!sprite) return;
+    sprite.position.set(x, y, z);
+    group.add(sprite);
+  };
+
+  /** Linjer på ett och samma material, så att lagret kostar ett anrop. */
+  const solid: number[] = [];
+  const seg = (
+    x1: number,
+    y1: number,
+    z1: number,
+    x2: number,
+    y2: number,
+    z2: number,
+  ) => solid.push(x1, y1, z1, x2, y2, z2);
+
+  /* Grövre linjer var femte meter, ovanpå metersrutnätet. */
+  const major: number[] = [];
+  for (let x = 0; x <= L + 0.001; x += 5) major.push(x, 0.004, 0, x, 0.004, W);
+  for (let z = 0; z <= W + 0.001; z += 5) major.push(0, 0.004, z, L, 0.004, z);
+  const majorGeom = new THREE.BufferGeometry();
+  majorGeom.setAttribute(
+    "position",
+    new THREE.Float32BufferAttribute(major, 3),
+  );
+  group.add(
+    new THREE.LineSegments(
+      majorGeom,
+      new THREE.LineBasicMaterial({
+        color: 0x97a0aa,
+        transparent: true,
+        opacity: 0.75,
+      }),
+    ),
+  );
+
+  /* Mätsticka längs bortre kanten: 1 m-streck, siffra var femte meter. */
+  const RY = -2.2;
+  const bar = Math.min(20, L);
+  seg(0, 0.02, RY, bar, 0.02, RY);
+  for (let x = 0; x <= bar + 0.001; x += 1) {
+    const big = Math.abs(x % 5) < 0.001;
+    seg(x, 0.02, RY, x, 0.02, RY - (big ? 0.9 : 0.45));
+    if (big)
+      add(dimLabel(THREE, String(x), 0.75, "#5980a6"), x, 0.06, RY - 1.7);
+  }
+  add(
+    dimLabel(THREE, t("model.scaleUnit"), 0.7, "#5980a6"),
+    bar + 1.3,
+    0.06,
+    RY - 0.9,
+  );
+
+  /* Metertal längs hallens vänstra kant, så att djupet går att läsa av. */
+  for (let z = 10; z <= W - 1; z += 10) {
+    add(dimLabel(THREE, String(z), 0.7, "#8e949c"), -1.2, 0.06, z);
+  }
+
+  const b = result.bounds;
+  if (b && b.l > 0) {
+    const x0 = b.x / 1000;
+    const x1 = (b.x + b.l) / 1000;
+    const z0 = b.y / 1000;
+    const z1 = (b.y + b.w) / 1000;
+
+    /*
+     * Kedjorna ligger tätt intill anläggningen, inte vid hallens kanter.
+     * På en platt ritning hör de hemma i marginalen; här kan kunden vrida
+     * och zooma, och ett mått som ligger tio meter från det det mäter går
+     * inte att läsa av när man gått nära. Höjdskillnaden mot maskinerna
+     * gör att kedjan ändå inte korsar något.
+     */
+    const CZ = z1 + 1.3;
+    seg(x0, 0.02, z1, x0, 0.02, CZ);
+    seg(x1, 0.02, z1, x1, 0.02, CZ);
+    seg(x0, 0.02, CZ, x1, 0.02, CZ);
+    seg(x0, 0.02, CZ - 0.45, x0, 0.02, CZ + 0.45);
+    seg(x1, 0.02, CZ - 0.45, x1, 0.02, CZ + 0.45);
+    add(
+      dimLabel(THREE, m(b.l / 1000), 0.95, "#5980a6"),
+      (x0 + x1) / 2,
+      0.06,
+      CZ + 1.1,
+    );
+
+    /* Bredd: kedja vid hallens högra kant. */
+    const CX = x1 + 1.3;
+    seg(x1, 0.02, z0, CX, 0.02, z0);
+    seg(x1, 0.02, z1, CX, 0.02, z1);
+    seg(CX, 0.02, z0, CX, 0.02, z1);
+    seg(CX - 0.45, 0.02, z0, CX + 0.45, 0.02, z0);
+    seg(CX - 0.45, 0.02, z1, CX + 0.45, 0.02, z1);
+    add(
+      dimLabel(THREE, m(b.w / 1000), 0.95, "#5980a6"),
+      CX + 1.7,
+      0.06,
+      (z0 + z1) / 2,
+    );
+
+    /*
+     * Höjd: kedjan står vid den högsta maskinen, inte vid anläggningens
+     * ände. Det är den maskinen frågan gäller — får den plats under taket?
+     * — och en kedja vid en rullbana som är en meter hög svarar inte på
+     * den. Den fria höjden ritas streckad i samma snitt, så att marginalen
+     * syns direkt.
+     */
+    const tall = result.placements.reduce<
+      (typeof result.placements)[number] | null
+    >(
+      (best, p) =>
+        !p.aux && (!best || p.size.heightMm > best.size.heightMm) ? p : best,
+      null,
+    );
+    if (tall) {
+      const HX = tall.bbox.x / 1000 - 1.1;
+      const HZ = (tall.bbox.y + tall.bbox.w) / 1000;
+      const h = tall.size.heightMm / 1000;
+      seg(HX, 0, HZ, HX, h, HZ);
+      seg(HX - 0.45, 0, HZ, HX + 0.45, 0, HZ);
+      seg(HX - 0.45, h, HZ, HX + 0.45, h, HZ);
+      add(dimLabel(THREE, m(h), 0.9, "#5980a6"), HX - 1.3, h / 2, HZ);
+
+      const dashed: number[] = [HX - 0.3, CLEAR, HZ, HX + 3.2, CLEAR, HZ];
+      const dashGeom = new THREE.BufferGeometry();
+      dashGeom.setAttribute(
+        "position",
+        new THREE.Float32BufferAttribute(dashed, 3),
+      );
+      const dash = new THREE.LineSegments(
+        dashGeom,
+        new THREE.LineDashedMaterial({
+          color: ACCENT,
+          dashSize: 0.35,
+          gapSize: 0.25,
+          transparent: true,
+          opacity: 0.75,
+        }),
+      );
+      dash.computeLineDistances();
+      group.add(dash);
+      add(
+        dimLabel(
+          THREE,
+          t("model.clearHeight", { h: CLEAR.toFixed(1).replace(".", ",") }),
+          0.7,
+          "#5980a6",
+        ),
+        HX - 2.4,
+        CLEAR,
+        HZ,
+      );
+    }
+  }
+
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute("position", new THREE.Float32BufferAttribute(solid, 3));
+  group.add(
+    new THREE.LineSegments(
+      geom,
+      new THREE.LineBasicMaterial({ color: ACCENT }),
+    ),
+  );
+  return group;
 }

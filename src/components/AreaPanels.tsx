@@ -12,10 +12,20 @@ import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { dimensionLength } from "@/lib/dimensions";
 import { clampTo, HALL_LIMITS, setProductValue } from "@/lib/limits";
 import { useT } from "@/lib/i18n";
-import { Button, Empty, Field, NumberInput, Segmented, Tag, Tip } from "./ui";
+import {
+  Button,
+  cx,
+  Empty,
+  Field,
+  NumberInput,
+  Segmented,
+  Tag,
+  Tip,
+} from "./ui";
 import { MachineThumb } from "./MachineThumb";
 import { toolHelp } from "./toolHelp";
 import type { Area } from "@/lib/areas";
+import type { SectionId } from "@/store/useConfigStore";
 import type {
   DrawnKind,
   FlowMarker,
@@ -26,32 +36,138 @@ import type {
 import type { Tool } from "@/store/useConfigStore";
 
 /**
- * Innehållet i varje yta. Se lib/areas.ts för hur ytorna hänger ihop.
+ * Innehållet i varje steg. Se lib/areas.ts för hur stegen hänger ihop.
  *
- * Varje yta visar bara det som hör dit, i den ordning man fyller i det, med
- * en rad om varför det behövs i offerten. Verktygen som hör till ytan ligger
- * i ytan — den som öppnar "Väggar och portar" ska inte behöva leta efter
- * portverktyget någon annanstans.
+ * Ett steg ställer en fråga, och delarna inuti det är de gamla ytorna:
+ * samma block, samma verktyg, samma listor, men utan en egen skärm var.
+ * Delarna fälls ihop, så att panelen aldrig blir en lång rulle — den
+ * första står öppen och resten är ett klick bort.
  */
 export function AreaBody({ area }: { area: Area }) {
   switch (area) {
-    case "hall":
-      return <HallArea />;
-    case "walls":
-      return <WallsArea />;
-    case "zones":
-      return <ZonesArea />;
-    case "machines":
-      return <MachinesArea />;
-    case "line":
-      return <LineArea />;
-    case "points":
-      return <PointsArea />;
+    case "site":
+      return <SiteArea />;
+    case "plant":
+      return <PlantArea />;
     case "product":
       return <ProductArea />;
     case "quote":
       return <QuoteArea />;
   }
+}
+
+/**
+ * En hopfällbar del av ett steg.
+ *
+ * Öppet/stängt-läget ligger i butiken och inte här, så att det överlever
+ * att man går till ett annat steg och tillbaka: den som fällt ut zonerna
+ * har sagt att det är dem hen arbetar med.
+ */
+function Section({
+  id,
+  title,
+  meta,
+  children,
+}: {
+  id: SectionId;
+  title: string;
+  meta: string;
+  children: ReactNode;
+}) {
+  const { openSections, toggleSection } = useConfigStore();
+  const open = openSections.includes(id);
+  return (
+    <div className="mb-2 border border-divider" data-open={open}>
+      <button
+        onClick={() => toggleSection(id)}
+        aria-expanded={open}
+        className="flex w-full items-center gap-2 px-2 py-1.5 text-left hover:bg-paper"
+      >
+        <span
+          className={cx(
+            "text-[10px] text-muted transition-transform",
+            !open && "-rotate-90",
+          )}
+        >
+          ▾
+        </span>
+        <span className="flex-1 text-[13px] font-medium">{title}</span>
+        <span className="num text-[11px] text-muted">{meta}</span>
+      </button>
+      {open ? (
+        <div className="border-t border-divider p-2">{children}</div>
+      ) : null}
+    </div>
+  );
+}
+
+/* ── Stegen ────────────────────────────────────────────────────────────── */
+
+/** Steg 1: hallens mått, väggarna och ytorna i den. */
+function SiteArea() {
+  const t = useT();
+  const { config } = useConfigStore();
+  const doors = config.drawn.filter((d) => d.kind === "door").length;
+  const walls = config.drawn.filter((d) => d.kind === "wall").length;
+  const zones = config.drawn.filter((d) => d.kind === "zone").length;
+  return (
+    <>
+      <Section
+        id="hall"
+        title={t("area.hall.title")}
+        meta={`${meters(config.hall.lengthMm)} × ${meters(config.hall.widthMm)} m`}
+      >
+        <HallArea />
+      </Section>
+      <Section
+        id="walls"
+        title={t("area.walls.title")}
+        meta={t("nav.status.walls", { doors, walls })}
+      >
+        <WallsArea />
+      </Section>
+      <Section
+        id="zones"
+        title={t("area.zones.title")}
+        meta={t("nav.status.zones", { count: zones })}
+      >
+        <ZonesArea />
+      </Section>
+    </>
+  );
+}
+
+/** Steg 2: maskinerna, deras ordning och var paketen kommer in. */
+function PlantArea() {
+  const t = useT();
+  const { config, library } = useConfigStore();
+  return (
+    <>
+      <Section
+        id="machines"
+        title={t("area.machines.title")}
+        meta={t("nav.status.machines", { count: library.machines.length })}
+      >
+        <MachinesArea />
+      </Section>
+      <Section
+        id="line"
+        title={t("area.line.title")}
+        meta={t("nav.status.machines", { count: config.line.length })}
+      >
+        <LineArea />
+      </Section>
+      <Section
+        id="points"
+        title={t("area.points.title")}
+        meta={t("nav.status.points", {
+          count: 1 + (config.flow.markers?.length ?? 0),
+        })}
+      >
+        <PointsArea />
+      </Section>
+    </>
+  );
 }
 
 /** En rubricerad del av en yta. */
@@ -713,12 +829,33 @@ function ProductArea() {
 
 function QuoteArea() {
   const t = useT();
-  const { config, layout, setScreen, toggleDiagnostics } = useConfigStore();
+  const { config, layout, setScreen, toggleDiagnostics, update } =
+    useConfigStore();
   const errors = layout.diagnostics.filter(
     (d) => d.severity === "error",
   ).length;
   return (
     <>
+      {/*
+       * Namnet frågas där det börjar betyda något.
+       *
+       * Fältet i sidhuvudet är samma värde — en genväg för den som vill
+       * döpa om på vägen. Men den som aldrig tittar i sidhuvudet ska inte
+       * kunna skicka in ett underlag som heter "Nytt projekt", så här står
+       * frågan utskriven, med vad namnet används till.
+       */}
+      <Block title={t("area.quote.name")} help={t("area.quote.nameHelp")}>
+        <input
+          value={config.projectName}
+          onChange={(e) => update((d) => void (d.projectName = e.target.value))}
+          placeholder={t("top.projectNamePlaceholder")}
+          aria-label={t("top.projectName")}
+          className="w-full border border-divider px-2 py-1 text-[13px] outline-none focus:border-accent"
+        />
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+          {t("area.quote.nameHelp")}
+        </p>
+      </Block>
       <Block title={t("area.quote.summary")}>
         <ul className="space-y-1 text-[12px]">
           <li>{t("area.quote.machines", { count: config.line.length })}</li>

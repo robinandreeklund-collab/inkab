@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { useConfigStore } from "@/store/useConfigStore";
+import { useT } from "@/lib/i18n";
 
 export function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
@@ -330,6 +332,34 @@ export function TipCard({
         </div>
       ) : null}
       {body ? <div className="mt-1 whitespace-pre-line text-[11px] leading-relaxed text-white/80">{body}</div> : null}
+    </div>
+  );
+}
+
+/**
+ * Växlingen mellan planvyn och modellen, nere i vänstra hörnet av vyn.
+ *
+ * Den satt förut i sidhuvudet, där den låg kvar också på startsidan och i
+ * offerten — två lägen man inte kan växla mellan något i. En vykontroll hör
+ * till vyn den styr: här finns den bara när det finns något att växla
+ * mellan, och den står bredvid raden som säger vilken vy man ser.
+ */
+export function ViewBar({ note }: { note: ReactNode }) {
+  const { view, setView } = useConfigStore();
+  const t = useT();
+  return (
+    <div className="pointer-events-auto flex items-center gap-2">
+      <Segmented
+        ariaLabel={t("top.view")}
+        value={view}
+        options={[
+          { value: "2d" as const, label: "2D" },
+          { value: "model" as const, label: t("top.view.model") },
+        ]}
+        onChange={setView}
+        optionClassName="w-[52px] text-center"
+      />
+      <span className="kicker bg-paper/85 px-1">{note}</span>
     </div>
   );
 }

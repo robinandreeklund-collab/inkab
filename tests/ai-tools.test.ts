@@ -27,7 +27,10 @@ const FORBIDDEN = [
 ];
 
 /** Alla nycklar i ett schema, rekursivt, med sin sökväg. */
-function walk(node: unknown, path: string[] = []): { path: string; key: string }[] {
+function walk(
+  node: unknown,
+  path: string[] = [],
+): { path: string; key: string }[] {
   if (Array.isArray(node)) {
     return node.flatMap((item, i) => walk(item, [...path, String(i)]));
   }
@@ -40,7 +43,10 @@ function walk(node: unknown, path: string[] = []): { path: string; key: string }
   return [];
 }
 
-function context(config: Configuration, library = BUILTIN_LIBRARY): ToolContext {
+function context(
+  config: Configuration,
+  library = BUILTIN_LIBRARY,
+): ToolContext {
   return {
     original: JSON.parse(JSON.stringify(config)),
     draft: JSON.parse(JSON.stringify(config)),
@@ -78,16 +84,21 @@ describe("verktygsscheman", () => {
 
   it("maskin-enumet följer biblioteket", () => {
     const addMachine = tools.find((t) => t.name === "add_machine")!;
-    const machineId = addMachine.input_schema.properties.machineId as { enum: string[] };
+    const machineId = addMachine.input_schema.properties.machineId as {
+      enum: string[];
+    };
     expect(machineId.enum).toEqual(BUILTIN_LIBRARY.machines.map((m) => m.id));
   });
 });
 
 describe("serverklippning ersätter schemats intervall", () => {
-
   it("klipper hallens mått", () => {
     const ctx = context(defaultConfig());
-    executeTool("set_hall", { lengthMm: 9_000_000, widthMm: 1, clearHeightMm: 99_000 }, ctx);
+    executeTool(
+      "set_hall",
+      { lengthMm: 9_000_000, widthMm: 1, clearHeightMm: 99_000 },
+      ctx,
+    );
     expect(ctx.draft.hall.lengthMm).toBe(300_000);
     expect(ctx.draft.hall.widthMm).toBe(5000);
     expect(ctx.draft.hall.clearHeightMm).toBe(30_000);
@@ -107,7 +118,11 @@ describe("serverklippning ersätter schemats intervall", () => {
 
   it("avvisar okänd maskin med ett fel modellen kan läsa", () => {
     const ctx = context(defaultConfig());
-    const result = executeTool("add_machine", { machineId: "finns-inte" }, ctx) as {
+    const result = executeTool(
+      "add_machine",
+      { machineId: "finns-inte" },
+      ctx,
+    ) as {
       error?: string;
     };
     expect(result.error).toContain("Okänd maskin");
@@ -137,7 +152,16 @@ describe("draw_hall", () => {
           { name: "Östra", fromXM: 50, fromYM: 0, toXM: 50, toYM: 24 },
         ],
         doors: [{ name: "Port A", xM: 12, yM: 0, widthM: 4 }],
-        areas: [{ kind: "nogo", name: "Pelare", xM: 20, yM: 12, lengthM: 0.8, widthM: 0.8 }],
+        areas: [
+          {
+            kind: "nogo",
+            name: "Pelare",
+            xM: 20,
+            yM: 12,
+            lengthM: 0.8,
+            widthM: 0.8,
+          },
+        ],
       },
       ctx,
     ) as { added: number; notes: string[] };
@@ -145,7 +169,13 @@ describe("draw_hall", () => {
     expect(ctx.draft.hall.lengthMm).toBe(50_000);
     expect(ctx.draft.hall.widthMm).toBe(24_000);
     expect(result.added).toBe(4);
-    expect(ctx.draft.drawn.map((d) => d.kind)).toEqual(["wall", "wall", "nogo", "door"]);
+    expect(ctx.draft.drawn.map((d) => d.kind)).toEqual([
+      "wall",
+      "wall",
+      "zone",
+      "door",
+    ]);
+    expect(ctx.draft.drawn[2].zone).toBe("nogo");
 
     // Porten sitter i väggen, inte bredvid den.
     const door = ctx.draft.drawn.find((d) => d.kind === "door")!;
@@ -201,7 +231,8 @@ describe("draw_hall", () => {
       );
     draw("Första");
     draw("Andra");
-    const walls = () => ctx.draft.drawn.filter((d) => d.kind === "wall").map((d) => d.name);
+    const walls = () =>
+      ctx.draft.drawn.filter((d) => d.kind === "wall").map((d) => d.name);
     expect(walls()).toEqual(["Första", "Andra"]);
     // Det som redan låg i konfigurationen står kvar.
     expect(ctx.draft.drawn.length).toBeGreaterThan(2);
@@ -256,7 +287,11 @@ describe("remove_machine", () => {
     const ctx = context(defaultConfig());
     const before = ctx.draft.line.length;
     const target = ctx.draft.line[1].instanceId;
-    const result = executeTool("remove_machine", { instanceId: target }, ctx) as {
+    const result = executeTool(
+      "remove_machine",
+      { instanceId: target },
+      ctx,
+    ) as {
       removed: string;
     };
     expect(result.removed).toBe(target);
@@ -266,7 +301,11 @@ describe("remove_machine", () => {
 
   it("säger till när maskinen inte finns", () => {
     const ctx = context(defaultConfig());
-    const result = executeTool("remove_machine", { instanceId: "finns-inte" }, ctx) as {
+    const result = executeTool(
+      "remove_machine",
+      { instanceId: "finns-inte" },
+      ctx,
+    ) as {
       error?: string;
     };
     expect(result.error).toContain("finns-inte");
@@ -307,7 +346,11 @@ describe("draw_hall utan belagd skala", () => {
     const ctx = context(defaultConfig());
     const result = executeTool(
       "draw_hall",
-      { ...PLAN, scaleSource: "dimension_on_drawing", scaleNote: "Måttkedjan 15 000 mm." },
+      {
+        ...PLAN,
+        scaleSource: "dimension_on_drawing",
+        scaleNote: "Måttkedjan 15 000 mm.",
+      },
       ctx,
     ) as { scale: { verified: boolean; note: string }; reminder: string };
 
@@ -330,7 +373,11 @@ describe("skalflaggan följer med ut ur körningen", () => {
     expect(ctx.scaleVerified).toBeUndefined();
     executeTool(
       "draw_hall",
-      { lengthM: 15, widthM: 10, walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }] },
+      {
+        lengthM: 15,
+        widthM: 10,
+        walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
+      },
       ctx,
     );
     expect(ctx.scaleVerified).toBe(false);
@@ -419,10 +466,14 @@ describe("upprepade uppritningar av samma lokal", () => {
       replaceExisting: true,
       walls: [{ fromXM: 0, fromYM: 0, toXM: 15, toYM: 0 }],
     };
-    const first = executeTool("draw_hall", plan, ctx) as { alreadyDrawn?: string };
+    const first = executeTool("draw_hall", plan, ctx) as {
+      alreadyDrawn?: string;
+    };
     expect(first.alreadyDrawn).toBeUndefined();
 
-    const second = executeTool("draw_hall", plan, ctx) as { alreadyDrawn?: string };
+    const second = executeTool("draw_hall", plan, ctx) as {
+      alreadyDrawn?: string;
+    };
     // Fyra uppritningar av samma hall i en tur är fyra rundor för samma sak.
     expect(second.alreadyDrawn).toContain("2 gånger");
     expect(second.alreadyDrawn).toContain("ett enda anrop");
@@ -452,7 +503,9 @@ describe("propose_variant när add_machine aldrig anropats", () => {
       ctx,
     ) as { warnings?: string[] };
     expect(result.warnings?.join(" ")).toContain("inga maskiner");
-    expect(result.warnings?.join(" ")).not.toContain("inte anropat add_machine");
+    expect(result.warnings?.join(" ")).not.toContain(
+      "inte anropat add_machine",
+    );
   });
 });
 
@@ -460,21 +513,26 @@ describe("draw_hall med ett tomt anrop", () => {
   it("svarar med fel i stället för att låtsas ha ritat", () => {
     // Ett tomt anrop svarade förr "klart, 0 objekt" — och dolde därmed att
     // argumenten aldrig kom fram.
-    const result = executeTool("draw_hall", {}, context(defaultConfig())) as { error?: string };
+    const result = executeTool("draw_hall", {}, context(defaultConfig())) as {
+      error?: string;
+    };
     expect(result.error).toContain("ingenting att rita");
     expect(result.error).toContain("lengthM");
   });
 
   it("godtar ett anrop som bara sätter hallens mått", () => {
     const ctx = context(defaultConfig());
-    const result = executeTool("draw_hall", { lengthM: 15, widthM: 9 }, ctx) as {
+    const result = executeTool(
+      "draw_hall",
+      { lengthM: 15, widthM: 9 },
+      ctx,
+    ) as {
       error?: string;
     };
     expect(result.error).toBeUndefined();
     expect(ctx.draft.hall.lengthMm).toBe(15_000);
   });
 });
-
 
 /**
  * Taket på valfria parametrar.
@@ -512,14 +570,16 @@ describe("verktygsschemanas budget", () => {
 
   it("håller sig under Anthropics gräns, med marginal", () => {
     const found: string[] = [];
-    for (const tool of toolDefinitions()) optionalPaths(tool.input_schema, tool.name, found);
+    for (const tool of toolDefinitions())
+      optionalPaths(tool.input_schema, tool.name, found);
 
     expect(found.length, found.join(", ")).toBeLessThan(LIMIT);
     // Marginalen är till för nästa fält som behöver läggas till: går det över
     // ska det märkas här och inte som ett 400 hos kunden.
-    expect(found.length, `${found.length} valfria parametrar: ${found.join(", ")}`).toBeLessThanOrEqual(
-      HEADROOM,
-    );
+    expect(
+      found.length,
+      `${found.length} valfria parametrar: ${found.join(", ")}`,
+    ).toBeLessThanOrEqual(HEADROOM);
   });
 });
 
@@ -550,7 +610,11 @@ describe("skalans belägg över en hel tur", () => {
 
   it("glömmer inte ett belägg när lokalen ritas om", () => {
     const ctx = context(defaultConfig());
-    executeTool("draw_hall", { ...PLAN, scaleNote: "15m längs långsidan" }, ctx);
+    executeTool(
+      "draw_hall",
+      { ...PLAN, scaleNote: "15m längs långsidan" },
+      ctx,
+    );
     expect(ctx.scaleVerified).toBe(true);
 
     // Den sista uppritningen saknar noteringen. Måttet är inte ogjort för det.
@@ -559,7 +623,9 @@ describe("skalans belägg över en hel tur", () => {
   });
 
   it("avvisar fortfarande ett anrop utan både plan och notering", () => {
-    const result = executeTool("draw_hall", {}, context(defaultConfig())) as { error?: string };
+    const result = executeTool("draw_hall", {}, context(defaultConfig())) as {
+      error?: string;
+    };
     expect(result.error).toContain("ingenting att rita");
   });
 

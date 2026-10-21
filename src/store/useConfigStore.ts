@@ -2,7 +2,12 @@
 
 import { create } from "zustand";
 import { computeLayout } from "@/lib/layout";
-import { BUILTIN_LIBRARY, getMachine, makeLibrary, type MachineLibrary } from "@/lib/library";
+import {
+  BUILTIN_LIBRARY,
+  getMachine,
+  makeLibrary,
+  type MachineLibrary,
+} from "@/lib/library";
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
 import { translate } from "@/lib/i18n/translate";
@@ -10,7 +15,15 @@ import { claimedBox, freeSpot } from "@/lib/solver";
 import { AREA_ORDER, type Area } from "@/lib/areas";
 import { localizeMachines } from "@/lib/machineText";
 import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
-import { describeChange, logEntry, LOG_LIMIT, type LogEntry, type LogKind } from "@/lib/projectLog";
+import {
+  describeChange,
+  logEntry,
+  LOG_LIMIT,
+  type LogEntry,
+  type LogKind,
+} from "@/lib/projectLog";
+import { migrateDrawn, type ZoneId } from "@/lib/zones";
+import { ZONE_LABEL_SV } from "@/lib/drawing";
 import type {
   ConfigPatch,
   Configuration,
@@ -40,7 +53,14 @@ const AREAS_KEY = "inkab.areas.v1";
 /** Kundens språkval. Ligger vid sidan av konfigurationen: det är en läsare, inte en anläggning. */
 const LOCALE_KEY = "inkab.locale";
 
-export type Tool = "select" | "wall" | "door" | "truck" | "nogo" | "measure";
+/*
+ * Ritverktygen.
+ *
+ * Zonerna hade förut ett verktyg var — "truck" och "nogo". Nu finns ett
+ * zonverktyg, och vilken sorts zon man ritar står i `zoneKind`. Den som vill
+ * lägga till en sorts zon lägger en rad i lib/zones, inte ett verktyg här.
+ */
+export type Tool = "select" | "wall" | "door" | "zone" | "measure";
 /*
  * Två vyer: ritningen och modellen.
  *
@@ -74,6 +94,8 @@ type State = {
   screen: Screen;
   view: ViewMode;
   tool: Tool;
+  /** Sorts zon som zonverktyget ritar. Se lib/zones. */
+  zoneKind: ZoneId;
   selectedId: string | null;
   inspectorOpen: boolean;
   aiOpen: boolean;
@@ -111,6 +133,10 @@ type Actions = {
   setScreen: (s: Screen) => void;
   setView: (v: ViewMode) => void;
   setTool: (t: Tool) => void;
+  /** Väljer zonsort. Växlar samtidigt till zonverktyget, för det är varför man väljer. */
+  setZoneKind: (zone: ZoneId) => void;
+  /** Byter sort på en redan ritad zon, och döper om den om namnet var det förvalda. */
+  setDrawnZone: (id: string, zone: ZoneId, label?: string) => void;
   select: (id: string | null) => void;
   toggleInspector: () => void;
   toggleAi: (open?: boolean) => void;
@@ -144,7 +170,10 @@ type Actions = {
   setStartPoint: (point: Vec2) => void;
   setStartComment: (comment: string) => void;
   addFlowMarker: (role: FlowMarker["role"]) => void;
-  updateFlowMarker: (id: string, patch: Partial<Omit<FlowMarker, "id">>) => void;
+  updateFlowMarker: (
+    id: string,
+    patch: Partial<Omit<FlowMarker, "id">>,
+  ) => void;
   removeFlowMarker: (id: string) => void;
   /** Gör en alternativ start till den punkt nya maskiner läggs vid. */
   activateFlowMarker: (id: string) => void;
@@ -154,7 +183,10 @@ type Actions = {
    * Med `pos` hamnar den där — maskinens mitt i punkten, för det är den man
    * siktar med när man släpper. Utan `pos` läggs den på ledig yta.
    */
-  addMachine: (machineId: string, options?: { atIndex?: number; pos?: Vec2 }) => void;
+  addMachine: (
+    machineId: string,
+    options?: { atIndex?: number; pos?: Vec2 },
+  ) => void;
   removeItem: (instanceId: string) => void;
   moveItem: (instanceId: string, toIndex: number) => void;
   toggleOption: (instanceId: string, optionId: string) => void;
@@ -167,7 +199,11 @@ type Actions = {
   setLength: (instanceId: string, lengthMm: number) => void;
   /** Kundens anteckning om maskinen. Tom text tar bort den. */
   setNote: (instanceId: string, note: string) => void;
-  setParameter: (instanceId: string, parameterId: string, value: ParameterValue) => void;
+  setParameter: (
+    instanceId: string,
+    parameterId: string,
+    value: ParameterValue,
+  ) => void;
   nudge: (instanceId: string, delta: Vec2) => void;
   addDrawn: (obj: DrawnObject) => void;
   updateDrawn: (id: string, patch: Partial<DrawnObject>) => void;
@@ -191,7 +227,7 @@ type Actions = {
 };
 
 /** Djupkopia utan beroenden; konfigurationen är ren JSON. */
-const clone = <T,>(value: T): T => JSON.parse(JSON.stringify(value));
+const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value));
 
 /** Autosparat utkast, eller null om det saknas eller är obrukbart. */
 function readLocalDraft(): Configuration | null {
@@ -200,7 +236,14 @@ function readLocalDraft(): Configuration | null {
     const raw = window.localStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Configuration;
-    return parsed?.version === 1 ? parsed : null;
+    if (parsed?.version !== 1) return null;
+    /*
+     * Ett utkast sparat innan zonerna blev en katalog bär de gamla
+     * objekttyperna. Det går genom samma migrering som en delningslänk, så
+     * att en kund som återvänder till sitt arbete får sina zoner tillbaka.
+     */
+    parsed.drawn = (parsed.drawn ?? []).map(migrateDrawn);
+    return parsed;
   } catch {
     return null;
   }
@@ -264,7 +307,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
   /** Regelverkets texter på det språk kunden valt just nu. */
   const t = () => {
     const locale = get().locale;
-    return (key: string, vars?: Record<string, string | number>) => translate(locale, key, vars);
+    return (key: string, vars?: Record<string, string | number>) =>
+      translate(locale, key, vars);
   };
 
   const commit = (next: Configuration) => {
@@ -279,8 +323,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     // Loggen skrivs där konfigurationen byts ut, inte i varje knapp: då kan
     // ingen ny knapp glömma bort att skriva sin rad.
-    const changed = describeChange(config, next, (machineId) =>
-      getMachine(machineId, library)?.name ?? machineId,
+    const changed = describeChange(
+      config,
+      next,
+      (machineId) => getMachine(machineId, library)?.name ?? machineId,
     );
     if (changed) note(changed);
   };
@@ -296,6 +342,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     screen: "onboarding",
     view: "2d",
     tool: "select",
+    zoneKind: "truck",
     selectedId: null,
     /*
      * Högerpanelen är öppen från början: den visar ytan man arbetar med, och
@@ -318,6 +365,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     setScreen: (screen) => set({ screen }),
     setView: (view) => set({ view }),
     setTool: (tool) => set({ tool }),
+    setZoneKind: (zoneKind) => set({ zoneKind, tool: "zone" }),
     select: (selectedId) =>
       // Att markera något är att vilja se det. Panelen fälls ut av sig själv
       // och kan fällas ihop igen; nästa markering öppnar den på nytt.
@@ -327,7 +375,8 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       })),
     toggleInspector: () => set((s) => ({ inspectorOpen: !s.inspectorOpen })),
     toggleAi: (open) => set((s) => ({ aiOpen: open ?? !s.aiOpen })),
-    toggleDiagnostics: (open) => set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
+    toggleDiagnostics: (open) =>
+      set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
     togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
     setArea: (area) => set({ area, selectedId: null, inspectorOpen: true }),
@@ -350,9 +399,12 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const library = makeLibrary(localizeMachines(sourceMachines, locale));
       set({
         library,
-        layout: computeLayout(config, library, (key, vars) => translate(locale, key, vars)),
+        layout: computeLayout(config, library, (key, vars) =>
+          translate(locale, key, vars),
+        ),
       });
-      if (typeof document !== "undefined") document.documentElement.lang = locale;
+      if (typeof document !== "undefined")
+        document.documentElement.lang = locale;
       try {
         window.localStorage.setItem(LOCALE_KEY, locale);
       } catch {
@@ -381,7 +433,11 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        */
       sourceMachines = machines;
       const library = makeLibrary(localizeMachines(machines, get().locale));
-      set({ library, libraryLoaded: true, layout: computeLayout(get().config, library, t()) });
+      set({
+        library,
+        libraryLoaded: true,
+        layout: computeLayout(get().config, library, t()),
+      });
     },
 
     load: (config, options) => {
@@ -419,12 +475,16 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     setFlow: (patch) => get().update((d) => Object.assign(d.flow, patch)),
 
-    setStartPoint: (point) => get().update((d) => void (d.flow.startPoint = point)),
+    setStartPoint: (point) =>
+      get().update((d) => void (d.flow.startPoint = point)),
 
     setStartComment: (comment) =>
-      get().update((d) => void (d.flow.startComment = comment.trim() || undefined)),
+      get().update(
+        (d) => void (d.flow.startComment = comment.trim() || undefined),
+      ),
 
-    addFlowMarker: (role) => get().update((d) => void addMarker(d.flow, role, d.hall)),
+    addFlowMarker: (role) =>
+      get().update((d) => void addMarker(d.flow, role, d.hall)),
 
     updateFlowMarker: (id, patch) =>
       get().update((d) => {
@@ -440,8 +500,13 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       const machine = getMachine(machineId, get().library);
       if (!machine) return;
       // Hjälpobjekt är unika: en linje har en pulpet och ett ströfacksmagasin.
-      if (machine.aux && get().config.line.some((i) => i.machineId === machineId)) {
-        const existing = get().config.line.find((i) => i.machineId === machineId)!;
+      if (
+        machine.aux &&
+        get().config.line.some((i) => i.machineId === machineId)
+      ) {
+        const existing = get().config.line.find(
+          (i) => i.machineId === machineId,
+        )!;
         get().select(existing.instanceId);
         return;
       }
@@ -457,7 +522,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
        * att dra dit den ska. Placeringen är kundens.
        */
       const { config, layout } = get();
-      const storlek = { l: machine.footprint.lengthMm, w: machine.footprint.widthMm };
+      const storlek = {
+        l: machine.footprint.lengthMm,
+        w: machine.footprint.widthMm,
+      };
       item.pos = options?.pos
         ? {
             // Maskinens mitt i punkten: det är mitten man siktar med.
@@ -511,7 +579,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (!item) return;
         // Fyra lägen runt varvet, alltid 0/90/180/270 oavsett hur många steg.
-        const varv = (((item.rotation ?? 0) / 90 + steps) % 4 + 4) % 4;
+        const varv = ((((item.rotation ?? 0) / 90 + steps) % 4) + 4) % 4;
         item.rotation = (varv * 90) as Rotation;
       }),
 
@@ -556,7 +624,10 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       get().update((d) => {
         const item = d.line.find((i) => i.instanceId === instanceId);
         if (!item?.pos) return;
-        item.pos = { x: Math.round(item.pos.x + delta.x), y: Math.round(item.pos.y + delta.y) };
+        item.pos = {
+          x: Math.round(item.pos.x + delta.x),
+          y: Math.round(item.pos.y + delta.y),
+        };
       }),
 
     addDrawn: (obj) => {
@@ -565,6 +636,34 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       });
       get().select(obj.id);
     },
+
+    /*
+     * Byter sort på en ritad zon.
+     *
+     * Namnet följer med om kunden inte skrivit något eget: en truckzon som
+     * blir en lageryta och fortfarande heter "Truckzon 1" vore en fälla i
+     * både planen och offerten. Har kunden döpt den heter den vad den heter.
+     */
+    setDrawnZone: (id, zone, label) =>
+      get().update((d) => {
+        const object = d.drawn.find((o) => o.id === id);
+        if (!object || object.kind !== "zone") return;
+        const auto = new RegExp(
+          `^(${Object.values(ZONE_LABEL_SV).join("|")})\\s+\\d+$`,
+          "i",
+        ).test(object.name.trim());
+        object.zone = zone;
+        if (auto || !object.name.trim()) {
+          const n =
+            d.drawn.filter(
+              (o) =>
+                o.kind === "zone" &&
+                (o.zone ?? "other") === zone &&
+                o.id !== id,
+            ).length + 1;
+          object.name = `${label ?? ZONE_LABEL_SV[zone]} ${n}`;
+        }
+      }),
 
     updateDrawn: (id, patch) =>
       get().update((d) => {
@@ -672,9 +771,15 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       // Loggen läses först: det som hände före omladdningen hände ändå.
       set({ log: readLog() });
       try {
-        const saved = JSON.parse(window.localStorage.getItem(AREAS_KEY) ?? "[]");
+        const saved = JSON.parse(
+          window.localStorage.getItem(AREAS_KEY) ?? "[]",
+        );
         if (Array.isArray(saved)) {
-          set({ confirmedAreas: saved.filter((a): a is Area => AREA_ORDER.includes(a)) });
+          set({
+            confirmedAreas: saved.filter((a): a is Area =>
+              AREA_ORDER.includes(a),
+            ),
+          });
         }
       } catch {
         /* utan lagring börjar bockarna om — konfigurationen är orörd */
@@ -688,11 +793,16 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       let locale: Locale = "sv";
       try {
         const sparat = window.localStorage.getItem(LOCALE_KEY);
-        locale = isLocale(sparat) ? sparat : preferredLocale(navigator.languages ?? []);
+        locale = isLocale(sparat)
+          ? sparat
+          : preferredLocale(navigator.languages ?? []);
       } catch {
         locale = preferredLocale(navigator.languages ?? []);
       }
-      set({ locale, library: makeLibrary(localizeMachines(sourceMachines, locale)) });
+      set({
+        locale,
+        library: makeLibrary(localizeMachines(sourceMachines, locale)),
+      });
       document.documentElement.lang = locale;
 
       const params = new URLSearchParams(window.location.search);
@@ -732,14 +842,20 @@ export const useConfigStore = create<State & Actions>((set, get) => {
               if (!result.ok) {
                 // Tyst standardkonfiguration vore det värsta svaret: den som
                 // klickade skulle tro att hen ser avsändarens anläggning.
-                set({ shareNotice: { kind: result.reason }, screen: "configurator" });
+                set({
+                  shareNotice: { kind: result.reason },
+                  screen: "configurator",
+                });
                 return;
               }
 
               const previous = readLocalDraft();
               if (previous) {
                 try {
-                  window.localStorage.setItem(RESCUE_KEY, JSON.stringify(previous));
+                  window.localStorage.setItem(
+                    RESCUE_KEY,
+                    JSON.stringify(previous),
+                  );
                 } catch {
                   // Utan plats för räddningskopian erbjuds den inte heller.
                 }

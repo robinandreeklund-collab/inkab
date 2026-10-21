@@ -1,6 +1,7 @@
 import { dimensionLength } from "./dimensions";
 import { translate } from "./i18n/translate";
 import { meters } from "./format";
+import { ZONES, zoneDef } from "./zones";
 import type { Box, Configuration, LayoutResult } from "./types";
 import type { PriceResult, Role } from "./server/pricing";
 
@@ -18,7 +19,8 @@ import type { PriceResult, Role } from "./server/pricing";
 /** Escapar enligt RFC 4180: citattecken dubbleras, fältet citeras alltid. */
 function cell(value: string | number): string {
   // Decimalpunkt blir komma: svensk Excel läser annars talet som text.
-  const text = typeof value === "number" ? String(value).replace(".", ",") : String(value);
+  const text =
+    typeof value === "number" ? String(value).replace(".", ",") : String(value);
   return `"${text.replace(/"/g, '""')}"`;
 }
 
@@ -28,8 +30,10 @@ export function machineListCsv(
   price: PriceResult | null,
   role: Role,
   /** Rubrikerna på kundens språk. Utan översättare: svenska. */
-  t: (key: string, vars?: Record<string, string | number>) => string = (key, vars) =>
-    translate("sv", key, vars),
+  t: (key: string, vars?: Record<string, string | number>) => string = (
+    key,
+    vars,
+  ) => translate("sv", key, vars),
 ): string {
   const showPrice = role !== "guest";
   const header = [
@@ -65,7 +69,10 @@ export function machineListCsv(
   const summary = [
     [],
     ["Projekt", config.projectName],
-    ["Totalmått (m)", `${meters(layout.metrics.totalLengthMm)} × ${meters(layout.metrics.totalWidthMm)}`],
+    [
+      "Totalmått (m)",
+      `${meters(layout.metrics.totalLengthMm)} × ${meters(layout.metrics.totalWidthMm)}`,
+    ],
     ["Golvyta (m²)", layout.metrics.footprintM2],
     ["Kapacitet (pkt/h)", layout.metrics.throughputPerHour],
     ["Effekt (kW)", layout.metrics.totalPowerKw],
@@ -78,7 +85,9 @@ export function machineListCsv(
   // öppnar annars filen i fel teckenkodning.
   return (
     "﻿" +
-    [header, ...rows, ...summary].map((row) => row.map(cell).join(";")).join("\r\n") +
+    [header, ...rows, ...summary]
+      .map((row) => row.map(cell).join(";"))
+      .join("\r\n") +
     "\r\n"
   );
 }
@@ -94,7 +103,13 @@ function pair(code: number, value: string | number): string[] {
 /** Världens Y pekar nedåt i planvyn, DXF:ens uppåt. */
 const flip = (y: number) => -y;
 
-function line(layer: string, x1: number, y1: number, x2: number, y2: number): DxfEntity {
+function line(
+  layer: string,
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+): DxfEntity {
   return [
     ...pair(0, "LINE"),
     ...pair(8, layer),
@@ -117,7 +132,13 @@ function rect(layer: string, box: Box): DxfEntity {
   ];
 }
 
-function label(layer: string, x: number, y: number, height: number, value: string): DxfEntity {
+function label(
+  layer: string,
+  x: number,
+  y: number,
+  height: number,
+  value: string,
+): DxfEntity {
   return [
     ...pair(0, "TEXT"),
     ...pair(8, layer),
@@ -134,18 +155,35 @@ function label(layer: string, x: number, y: number, height: number, value: strin
   ];
 }
 
-const LAYERS = [
+/*
+ * Zonerna får ett lager var, ur katalogen, så att den som öppnar ritningen
+ * kan släcka kundens lagerytor utan att tappa väggarna — och så att en ny
+ * sorts zon kommer med utan en rad här.
+ */
+const ZONE_COLOUR: Record<string, number> = {
+  truck: 3,
+  nogo: 1,
+  storage: 2,
+  operator: 5,
+  service: 4,
+  electrical: 6,
+  foundation: 8,
+  other: 8,
+};
+
+const LAYERS: readonly (readonly [string, number])[] = [
   ["HALL", 7],
   ["MASKIN", 5],
   ["MASKINZON", 8],
-  ["TRUCKGATA", 3],
-  ["SPARRAD", 1],
   ["VAGG", 7],
   ["PORT", 4],
   ["TEXT", 7],
   ["FLODE", 2],
   ["MATT", 6],
-] as const;
+  ...ZONES.map(
+    (z) => [`ZON-${z.id.toUpperCase()}`, ZONE_COLOUR[z.id] ?? 8] as const,
+  ),
+];
 
 /**
  * DXF R12 i ASCII. Det äldsta formatet, och därför det som öppnas av allt —
@@ -170,22 +208,46 @@ export function planDxf(config: Configuration, layout: LayoutResult): string {
     ...pair(0, "ENDSEC"),
   );
 
-  out.push(...pair(0, "SECTION"), ...pair(2, "TABLES"), ...pair(0, "TABLE"), ...pair(2, "LAYER"), ...pair(70, LAYERS.length));
+  out.push(
+    ...pair(0, "SECTION"),
+    ...pair(2, "TABLES"),
+    ...pair(0, "TABLE"),
+    ...pair(2, "LAYER"),
+    ...pair(70, LAYERS.length),
+  );
   for (const [name, color] of LAYERS) {
-    out.push(...pair(0, "LAYER"), ...pair(2, name), ...pair(70, 0), ...pair(62, color), ...pair(6, "CONTINUOUS"));
+    out.push(
+      ...pair(0, "LAYER"),
+      ...pair(2, name),
+      ...pair(70, 0),
+      ...pair(62, color),
+      ...pair(6, "CONTINUOUS"),
+    );
   }
   out.push(...pair(0, "ENDTAB"), ...pair(0, "ENDSEC"));
 
   out.push(...pair(0, "SECTION"), ...pair(2, "ENTITIES"));
 
-  out.push(...rect("HALL", { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm }));
+  out.push(
+    ...rect("HALL", {
+      x: 0,
+      y: 0,
+      l: config.hall.lengthMm,
+      w: config.hall.widthMm,
+    }),
+  );
 
   for (const d of config.drawn) {
     const layer =
-      d.kind === "wall" ? "VAGG" : d.kind === "door" ? "PORT" : d.kind === "truck" ? "TRUCKGATA" : "SPARRAD";
+      d.kind === "wall"
+        ? "VAGG"
+        : d.kind === "door"
+          ? "PORT"
+          : `ZON-${zoneDef(d.zone).id.toUpperCase()}`;
     const box = { x: d.x, y: d.y, l: d.l, w: d.w };
     out.push(...rect(layer, box));
-    if (d.name) out.push(...label("TEXT", d.x + d.l / 2, d.y + d.w / 2, 300, d.name));
+    if (d.name)
+      out.push(...label("TEXT", d.x + d.l / 2, d.y + d.w / 2, 300, d.name));
   }
 
   for (const p of layout.placements) {
@@ -207,17 +269,36 @@ export function planDxf(config: Configuration, layout: LayoutResult): string {
   const chain = layout.placements.filter((p) => !p.aux);
   const points = [
     config.flow.startPoint,
-    ...chain.map((p) => ({ x: p.bbox.x + p.bbox.l / 2, y: p.bbox.y + p.bbox.w / 2 })),
+    ...chain.map((p) => ({
+      x: p.bbox.x + p.bbox.l / 2,
+      y: p.bbox.y + p.bbox.w / 2,
+    })),
   ];
   for (let i = 1; i < points.length; i++) {
-    out.push(...line("FLODE", points[i - 1].x, points[i - 1].y, points[i].x, points[i].y));
+    out.push(
+      ...line(
+        "FLODE",
+        points[i - 1].x,
+        points[i - 1].y,
+        points[i].x,
+        points[i].y,
+      ),
+    );
   }
 
   // Sparade mått: måttlinjen och längden mitt på, på ett eget lager.
   for (const d of config.dimensions ?? []) {
     out.push(...line("MATT", d.from.x, d.from.y, d.to.x, d.to.y));
     const text = `${(dimensionLength(d) / 1000).toFixed(2)} m${d.note ? ` ${d.note}` : ""}`;
-    out.push(...label("MATT", (d.from.x + d.to.x) / 2, (d.from.y + d.to.y) / 2 - 300, 250, text));
+    out.push(
+      ...label(
+        "MATT",
+        (d.from.x + d.to.x) / 2,
+        (d.from.y + d.to.y) / 2 - 300,
+        250,
+        text,
+      ),
+    );
   }
 
   out.push(...pair(0, "ENDSEC"), ...pair(0, "EOF"));
@@ -227,7 +308,9 @@ export function planDxf(config: Configuration, layout: LayoutResult): string {
 /* ── Nedladdning ───────────────────────────────────────────────────────── */
 
 export function download(filename: string, content: string, mime: string) {
-  const url = URL.createObjectURL(new Blob([content], { type: `${mime};charset=utf-8` }));
+  const url = URL.createObjectURL(
+    new Blob([content], { type: `${mime};charset=utf-8` }),
+  );
   const link = document.createElement("a");
   link.href = url;
   link.download = filename;
@@ -237,7 +320,11 @@ export function download(filename: string, content: string, mime: string) {
 }
 
 /** Filnamn utan mellanslag och specialtecken, med underlagsnumret först. */
-export function exportName(reference: string, projectName: string, extension: string): string {
+export function exportName(
+  reference: string,
+  projectName: string,
+  extension: string,
+): string {
   const slug = projectName
     .toLowerCase()
     .replace(/[åä]/g, "a")

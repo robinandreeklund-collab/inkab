@@ -5,6 +5,8 @@ import { useConfigStore } from "@/store/useConfigStore";
 import { CATEGORY_LABEL } from "@/lib/library";
 import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
+import { nextName } from "@/lib/drawing";
+import { ZONES, zoneDef } from "@/lib/zones";
 import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { dimensionLength } from "@/lib/dimensions";
@@ -14,7 +16,13 @@ import { Button, Empty, Field, NumberInput, Segmented, Tag, Tip } from "./ui";
 import { MachineThumb } from "./MachineThumb";
 import { toolHelp } from "./toolHelp";
 import type { Area } from "@/lib/areas";
-import type { DrawnKind, FlowMarker, Machine, MachineCategory, Side } from "@/lib/types";
+import type {
+  DrawnKind,
+  FlowMarker,
+  Machine,
+  MachineCategory,
+  Side,
+} from "@/lib/types";
 import type { Tool } from "@/store/useConfigStore";
 
 /**
@@ -39,8 +47,6 @@ export function AreaBody({ area }: { area: Area }) {
       return <LineArea />;
     case "points":
       return <PointsArea />;
-    case "truck":
-      return <TruckArea />;
     case "product":
       return <ProductArea />;
     case "quote":
@@ -49,12 +55,22 @@ export function AreaBody({ area }: { area: Area }) {
 }
 
 /** En rubricerad del av en yta. */
-function Block({ title, children, help }: { title: string; children: ReactNode; help?: string }) {
+function Block({
+  title,
+  children,
+  help,
+}: {
+  title: string;
+  children: ReactNode;
+  help?: string;
+}) {
   return (
     <section className="mb-4">
       {help ? (
         <Tip block side="left" title={title} body={help}>
-          <h3 className="kicker mb-1.5 cursor-help underline decoration-dotted underline-offset-2">{title}</h3>
+          <h3 className="kicker mb-1.5 cursor-help underline decoration-dotted underline-offset-2">
+            {title}
+          </h3>
         </Tip>
       ) : (
         <h3 className="kicker mb-1.5">{title}</h3>
@@ -78,15 +94,21 @@ function ToolButtons({ tools }: { tools: Tool[] }) {
             key={value}
             onClick={() => setTool(active ? "select" : value)}
             className={`flex w-full items-start gap-2 border px-2 py-1.5 text-left transition-colors ${
-              active ? "border-accent bg-accent text-white" : "border-divider bg-white hover:border-accent"
+              active
+                ? "border-accent bg-accent text-white"
+                : "border-divider bg-white hover:border-accent"
             }`}
           >
-            <kbd className={`num mt-0.5 border px-1 text-[10px] ${active ? "border-white/60" : "border-divider text-muted"}`}>
+            <kbd
+              className={`num mt-0.5 border px-1 text-[10px] ${active ? "border-white/60" : "border-divider text-muted"}`}
+            >
               {help.shortcut}
             </kbd>
             <span className="min-w-0">
               <span className="block text-[13px]">{help.title}</span>
-              <span className={`block text-[11px] leading-snug ${active ? "text-white/85" : "text-muted"}`}>
+              <span
+                className={`block text-[11px] leading-snug ${active ? "text-white/85" : "text-muted"}`}
+              >
                 {active ? help.hint : help.body}
               </span>
             </span>
@@ -113,6 +135,18 @@ function DrawnList({ kinds, empty }: { kinds: DrawnKind[]; empty: string }) {
             selectedId === d.id ? "bg-accent/10" : "hover:bg-paper"
           }`}
         >
+          {/* Samma färgprick som i planen: med sex zoner i hallen hittar
+              man rätt rad utan att klicka sig igenom dem. */}
+          <span
+            aria-hidden
+            className="h-2 w-2 flex-none border"
+            style={{
+              borderColor:
+                d.kind === "zone" ? zoneDef(d.zone).stroke : "#1d1f20",
+              background:
+                d.kind === "zone" ? `${zoneDef(d.zone).tint}33` : "transparent",
+            }}
+          />
           <span className="min-w-0 flex-1 truncate">{d.name}</span>
           <span className="num text-[11px] text-muted">
             {meters(d.l)}×{meters(d.w)}
@@ -150,7 +184,9 @@ function DimensionList() {
           }`}
         >
           <span className="num">{meters(dimensionLength(d), 2)} m</span>
-          <span className="min-w-0 flex-1 truncate text-muted">{d.note ?? ""}</span>
+          <span className="min-w-0 flex-1 truncate text-muted">
+            {d.note ?? ""}
+          </span>
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -188,16 +224,23 @@ function HallArea() {
                 value={meters(config.hall[key])}
                 onCommit={(raw) => {
                   const mm = parseMeters(raw);
-                  if (mm !== null && mm >= min) update((d) => void (d.hall[key] = clampTo(mm, HALL_LIMITS[key])));
+                  if (mm !== null && mm >= min)
+                    update(
+                      (d) => void (d.hall[key] = clampTo(mm, HALL_LIMITS[key])),
+                    );
                 }}
               />
             </Field>
           ))}
         </div>
-        <p className="mt-2 text-[11px] leading-relaxed text-muted">{t("guide.hall.drag")}</p>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          {t("guide.hall.drag")}
+        </p>
       </Block>
       <Block title={t("area.hall.heightTitle")}>
-        <p className="text-[11px] leading-relaxed text-muted">{t("area.hall.heightHelp")}</p>
+        <p className="text-[11px] leading-relaxed text-muted">
+          {t("area.hall.heightHelp")}
+        </p>
       </Block>
     </>
   );
@@ -220,15 +263,106 @@ function WallsArea() {
   );
 }
 
+/**
+ * Zonerna: en yta för alla slags ytor kunden vill markera.
+ *
+ * Förut fanns två ytor med var sitt verktyg — no-go här och truckzon under
+ * flödet — och allt annat kunden ville rita in i sin hall, lagerytan,
+ * operatörsplatsen, elcentralen, fick bli en no-go-zon med ett påhittat
+ * namn, och därmed ett fel i regelverket. Nu väljer man sorts zon och ritar.
+ * Sorterna står i lib/zones; en ny sort är en rad där, inte en yta här.
+ *
+ * Truckens hämtsida hör hit av samma skäl: den styr var förslaget på
+ * truckzon hamnar, och den frågan ställs där truckzonen ritas.
+ */
 function ZonesArea() {
   const t = useT();
+  const { config, layout, zoneKind, setZoneKind, tool, setFlow, addDrawn } =
+    useConfigStore();
+  const active = zoneDef(zoneKind);
+  const sides: { value: Side; label: string }[] = [
+    { value: "right", label: t("side.right") },
+    { value: "left", label: t("side.left") },
+  ];
+
+  /*
+   * Lägger zonen på en rimlig plats i stället för att låta kunden rita den.
+   * Truckzonen hamnar där trucken hämtar; allt annat läggs som en kvadrat
+   * bredvid anläggningen, synlig direkt och lätt att dra dit den ska.
+   */
+  const place = () => {
+    const box = suggestTruckZone(
+      layout.bounds,
+      "x+",
+      config.flow.truckPickupSide,
+    );
+    const square = Math.min(4000, Math.max(2000, Math.min(box.l, box.w)));
+    addDrawn({
+      id: `${zoneKind}-${Date.now().toString(36)}`,
+      kind: "zone",
+      zone: zoneKind,
+      name: nextName("zone", config.drawn, t, zoneKind),
+      ...(active.aisle
+        ? box
+        : { x: Math.round(box.x), y: Math.round(box.y), l: square, w: square }),
+      h: 0,
+    });
+  };
+
   return (
     <>
-      <Block title={t("area.tools")}>
-        <ToolButtons tools={["nogo", "measure"]} />
+      <Block title={t("area.zones.kind")} help={t("area.zones.kindHelp")}>
+        <div className="grid grid-cols-2 gap-1">
+          {ZONES.map((zone) => {
+            const on = tool === "zone" && zoneKind === zone.id;
+            return (
+              <button
+                key={zone.id}
+                onClick={() => setZoneKind(zone.id)}
+                title={t(zone.hintKey)}
+                className={`flex items-center gap-1.5 border px-2 py-1.5 text-left text-xs transition-colors ${
+                  on
+                    ? "border-accent bg-accent text-white"
+                    : "border-divider bg-white hover:border-accent"
+                }`}
+              >
+                <span
+                  aria-hidden
+                  className="h-2.5 w-2.5 flex-none border"
+                  style={{
+                    borderColor: on ? "#ffffff" : zone.stroke,
+                    background: on ? "#ffffff" : `${zone.tint}26`,
+                  }}
+                />
+                <span className="min-w-0 truncate">{t(zone.labelKey)}</span>
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-1.5 text-[11px] leading-relaxed text-muted">
+          {t(active.hintKey)}
+        </p>
+        <Button size="sm" className="mt-1.5 w-full" onClick={place}>
+          + {t("sidebar.addZone", { zone: t(active.labelKey) })}
+        </Button>
       </Block>
+
+      {/* Hämtsidan styr var förslaget på truckzon hamnar. */}
+      <Block title={t("sidebar.truckPickup")}>
+        <Segmented
+          ariaLabel={t("sidebar.truckPickup")}
+          value={config.flow.truckPickupSide}
+          options={sides}
+          onChange={(v) => setFlow({ truckPickupSide: v })}
+        />
+      </Block>
+
+      <Block title={t("area.tools")}>
+        <ToolButtons tools={["measure"]} />
+      </Block>
+
       <Block title={t("area.zones.list")}>
-        <DrawnList kinds={["nogo"]} empty={t("area.zones.empty")} />
+        <DrawnList kinds={["zone"]} empty={t("area.zones.empty")} />
       </Block>
     </>
   );
@@ -244,7 +378,11 @@ function MachinesArea() {
   const grouped = library.machines
     .filter((m) => {
       const q = search.trim().toLowerCase();
-      return !q || m.name.toLowerCase().includes(q) || m.sku.toLowerCase().includes(q);
+      return (
+        !q ||
+        m.name.toLowerCase().includes(q) ||
+        m.sku.toLowerCase().includes(q)
+      );
     })
     .reduce<Record<string, Machine[]>>((acc, machine) => {
       (acc[machine.category] ??= []).push(machine);
@@ -263,7 +401,9 @@ function MachinesArea() {
       <div className="space-y-3">
         {Object.entries(grouped).map(([category, machines]) => (
           <div key={category}>
-            <div className="kicker mb-1">{CATEGORY_LABEL[category as MachineCategory]}</div>
+            <div className="kicker mb-1">
+              {CATEGORY_LABEL[category as MachineCategory]}
+            </div>
             <div className="space-y-1">
               {machines.map((machine) => (
                 <button
@@ -287,7 +427,9 @@ function MachinesArea() {
                   <div className="min-w-0">
                     <div className="truncate text-[13px]">{machine.name}</div>
                     <div className="kicker truncate">
-                      {machine.capacity.packagesPerHour > 0 ? `${machine.capacity.packagesPerHour} pkt/h · ` : ""}
+                      {machine.capacity.packagesPerHour > 0
+                        ? `${machine.capacity.packagesPerHour} pkt/h · `
+                        : ""}
                       {meters(machine.footprint.lengthMm)} m
                     </div>
                     {machine.stepFile ? (
@@ -301,7 +443,9 @@ function MachinesArea() {
             </div>
           </div>
         ))}
-        {Object.keys(grouped).length === 0 ? <Empty>{t("sidebar.noMatch")}</Empty> : null}
+        {Object.keys(grouped).length === 0 ? (
+          <Empty>{t("sidebar.noMatch")}</Empty>
+        ) : null}
       </div>
     </>
   );
@@ -309,10 +453,22 @@ function MachinesArea() {
 
 function LineArea() {
   const t = useT();
-  const { config, layout, selectedId, select, moveItem, removeItem, toggleDiagnostics } = useConfigStore();
+  const {
+    config,
+    layout,
+    selectedId,
+    select,
+    moveItem,
+    removeItem,
+    toggleDiagnostics,
+  } = useConfigStore();
   const [dragIndex, setDragIndex] = useState<number | null>(null);
-  const errors = layout.diagnostics.filter((d) => d.severity === "error").length;
-  const warnings = layout.diagnostics.filter((d) => d.severity === "warning").length;
+  const errors = layout.diagnostics.filter(
+    (d) => d.severity === "error",
+  ).length;
+  const warnings = layout.diagnostics.filter(
+    (d) => d.severity === "warning",
+  ).length;
 
   return (
     <>
@@ -322,8 +478,12 @@ function LineArea() {
         ) : (
           <div className="border border-divider">
             {config.line.map((item, index) => {
-              const placement = layout.placements.find((p) => p.instanceId === item.instanceId);
-              const issues = layout.diagnostics.filter((d) => d.instanceIds.includes(item.instanceId));
+              const placement = layout.placements.find(
+                (p) => p.instanceId === item.instanceId,
+              );
+              const issues = layout.diagnostics.filter((d) =>
+                d.instanceIds.includes(item.instanceId),
+              );
               const worst = issues.some((d) => d.severity === "error")
                 ? "error"
                 : issues.some((d) => d.severity === "warning")
@@ -336,17 +496,24 @@ function LineArea() {
                   onDragStart={() => setDragIndex(index)}
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={() => {
-                    if (dragIndex !== null && dragIndex !== index) moveItem(config.line[dragIndex].instanceId, index);
+                    if (dragIndex !== null && dragIndex !== index)
+                      moveItem(config.line[dragIndex].instanceId, index);
                     setDragIndex(null);
                   }}
                   onClick={() => select(item.instanceId)}
                   className={`flex cursor-pointer items-center gap-2 border-b border-divider px-2 py-1.5 text-[13px] last:border-0 ${
-                    selectedId === item.instanceId ? "bg-accent/10" : "hover:bg-paper"
+                    selectedId === item.instanceId
+                      ? "bg-accent/10"
+                      : "hover:bg-paper"
                   }`}
                 >
                   <span className="text-muted">⠿</span>
-                  <span className="num w-4 text-muted">{placement?.aux ? "·" : placement?.pos}</span>
-                  <span className="min-w-0 flex-1 truncate">{placement?.machine.name ?? item.machineId}</span>
+                  <span className="num w-4 text-muted">
+                    {placement?.aux ? "·" : placement?.pos}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {placement?.machine.name ?? item.machineId}
+                  </span>
                   {worst ? (
                     <span
                       className={`h-2 w-2 flex-none rounded-full ${worst === "error" ? "bg-danger" : "bg-warn"}`}
@@ -371,7 +538,9 @@ function LineArea() {
       </Block>
       <Block title={t("area.line.check")}>
         <p className="mb-2 text-[12px] leading-relaxed">
-          {errors + warnings === 0 ? t("area.line.clean") : t("area.line.issues", { errors, warnings })}
+          {errors + warnings === 0
+            ? t("area.line.clean")
+            : t("area.line.issues", { errors, warnings })}
         </p>
         {errors + warnings > 0 ? (
           <Button size="sm" onClick={() => toggleDiagnostics(true)}>
@@ -401,14 +570,17 @@ function PointsArea() {
   return (
     <>
       <Block title={t("sidebar.newMachinesAt")} help={t("points.why")}>
-        <p className="mb-2 text-[11px] text-muted">{t("sidebar.startPointHint")}</p>
+        <p className="mb-2 text-[11px] text-muted">
+          {t("sidebar.startPointHint")}
+        </p>
         <div className="mb-2 grid grid-cols-2 gap-2">
           <Field label={t("sidebar.startX")}>
             <NumberInput
               value={meters(config.flow.startPoint.x)}
               onCommit={(raw) => {
                 const mm = parseMeters(raw);
-                if (mm !== null) setStartPoint({ ...config.flow.startPoint, x: mm });
+                if (mm !== null)
+                  setStartPoint({ ...config.flow.startPoint, x: mm });
               }}
             />
           </Field>
@@ -417,7 +589,8 @@ function PointsArea() {
               value={meters(config.flow.startPoint.y)}
               onCommit={(raw) => {
                 const mm = parseMeters(raw);
-                if (mm !== null) setStartPoint({ ...config.flow.startPoint, y: mm });
+                if (mm !== null)
+                  setStartPoint({ ...config.flow.startPoint, y: mm });
               }}
             />
           </Field>
@@ -443,13 +616,27 @@ function PointsArea() {
           />
         ))}
         <div className="grid grid-cols-2 gap-1">
-          <Tip block title={t("points.addStartTip")} body={t("points.startHelp")}>
-            <Button size="sm" className="w-full" disabled={full} onClick={() => addFlowMarker("start")}>
+          <Tip
+            block
+            title={t("points.addStartTip")}
+            body={t("points.startHelp")}
+          >
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={full}
+              onClick={() => addFlowMarker("start")}
+            >
               {t("points.addStart")}
             </Button>
           </Tip>
           <Tip block title={t("points.addEndTip")} body={t("points.endHelp")}>
-            <Button size="sm" className="w-full" disabled={full} onClick={() => addFlowMarker("end")}>
+            <Button
+              size="sm"
+              className="w-full"
+              disabled={full}
+              onClick={() => addFlowMarker("end")}
+            >
               {t("points.addEnd")}
             </Button>
           </Tip>
@@ -459,66 +646,38 @@ function PointsArea() {
   );
 }
 
-function TruckArea() {
-  const t = useT();
-  const { config, layout, setFlow, addDrawn } = useConfigStore();
-  const options: { value: Side; label: string }[] = [
-    { value: "right", label: t("side.right") },
-    { value: "left", label: t("side.left") },
-  ];
-  return (
-    <>
-      <Block title={t("sidebar.truckPickup")}>
-        <Segmented
-          ariaLabel={t("sidebar.truckPickup")}
-          value={config.flow.truckPickupSide}
-          options={options}
-          onChange={(v) => setFlow({ truckPickupSide: v })}
-        />
-      </Block>
-      <Block title={t("area.tools")}>
-        <ToolButtons tools={["truck"]} />
-        <Tip block title={t("guide.zones.pickup")} body={t("guide.zones.pickupTip")}>
-          <Button
-            size="sm"
-            className="mt-1 w-full"
-            onClick={() => {
-              const zone = suggestTruckZone(layout.bounds, "x+", config.flow.truckPickupSide);
-              addDrawn({ id: `truck-${Date.now().toString(36)}`, kind: "truck", name: t("draw.pickup"), ...zone, h: 0 });
-            }}
-          >
-            {t("guide.zones.pickup")}
-          </Button>
-        </Tip>
-      </Block>
-      <Block title={t("area.truck.list")}>
-        <DrawnList kinds={["truck"]} empty={t("area.truck.empty")} />
-      </Block>
-    </>
-  );
-}
-
 function ProductArea() {
   const t = useT();
   const { config, update } = useConfigStore();
-  const mm = (key: "packageLengthMm" | "packageWidthMinMm" | "packageWidthMaxMm" | "packageHeightMm") => (
+  const mm = (
+    key:
+      | "packageLengthMm"
+      | "packageWidthMinMm"
+      | "packageWidthMaxMm"
+      | "packageHeightMm",
+  ) => (
     <NumberInput
       value={meters(config.product[key])}
       suffix="m"
       onCommit={(raw) => {
         const value = parseMeters(raw);
-        if (value !== null) update((d) => setProductValue(d.product, key, value));
+        if (value !== null)
+          update((d) => setProductValue(d.product, key, value));
       }}
     />
   );
-  const whole = (key: "packageWeightKg" | "targetPackagesPerHour", suffix: string) => (
+  const whole = (
+    key: "packageWeightKg" | "targetPackagesPerHour",
+    suffix: string,
+  ) => (
     <NumberInput
       value={String(config.product[key])}
       suffix={suffix}
       step="1"
       onCommit={(raw) => {
         const value = Number(raw.replace(",", "."));
-        if (Number.isFinite(value)) update((d) => setProductValue(d.product, key, value));
+        if (Number.isFinite(value))
+          update((d) => setProductValue(d.product, key, value));
       }}
     />
   );
@@ -532,9 +691,15 @@ function ProductArea() {
       </Block>
       <Block title={t("area.product.package")}>
         <div className="grid grid-cols-2 gap-2">
-          <Field label={t("sidebar.packageLength")}>{mm("packageLengthMm")}</Field>
-          <Field label={t("area.product.height")}>{mm("packageHeightMm")}</Field>
-          <Field label={t("area.product.weight")}>{whole("packageWeightKg", "kg")}</Field>
+          <Field label={t("sidebar.packageLength")}>
+            {mm("packageLengthMm")}
+          </Field>
+          <Field label={t("area.product.height")}>
+            {mm("packageHeightMm")}
+          </Field>
+          <Field label={t("area.product.weight")}>
+            {whole("packageWeightKg", "kg")}
+          </Field>
         </div>
       </Block>
       <Block title={t("sidebar.target")} help={t("area.product.targetHelp")}>
@@ -549,32 +714,49 @@ function ProductArea() {
 function QuoteArea() {
   const t = useT();
   const { config, layout, setScreen, toggleDiagnostics } = useConfigStore();
-  const errors = layout.diagnostics.filter((d) => d.severity === "error").length;
+  const errors = layout.diagnostics.filter(
+    (d) => d.severity === "error",
+  ).length;
   return (
     <>
       <Block title={t("area.quote.summary")}>
         <ul className="space-y-1 text-[12px]">
           <li>{t("area.quote.machines", { count: config.line.length })}</li>
           <li>
-            {t("area.quote.hall", { l: meters(config.hall.lengthMm), w: meters(config.hall.widthMm) })}
+            {t("area.quote.hall", {
+              l: meters(config.hall.lengthMm),
+              w: meters(config.hall.widthMm),
+            })}
           </li>
           <li className={errors ? "text-danger" : undefined}>
-            {errors ? t("area.quote.errors", { count: errors }) : t("area.quote.noErrors")}
+            {errors
+              ? t("area.quote.errors", { count: errors })
+              : t("area.quote.noErrors")}
           </li>
         </ul>
         {errors ? (
-          <Button size="sm" className="mt-2" onClick={() => toggleDiagnostics(true)}>
+          <Button
+            size="sm"
+            className="mt-2"
+            onClick={() => toggleDiagnostics(true)}
+          >
             {t("area.line.showIssues")}
           </Button>
         ) : null}
       </Block>
       <div className="space-y-2">
-        <Button variant="primary" className="w-full" onClick={() => setScreen("quote")}>
+        <Button
+          variant="primary"
+          className="w-full"
+          onClick={() => setScreen("quote")}
+        >
           {t("guide.quote.go")}
         </Button>
         <ShareButton />
       </div>
-      <p className="mt-3 text-[11px] leading-relaxed text-muted">{t("area.quote.disclaimer")}</p>
+      <p className="mt-3 text-[11px] leading-relaxed text-muted">
+        {t("area.quote.disclaimer")}
+      </p>
     </>
   );
 }
@@ -583,11 +765,17 @@ function ShareButton() {
   const t = useT();
   const config = useConfigStore((s) => s.config);
   const note = useConfigStore((s) => s.note);
-  const [state, setState] = useState<"idle" | "copied" | "long" | "failed">("idle");
+  const [state, setState] = useState<"idle" | "copied" | "long" | "failed">(
+    "idle",
+  );
 
   const share = async () => {
     const { shareUrl } = await import("@/lib/share");
-    const { url, long } = await shareUrl(config, window.location.origin, window.location.pathname);
+    const { url, long } = await shareUrl(
+      config,
+      window.location.origin,
+      window.location.pathname,
+    );
     note("share", "Skapade en delningslänk");
     try {
       await navigator.clipboard.writeText(url);
@@ -603,14 +791,18 @@ function ShareButton() {
   return (
     <div>
       <Button className="w-full" onClick={share}>
-        {state === "idle" || state === "failed" ? t("sidebar.share") : t("sidebar.shareCopied")}
+        {state === "idle" || state === "failed"
+          ? t("sidebar.share")
+          : t("sidebar.shareCopied")}
       </Button>
       {state === "long" ? (
-        <p className="mt-1 text-[11px] leading-relaxed text-warn">{t("sidebar.shareLong")}</p>
+        <p className="mt-1 text-[11px] leading-relaxed text-warn">
+          {t("sidebar.shareLong")}
+        </p>
       ) : (
         <p className="mt-1 text-[11px] leading-relaxed text-muted">
-          Hela konfigurationen ligger i länken. Inget sparas på servern, och mottagaren
-          behöver inget konto.
+          Hela konfigurationen ligger i länken. Inget sparas på servern, och
+          mottagaren behöver inget konto.
         </p>
       )}
     </div>
@@ -642,7 +834,8 @@ function CommentInput({
         placeholder={placeholder}
         maxLength={300}
         onBlur={(e) => {
-          if (e.currentTarget.value.trim() !== value) onCommit(e.currentTarget.value);
+          if (e.currentTarget.value.trim() !== value)
+            onCommit(e.currentTarget.value);
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();
@@ -670,19 +863,34 @@ function MarkerRow({
   return (
     <div className="mb-1.5 border border-dashed border-divider p-1.5">
       <div className="mb-1 flex items-center gap-2">
-        <span className={`kicker ${marker.role === "start" ? "text-accent" : "text-steel"}`}>{label}</span>
+        <span
+          className={`kicker ${marker.role === "start" ? "text-accent" : "text-steel"}`}
+        >
+          {label}
+        </span>
         <span className="num text-[11px] text-muted">
           {meters(marker.pos.x)} × {meters(marker.pos.y)} m
         </span>
         <span className="ml-auto flex items-center gap-1">
           {marker.role === "start" ? (
-            <Tip side="right" title={t("points.activate")} body={t("points.activateTip")}>
-              <button onClick={onActivate} className="kicker border border-divider px-1 hover:border-accent hover:text-accent">
+            <Tip
+              side="right"
+              title={t("points.activate")}
+              body={t("points.activateTip")}
+            >
+              <button
+                onClick={onActivate}
+                className="kicker border border-divider px-1 hover:border-accent hover:text-accent"
+              >
                 {t("points.activate")}
               </button>
             </Tip>
           ) : null}
-          <button onClick={onRemove} className="text-muted hover:text-danger" aria-label="Ta bort">
+          <button
+            onClick={onRemove}
+            className="text-muted hover:text-danger"
+            aria-label="Ta bort"
+          >
             ×
           </button>
         </span>
@@ -693,7 +901,8 @@ function MarkerRow({
         placeholder={t("points.placeholder")}
         maxLength={300}
         onBlur={(e) => {
-          if (e.currentTarget.value.trim() !== marker.comment) onComment(e.currentTarget.value.trim());
+          if (e.currentTarget.value.trim() !== marker.comment)
+            onComment(e.currentTarget.value.trim());
         }}
         onKeyDown={(e) => {
           if (e.key === "Enter") e.currentTarget.blur();

@@ -3,6 +3,7 @@
 import { dimensionLength } from "@/lib/dimensions";
 import { padBox } from "@/lib/projection";
 import { meters } from "@/lib/format";
+import { ZONES, zoneDef } from "@/lib/zones";
 import { useT } from "@/lib/i18n";
 import { TopViewImage } from "./TopViewImage";
 import type { Box, Configuration, LayoutResult } from "@/lib/types";
@@ -32,7 +33,12 @@ export function QuotePlan({
   layout: LayoutResult;
 }) {
   const t = useT();
-  const hall: Box = { x: 0, y: 0, l: config.hall.lengthMm, w: config.hall.widthMm };
+  const hall: Box = {
+    x: 0,
+    y: 0,
+    l: config.hall.lengthMm,
+    w: config.hall.widthMm,
+  };
 
   const boxes: Box[] = [hall, layout.bounds];
   for (const d of config.drawn) boxes.push({ x: d.x, y: d.y, l: d.l, w: d.w });
@@ -75,7 +81,12 @@ export function QuotePlan({
             patternTransform="rotate(45)"
             patternUnits="userSpaceOnUse"
           >
-            <line y2={u * 26} stroke="#1d1f20" strokeOpacity="0.28" strokeWidth={u * 3} />
+            <line
+              y2={u * 26}
+              stroke="#1d1f20"
+              strokeOpacity="0.28"
+              strokeWidth={u * 3}
+            />
           </pattern>
           <pattern
             id="q-nogo"
@@ -84,7 +95,12 @@ export function QuotePlan({
             patternTransform="rotate(-45)"
             patternUnits="userSpaceOnUse"
           >
-            <line y2={u * 18} stroke="#1d1f20" strokeOpacity="0.45" strokeWidth={u * 3} />
+            <line
+              y2={u * 18}
+              stroke="#1d1f20"
+              strokeOpacity="0.45"
+              strokeWidth={u * 3}
+            />
           </pattern>
           <marker
             id="q-arrow"
@@ -99,7 +115,13 @@ export function QuotePlan({
           </marker>
         </defs>
 
-        <rect x={view.x} y={view.y} width={view.l} height={view.w} fill="#fff" />
+        <rect
+          x={view.x}
+          y={view.y}
+          width={view.l}
+          height={view.w}
+          fill="#fff"
+        />
 
         {/* Hallen */}
         <rect
@@ -116,12 +138,19 @@ export function QuotePlan({
         {config.drawn.map((d) => {
           const common = { x: d.x, y: d.y, width: d.l, height: d.w };
           if (d.kind === "wall") {
-            return <rect key={d.id} {...common} fill="#1d1f20" fillOpacity="0.75" />;
+            return (
+              <rect key={d.id} {...common} fill="#1d1f20" fillOpacity="0.75" />
+            );
           }
           if (d.kind === "door") {
             return (
               <g key={d.id}>
-                <rect {...common} fill="#fff" stroke="#1d1f20" strokeWidth={u * 2} />
+                <rect
+                  {...common}
+                  fill="#fff"
+                  stroke="#1d1f20"
+                  strokeWidth={u * 2}
+                />
                 <line
                   x1={d.x}
                   y1={d.y}
@@ -133,12 +162,28 @@ export function QuotePlan({
               </g>
             );
           }
+          /*
+           * Zonerna i offertplanen.
+           *
+           * Rastren finns för truckzonen och den spärrade ytan; de andra
+           * sorterna får sin färg ur katalogen. Planen trycks i svartvitt
+           * lika ofta som i färg, så konturen är streckad för alla och
+           * namnet står i rutan — zonen ska gå att läsa på papper.
+           */
+          const zone = zoneDef(d.zone);
           return (
             <g key={d.id}>
               <rect
                 {...common}
-                fill={d.kind === "truck" ? "url(#q-truck)" : "url(#q-nogo)"}
-                stroke="#1d1f20"
+                fill={
+                  zone.pattern === "aisleHatch"
+                    ? "url(#q-truck)"
+                    : zone.pattern === "nogoHatch"
+                      ? "url(#q-nogo)"
+                      : zone.tint
+                }
+                fillOpacity={zone.pattern ? undefined : 0.1}
+                stroke={zone.stroke}
                 strokeOpacity="0.6"
                 strokeWidth={u * 1.5}
                 strokeDasharray={`${u * 12} ${u * 8}`}
@@ -152,7 +197,7 @@ export function QuotePlan({
                 className="num"
                 {...text(16)}
               >
-                {d.name || (d.kind === "truck" ? t("tool.truck") : t("quote.legend.nogo"))}
+                {d.name || t(zone.labelKey)}
               </text>
             </g>
           );
@@ -227,14 +272,32 @@ export function QuotePlan({
         {/* Mått kunden sparat på ritningen. */}
         {(config.dimensions ?? []).map((d) => {
           const length = dimensionLength(d);
-          const mid = { x: (d.from.x + d.to.x) / 2, y: (d.from.y + d.to.y) / 2 };
+          const mid = {
+            x: (d.from.x + d.to.x) / 2,
+            y: (d.from.y + d.to.y) / 2,
+          };
           return (
             <g key={d.id}>
-              <line x1={d.from.x} y1={d.from.y} x2={d.to.x} y2={d.to.y} stroke="#1d2d3d" strokeWidth={u * 1.6} />
+              <line
+                x1={d.from.x}
+                y1={d.from.y}
+                x2={d.to.x}
+                y2={d.to.y}
+                stroke="#1d2d3d"
+                strokeWidth={u * 1.6}
+              />
               <circle cx={d.from.x} cy={d.from.y} r={u * 3.5} fill="#1d2d3d" />
               <circle cx={d.to.x} cy={d.to.y} r={u * 3.5} fill="#1d2d3d" />
-              <text x={mid.x} y={mid.y - u * 8} textAnchor="middle" fill="#1d2d3d" className="num" fontSize={u * 15}>
-                {(length / 1000).toFixed(2).replace(".", ",")} m{d.note ? ` · ${d.note}` : ""}
+              <text
+                x={mid.x}
+                y={mid.y - u * 8}
+                textAnchor="middle"
+                fill="#1d2d3d"
+                className="num"
+                fontSize={u * 15}
+              >
+                {(length / 1000).toFixed(2).replace(".", ",")} m
+                {d.note ? ` · ${d.note}` : ""}
               </text>
             </g>
           );
@@ -243,35 +306,64 @@ export function QuotePlan({
       </svg>
 
       <figcaption className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-muted">
-        <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-[#e7e7ea]" />}>
+        <Legend
+          swatch={
+            <span className="inline-block h-2 w-3 border border-ink bg-[#e7e7ea]" />
+          }
+        >
           {t("quote.legend.machine")}
         </Legend>
         {aux.length > 0 ? (
           <Legend
-            swatch={<span className="inline-block h-2 w-3 border border-dashed border-ink" />}
+            swatch={
+              <span className="inline-block h-2 w-3 border border-dashed border-ink" />
+            }
           >
             {t("quote.legend.aux")}
           </Legend>
         ) : null}
-        {config.drawn.some((d) => d.kind === "truck") ? (
-          <Legend swatch={<span className="inline-block h-2 w-3 border border-ink bg-paper" />}>
-            {t("tool.truck")}
+        {/*
+          En rad per sorts zon som faktiskt finns i hallen. Teckenförklaringen
+          räknade förut bara truckgatan, och en plan med fyra olika ytor gick
+          inte att läsa på papper utan att gissa.
+        */}
+        {ZONES.filter((z) =>
+          config.drawn.some(
+            (d) => d.kind === "zone" && (d.zone ?? "other") === z.id,
+          ),
+        ).map((z) => (
+          <Legend
+            key={z.id}
+            swatch={
+              <span
+                className="inline-block h-2 w-3 border"
+                style={{ borderColor: z.stroke, background: `${z.tint}26` }}
+              />
+            }
+          >
+            {t(z.labelKey)}
           </Legend>
-        ) : null}
+        ))}
         <Legend
-          swatch={<span className="inline-block h-2 w-3 border border-dashed border-divider" />}
+          swatch={
+            <span className="inline-block h-2 w-3 border border-dashed border-divider" />
+          }
         >
           {t("quote.legend.zone")}
         </Legend>
-        <span>
-          {t("quote.legend.note")}
-        </span>
+        <span>{t("quote.legend.note")}</span>
       </figcaption>
     </figure>
   );
 }
 
-function Legend({ swatch, children }: { swatch: React.ReactNode; children: React.ReactNode }) {
+function Legend({
+  swatch,
+  children,
+}: {
+  swatch: React.ReactNode;
+  children: React.ReactNode;
+}) {
   return (
     <span className="flex items-center gap-1.5">
       {swatch}
@@ -289,9 +381,21 @@ function Dimensions({ hall, view, u }: { hall: Box; view: Box; u: number }) {
   return (
     <g stroke="#1d1f20" fill="#1d1f20" strokeWidth={u * 1.5}>
       {/* Längd */}
-      <line x1={hall.x} y1={below} x2={hall.x + hall.l} y2={below} markerStart="url(#q-arrow)" markerEnd="url(#q-arrow)" />
+      <line
+        x1={hall.x}
+        y1={below}
+        x2={hall.x + hall.l}
+        y2={below}
+        markerStart="url(#q-arrow)"
+        markerEnd="url(#q-arrow)"
+      />
       <line x1={hall.x} y1={below - tick} x2={hall.x} y2={below + tick} />
-      <line x1={hall.x + hall.l} y1={below - tick} x2={hall.x + hall.l} y2={below + tick} />
+      <line
+        x1={hall.x + hall.l}
+        y1={below - tick}
+        x2={hall.x + hall.l}
+        y2={below + tick}
+      />
       <text
         x={hall.x + hall.l / 2}
         y={below - u * 12}
@@ -304,9 +408,21 @@ function Dimensions({ hall, view, u }: { hall: Box; view: Box; u: number }) {
       </text>
 
       {/* Bredd */}
-      <line x1={left} y1={hall.y} x2={left} y2={hall.y + hall.w} markerStart="url(#q-arrow)" markerEnd="url(#q-arrow)" />
+      <line
+        x1={left}
+        y1={hall.y}
+        x2={left}
+        y2={hall.y + hall.w}
+        markerStart="url(#q-arrow)"
+        markerEnd="url(#q-arrow)"
+      />
       <line x1={left - tick} y1={hall.y} x2={left + tick} y2={hall.y} />
-      <line x1={left - tick} y1={hall.y + hall.w} x2={left + tick} y2={hall.y + hall.w} />
+      <line
+        x1={left - tick}
+        y1={hall.y + hall.w}
+        x2={left + tick}
+        y2={hall.y + hall.w}
+      />
       <text
         x={left - u * 12}
         y={hall.y + hall.w / 2}
@@ -330,13 +446,21 @@ function ScaleBar({ view, u }: { view: Box; u: number }) {
   // Ungefär en tiondel av bredden, avrundat till 1, 2, 5 eller 10 meter.
   const raw = view.l / 10;
   const steps = [1000, 2000, 5000, 10_000, 20_000, 50_000];
-  const length = steps.reduce((best, s) => (Math.abs(s - raw) < Math.abs(best - raw) ? s : best));
+  const length = steps.reduce((best, s) =>
+    Math.abs(s - raw) < Math.abs(best - raw) ? s : best,
+  );
   const x = view.x + u * 70;
   const y = view.y + view.w - u * 14;
 
   return (
     <g>
-      <rect x={x} y={y - u * 6} width={length / 2} height={u * 6} fill="#1d1f20" />
+      <rect
+        x={x}
+        y={y - u * 6}
+        width={length / 2}
+        height={u * 6}
+        fill="#1d1f20"
+      />
       <rect
         x={x + length / 2}
         y={y - u * 6}
@@ -346,10 +470,23 @@ function ScaleBar({ view, u }: { view: Box; u: number }) {
         stroke="#1d1f20"
         strokeWidth={u}
       />
-      <text x={x} y={y + u * 14} fill="#1d1f20" className="num" fontSize={u * 15}>
+      <text
+        x={x}
+        y={y + u * 14}
+        fill="#1d1f20"
+        className="num"
+        fontSize={u * 15}
+      >
         0
       </text>
-      <text x={x + length} y={y + u * 14} textAnchor="middle" fill="#1d1f20" className="num" fontSize={u * 15}>
+      <text
+        x={x + length}
+        y={y + u * 14}
+        textAnchor="middle"
+        fill="#1d1f20"
+        className="num"
+        fontSize={u * 15}
+      >
         {meters(length, 0)} m
       </text>
     </g>

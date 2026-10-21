@@ -22,16 +22,27 @@ export type Area =
   | "machines"
   | "line"
   | "points"
-  | "truck"
   | "product"
   | "quote";
 
-export type AreaGroup = { id: "building" | "plant" | "flow" | "offer"; areas: Area[] };
+export type AreaGroup = {
+  id: "building" | "plant" | "flow" | "offer";
+  areas: Area[];
+};
 
+/*
+ * Zonerna är EN yta, inte två.
+ *
+ * Förut fanns "No-go" bland lokalens ytor och "Truckzon" bland flödets —
+ * samma handling på två ställen, och allt annat kunden ville markera i sin
+ * hall fick bli en no-go-zon med ett påhittat namn. Nu finns en yta där man
+ * lägger till vilken sorts zon som helst; sorterna står i lib/zones, och
+ * truckens hämtsida ligger i samma yta som truckzonen man ritar.
+ */
 export const AREA_GROUPS: AreaGroup[] = [
   { id: "building", areas: ["hall", "walls", "zones"] },
   { id: "plant", areas: ["machines", "line"] },
-  { id: "flow", areas: ["points", "truck", "product"] },
+  { id: "flow", areas: ["points", "product"] },
   { id: "offer", areas: ["quote"] },
 ];
 
@@ -59,7 +70,13 @@ export function previousArea(area: Area): Area | null {
  * Maskinerna och linjen avgörs bara av konfigurationen: att klicka vidare
  * från en linje med fel gör den inte felfri. Offerten är aldrig "klar".
  */
-export const CONFIRMABLE: ReadonlySet<Area> = new Set<Area>(["hall", "walls", "zones", "points", "truck", "product"]);
+export const CONFIRMABLE: ReadonlySet<Area> = new Set<Area>([
+  "hall",
+  "walls",
+  "zones",
+  "points",
+  "product",
+]);
 
 /** Om ytan är klar, utifrån konfigurationen och det kunden själv bockat av. */
 export function isAreaDone(
@@ -73,23 +90,31 @@ export function isAreaDone(
   switch (area) {
     case "hall":
       return (
-        config.hall.lengthMm !== DEFAULT_HALL.lengthMm || config.hall.widthMm !== DEFAULT_HALL.widthMm
+        config.hall.lengthMm !== DEFAULT_HALL.lengthMm ||
+        config.hall.widthMm !== DEFAULT_HALL.widthMm
       );
     case "walls":
       return has("door");
     case "zones":
-      return has("nogo");
+      // Vilken sorts zon som helst räknas: kunden som ritat en lageryta och
+      // en operatörsplats har gjort ytan, även utan en enda spärrad yta.
+      return has("zone");
     case "machines":
       return config.line.length > 0;
     case "line":
-      return config.line.length > 0 && !layout.diagnostics.some((d) => d.severity === "error");
+      return (
+        config.line.length > 0 &&
+        !layout.diagnostics.some((d) => d.severity === "error")
+      );
     case "points":
-      return !!config.flow.startComment || (config.flow.markers?.length ?? 0) > 0;
-    case "truck":
-      return has("truck");
+      return (
+        !!config.flow.startComment || (config.flow.markers?.length ?? 0) > 0
+      );
     case "product": {
       const p = config.product;
-      return (Object.keys(DEFAULT_PRODUCT) as (keyof typeof p)[]).some((k) => p[k] !== DEFAULT_PRODUCT[k]);
+      return (Object.keys(DEFAULT_PRODUCT) as (keyof typeof p)[]).some(
+        (k) => p[k] !== DEFAULT_PRODUCT[k],
+      );
     }
     case "quote":
       return false;
@@ -102,5 +127,7 @@ export function firstOpenArea(
   layout: LayoutResult,
   confirmed: ReadonlySet<Area>,
 ): Area | null {
-  return AREA_ORDER.find((a) => !isAreaDone(a, config, layout, confirmed)) ?? null;
+  return (
+    AREA_ORDER.find((a) => !isAreaDone(a, config, layout, confirmed)) ?? null
+  );
 }

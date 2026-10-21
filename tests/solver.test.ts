@@ -5,7 +5,8 @@ import { BUILTIN_MACHINES, getMachine, makeLibrary } from "@/lib/library";
 import { defaultConfig, lineItem, templateConfig } from "@/lib/templates";
 import type { Configuration } from "@/lib/types";
 
-const clone = (c: Configuration): Configuration => JSON.parse(JSON.stringify(c));
+const clone = (c: Configuration): Configuration =>
+  JSON.parse(JSON.stringify(c));
 
 describe("kedjevandring", () => {
   it("ritar ut varje maskins portar i hallens koordinater", () => {
@@ -29,7 +30,9 @@ describe("kedjevandring", () => {
     const config = defaultConfig();
     const a = solveLayout(config);
     const b = solveLayout(clone(config));
-    expect(a.placements.map((p) => p.bbox)).toEqual(b.placements.map((p) => p.bbox));
+    expect(a.placements.map((p) => p.bbox)).toEqual(
+      b.placements.map((p) => p.bbox),
+    );
   });
 
   it("lägger maskinerna i följd längs hallen", () => {
@@ -54,7 +57,7 @@ describe("hallen och truckgatorna", () => {
     expect(after.aisles[0].box).toEqual(before.aisles[0].box);
 
     // Tas zonen bort finns ingen truckgata alls.
-    config.drawn = config.drawn.filter((d) => d.kind !== "truck");
+    config.drawn = config.drawn.filter((d) => d.zone !== "truck");
     expect(solveLayout(config).aisles).toHaveLength(0);
   });
 
@@ -62,7 +65,8 @@ describe("hallen och truckgatorna", () => {
     const config = defaultConfig();
     config.drawn.push({
       id: "truck-2",
-      kind: "truck",
+      kind: "zone",
+      zone: "truck",
       name: "Hämtzon 2",
       x: 2000,
       y: 200,
@@ -80,16 +84,23 @@ describe("hallen och truckgatorna", () => {
     long.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm = 18000;
 
     const kt = (c: typeof short) =>
-      solveLayout(c).placements.find((p) => p.machineId === "kedjetransportor")!;
+      solveLayout(c).placements.find(
+        (p) => p.machineId === "kedjetransportor",
+      )!;
     expect(kt(short).size.lengthMm).toBe(6000);
     expect(kt(long).size.lengthMm).toBe(18000);
   });
 
   it("respekterar min- och maxlängd för parametriska maskiner", () => {
     const config = defaultConfig();
-    config.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm = 59000;
-    const kt = solveLayout(config).placements.find((p) => p.machineId === "kedjetransportor")!;
-    expect(kt.size.lengthMm).toBe(getMachine("kedjetransportor")!.parametricLength!.maxMm);
+    config.line.find((i) => i.machineId === "kedjetransportor")!.lengthMm =
+      59000;
+    const kt = solveLayout(config).placements.find(
+      (p) => p.machineId === "kedjetransportor",
+    )!;
+    expect(kt.size.lengthMm).toBe(
+      getMachine("kedjetransportor")!.parametricLength!.maxMm,
+    );
   });
 });
 
@@ -113,13 +124,18 @@ describe("mätvärden", () => {
   it("hittar flaskhalsen", () => {
     const layout = computeLayout(defaultConfig());
     expect(layout.metrics.bottleneck).not.toBeNull();
-    expect(layout.metrics.throughputPerHour).toBe(layout.metrics.bottleneck!.capacity);
+    expect(layout.metrics.throughputPerHour).toBe(
+      layout.metrics.bottleneck!.capacity,
+    );
   });
 
   it("summerar effekt över alla maskiner", () => {
     const layout = computeLayout(defaultConfig());
     const sum = layout.placements.reduce((a, p) => a + p.powerKw, 0);
-    expect(layout.metrics.totalPowerKw).toBeCloseTo(Math.round(sum * 10) / 10, 5);
+    expect(layout.metrics.totalPowerKw).toBeCloseTo(
+      Math.round(sum * 10) / 10,
+      5,
+    );
   });
 });
 
@@ -135,7 +151,9 @@ describe("fri placering", () => {
     const config = defaultConfig();
     const target = config.line[1];
     target.pos = { x: 20000, y: 8000 };
-    const at = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    const at = solveLayout(config).placements.find(
+      (p) => p.instanceId === target.instanceId,
+    )!;
     expect(at.bbox.x).toBe(20000);
     expect(at.bbox.y).toBe(8000);
   });
@@ -158,9 +176,13 @@ describe("fri placering", () => {
     const config = defaultConfig();
     const target = config.line[0];
     target.pos = { x: 5000, y: 5000 };
-    const rakt = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    const rakt = solveLayout(config).placements.find(
+      (p) => p.instanceId === target.instanceId,
+    )!;
     target.rotation = 90;
-    const vriden = solveLayout(config).placements.find((p) => p.instanceId === target.instanceId)!;
+    const vriden = solveLayout(config).placements.find(
+      (p) => p.instanceId === target.instanceId,
+    )!;
     expect(vriden.bbox.l).toBeCloseTo(rakt.bbox.w, 5);
     expect(vriden.bbox.w).toBeCloseTo(rakt.bbox.l, 5);
   });
@@ -230,7 +252,10 @@ describe("maskinzonen gäller per sida", () => {
 
   it("låter sidozonen vara utan att ändra maskinens egen box", () => {
     // Zonen är bredare än maskinen, men maskinens kropp är maskinens mått.
-    const layout = computeLayout(line(["rullbana", "rullbana", "rullbana"]), library);
+    const layout = computeLayout(
+      line(["rullbana", "rullbana", "rullbana"]),
+      library,
+    );
     for (const p of layout.placements) {
       expect(p.bbox.l).toBe(3000);
       expect(p.bbox.w).toBe(1600);

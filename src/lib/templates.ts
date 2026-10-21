@@ -9,11 +9,18 @@ export function newInstanceId(machineId: string): string {
   return `${machineId}-${Date.now().toString(36)}-${counter.toString(36)}`;
 }
 
-export function lineItem(machineId: string, selectedOptions: string[] = []): LineItem {
+export function lineItem(
+  machineId: string,
+  selectedOptions: string[] = [],
+): LineItem {
   return { instanceId: newInstanceId(machineId), machineId, selectedOptions };
 }
 
-export const DEFAULT_HALL: Hall = { lengthMm: 46000, widthMm: 22500, clearHeightMm: 6000 };
+export const DEFAULT_HALL: Hall = {
+  lengthMm: 46000,
+  widthMm: 22500,
+  clearHeightMm: 6000,
+};
 
 /**
  * Utgångsvärden hämtade ur katalogen: truckströ är 800–1150 mm långa, vilket
@@ -132,7 +139,10 @@ export const TEMPLATES: Template[] = [
  * och tolv i kundens, och då står nästa maskin mitt inne i den.
  */
 /** Översättare för namnen en mall skapar. Utan: svenska. */
-type Translate = (key: string, vars?: Record<string, string | number>) => string;
+type Translate = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
 const swedish: Translate = (key, vars) => translate("sv", key, vars);
 
 export function templateConfig(
@@ -145,7 +155,8 @@ export function templateConfig(
    */
   t: Translate = swedish,
 ): Configuration {
-  const template = TEMPLATES.find((tpl) => tpl.id === templateId) ?? TEMPLATES[0];
+  const template =
+    TEMPLATES.find((tpl) => tpl.id === templateId) ?? TEMPLATES[0];
   const config = base(
     t("template.projectName", { name: t(`template.${template.id}.name`) }),
     template.machineIds,
@@ -174,7 +185,11 @@ export function templateConfig(
   }
 
   const solved = solveLayout(config, library);
-  const suggestion = suggestTruckZone(solved.lineBounds, "x+", config.flow.truckPickupSide);
+  const suggestion = suggestTruckZone(
+    solved.lineBounds,
+    "x+",
+    config.flow.truckPickupSide,
+  );
 
   /*
    * Hämtzonen dras ut till närmaste vägg, och porten sätts mitt för den.
@@ -193,8 +208,8 @@ export function templateConfig(
     upp: suggestion.y,
     ner: config.hall.widthMm - (suggestion.y + suggestion.w),
   };
-  const narmast = (Object.keys(avstand) as (keyof typeof avstand)[]).reduce((a, b) =>
-    avstand[a] <= avstand[b] ? a : b,
+  const narmast = (Object.keys(avstand) as (keyof typeof avstand)[]).reduce(
+    (a, b) => (avstand[a] <= avstand[b] ? a : b),
   );
 
   const zon = { ...suggestion };
@@ -210,9 +225,17 @@ export function templateConfig(
     zon.w = config.hall.widthMm - zon.y;
   }
 
-  config.drawn.push({ id: "truck-1", kind: "truck", name: t("draw.pickupOutfeed"), ...zon, h: 0 });
+  config.drawn.push({
+    id: "truck-1",
+    kind: "zone",
+    zone: "truck",
+    name: t("draw.pickupOutfeed"),
+    ...zon,
+    h: 0,
+  });
 
-  const mitt = (v: number, max: number) => Math.max(0, Math.min(max - DOOR_W, v - DOOR_W / 2));
+  const mitt = (v: number, max: number) =>
+    Math.max(0, Math.min(max - DOOR_W, v - DOOR_W / 2));
   const langsvagg = narmast === "upp" || narmast === "ner";
   config.drawn.push({
     id: "door-1",

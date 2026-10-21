@@ -15,7 +15,8 @@ import { NavMenu } from "./NavMenu";
 import { AreaPanel } from "./AreaPanel";
 import { StatusBar } from "./StatusBar";
 import { Topbar } from "./Topbar";
-import { Button, Tip } from "./ui";
+import { Button, cx, Tip } from "./ui";
+import { ZONES } from "@/lib/zones";
 import { toolHelp } from "./toolHelp";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 import type { SessionUser } from "./AuthDialog";
@@ -41,6 +42,7 @@ export function AppShell() {
     removeDrawn,
     turnDrawn,
     turnMachine,
+    mirrorMachine,
     proposalId,
   } = useConfigStore();
 
@@ -58,14 +60,16 @@ export function AppShell() {
   }, [hydrate]);
 
   useEffect(() => {
-    if (new URLSearchParams(window.location.search).has("admin")) setAskLogin(true);
+    if (new URLSearchParams(window.location.search).has("admin"))
+      setAskLogin(true);
   }, []);
 
   useEffect(() => {
     fetch("/api/library")
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
-        if (data?.machines?.length) useConfigStore.getState().setLibrary(data.machines);
+        if (data?.machines?.length)
+          useConfigStore.getState().setLibrary(data.machines);
         else useConfigStore.setState({ libraryLoaded: true });
       })
       .catch(() => {
@@ -108,7 +112,8 @@ export function AppShell() {
   const onKeyDown = useCallback(
     (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName))
+        return;
 
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "z") {
         event.preventDefault();
@@ -140,16 +145,14 @@ export function AppShell() {
         case "d":
           setTool("door");
           break;
-        case "t":
-          setTool("truck");
-          break;
-        case "n":
-          setTool("nogo");
+        case "z":
+          setTool("zone");
           break;
         case "m":
           setTool("measure");
           break;
-        case "z":
+        case "g":
+          // Maskinernas egna zoner — service, skydd, fri yta.
           toggleZones();
           break;
         case "p":
@@ -167,15 +170,33 @@ export function AppShell() {
            */
           if (!selectedId) break;
           event.preventDefault();
-          if (config.drawn.some((d) => d.id === selectedId)) turnDrawn(selectedId);
+          if (config.drawn.some((d) => d.id === selectedId))
+            turnDrawn(selectedId);
           else if (config.line.some((i) => i.instanceId === selectedId)) {
             turnMachine(selectedId, event.shiftKey ? -1 : 1);
           }
           break;
+        case "s":
+          /*
+           * Spegla där man står, precis som R vrider där man står.
+           *
+           * Spegelknappen satt som en ikon utan text inne i inspektorns
+           * rotationsrad, och bara för maskiner som går att spegla. Den var
+           * inte att hitta, och den är den enda åtgärden som avgör vilken
+           * sida pulpeten hamnar på. Nu finns den på tre ställen: tangenten,
+           * handtaget vid den markerade maskinen, och en egen rad i
+           * inspektorn med utskrivet namn och läge.
+           */
+          if (!selectedId) break;
+          event.preventDefault();
+          if (config.line.some((i) => i.instanceId === selectedId))
+            mirrorMachine(selectedId);
+          break;
         case "delete":
         case "backspace":
           if (!selectedId) break;
-          if (config.drawn.some((d) => d.id === selectedId)) removeDrawn(selectedId);
+          if (config.drawn.some((d) => d.id === selectedId))
+            removeDrawn(selectedId);
           else if (config.dimensions?.some((d) => d.id === selectedId)) {
             useConfigStore.getState().removeDimension(selectedId);
           } else removeItem(selectedId);
@@ -186,6 +207,7 @@ export function AppShell() {
       config.drawn,
       config.dimensions,
       config.line,
+      mirrorMachine,
       redo,
       removeDrawn,
       removeItem,
@@ -208,7 +230,9 @@ export function AppShell() {
 
   if (!hydrated) {
     return (
-      <div className="flex h-dvh items-center justify-center text-sm text-muted">Laddar…</div>
+      <div className="flex h-dvh items-center justify-center text-sm text-muted">
+        Laddar…
+      </div>
     );
   }
 
@@ -247,11 +271,11 @@ export function AppShell() {
   return (
     <div className="flex h-dvh flex-col">
       <Topbar
-          user={user}
-          onUserChange={setUser}
-          autoOpenLogin={askLogin}
-          onLoginHandled={() => setAskLogin(false)}
-        />
+        user={user}
+        onUserChange={setUser}
+        autoOpenLogin={askLogin}
+        onLoginHandled={() => setAskLogin(false)}
+      />
 
       <div className="flex min-h-0 flex-1">
         <NavMenu />
@@ -288,26 +312,52 @@ export function AppShell() {
 }
 
 function ToolRail() {
-  const { tool, setTool, showZones, showPorts, toggleZones, togglePorts } = useConfigStore();
+  const {
+    tool,
+    setTool,
+    zoneKind,
+    setZoneKind,
+    showZones,
+    showPorts,
+    toggleZones,
+    togglePorts,
+  } = useConfigStore();
   const t = useT();
 
   return (
-    <div className="absolute right-3 top-3 flex flex-col gap-1">
+    <div className="absolute right-3 top-3 flex flex-col items-end gap-1">
       {(
         [
           ["select", "m4 3 7 17 2.5-6.5L20 11z"],
           ["wall", "M3 6h18M3 12h18M3 18h18M8 6v6M16 12v6"],
           ["door", "M4 21V4h10v17M14 12h1M4 21h16"],
-          ["truck", "M2 16h13V8H2zM15 11h4l3 3v2h-7zM6.5 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3M18 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3"],
-          ["nogo", "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18m-6 15 12-12"],
+          ["zone", "M3 4h18v16H3zM3 9h18M9 4v16"],
           ["measure", "M3 9h18v6H3zM7 9v3M11 9v3M15 9v3M19 9v3"],
         ] as const
       ).map(([value, path]) => {
         const help = toolHelp(t, value);
         return (
-          <Tip key={value} side="left" title={help.title} body={help.body} shortcut={help.shortcut}>
-            <Button size="sm" active={tool === value} onClick={() => setTool(value)} className="h-8 w-8 p-0">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+          <Tip
+            key={value}
+            side="left"
+            title={help.title}
+            body={help.body}
+            shortcut={help.shortcut}
+          >
+            <Button
+              size="sm"
+              active={tool === value}
+              onClick={() => setTool(value)}
+              className="h-8 w-8 p-0"
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+              >
                 <path d={path} />
               </svg>
               <span className="sr-only">{help.title}</span>
@@ -315,16 +365,85 @@ function ToolRail() {
           </Tip>
         );
       })}
-      <Tip side="left" title={t("cad.zones")} body={t("tip.zones.body")} shortcut="Z">
-        <Button size="sm" active={showZones} onClick={toggleZones} className="h-8 w-8 p-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      {/*
+        Vilken sorts zon verktyget ritar, framme så länge zonverktyget är
+        valt. Att gå tillbaka till ytan för att byta från truckzon till
+        lageryta mitt i ritandet är ett avbrott i precis det man håller på
+        med — och man ritar zoner just när man tittar på ritningen.
+      */}
+      {tool === "zone" ? (
+        <div className="flex w-[150px] flex-col gap-0.5 border border-divider bg-white/95 p-1 backdrop-blur">
+          {ZONES.map((zone) => (
+            <button
+              key={zone.id}
+              onClick={() => setZoneKind(zone.id)}
+              title={t(zone.hintKey)}
+              className={cx(
+                "flex items-center gap-1.5 px-1.5 py-1 text-left text-[11px] transition-colors",
+                zoneKind === zone.id
+                  ? "bg-accent text-white"
+                  : "hover:bg-paper",
+              )}
+            >
+              <span
+                aria-hidden
+                className="h-2.5 w-2.5 flex-none border"
+                style={{
+                  borderColor: zoneKind === zone.id ? "#ffffff" : zone.stroke,
+                  background:
+                    zoneKind === zone.id ? "#ffffff" : `${zone.tint}26`,
+                }}
+              />
+              <span className="min-w-0 truncate">{t(zone.labelKey)}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      <Tip
+        side="left"
+        title={t("cad.zones")}
+        body={t("tip.zones.body")}
+        shortcut="G"
+      >
+        <Button
+          size="sm"
+          active={showZones}
+          onClick={toggleZones}
+          className="h-8 w-8 p-0"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
           </svg>
         </Button>
       </Tip>
-      <Tip side="left" title={t("cad.arrows")} body={t("tip.arrows.body")} shortcut="P">
-        <Button size="sm" active={showPorts} onClick={togglePorts} className="h-8 w-8 p-0">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <Tip
+        side="left"
+        title={t("cad.arrows")}
+        body={t("tip.arrows.body")}
+        shortcut="P"
+      >
+        <Button
+          size="sm"
+          active={showPorts}
+          onClick={togglePorts}
+          className="h-8 w-8 p-0"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.5"
+          >
             <circle cx="7" cy="12" r="2.5" />
             <circle cx="17" cy="12" r="2.5" />
             <path d="M9.5 12h5" />

@@ -14,6 +14,7 @@ import { claimedBox, freeSpot } from "@/lib/solver";
 /** Vridningarna en maskin kan ha. */
 const ROTATIONS_DEG = [0, 90, 180, 270];
 import { meters } from "@/lib/format";
+import { isZoneId, zoneDef } from "@/lib/zones";
 import { priceConfiguration, type Role } from "@/lib/server/pricing";
 import type { PriceBook } from "@/lib/server/pricebook";
 import type { Configuration, Rotation } from "@/lib/types";
@@ -84,7 +85,9 @@ function drawnSummary(config: Configuration) {
     .filter((d) => d.kind !== "door")
     .map((d) => ({
       id: d.id,
-      kind: d.kind,
+      // Zonsorten, inte bara "zone": assistenten ska kunna svara på vad som
+      // står var i hallen, och en lageryta är inte en truckzon.
+      kind: d.kind === "zone" ? zoneDef(d.zone).id : d.kind,
       name: d.name,
       xM: m(d.x),
       yM: m(d.y),
@@ -124,7 +127,8 @@ export function layoutSummary(
       title: d.title,
     })),
     errorCount: layout.diagnostics.filter((d) => d.severity === "error").length,
-    warningCount: layout.diagnostics.filter((d) => d.severity === "warning").length,
+    warningCount: layout.diagnostics.filter((d) => d.severity === "warning")
+      .length,
   };
   if (!options.full) return brief;
 
@@ -248,11 +252,13 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           },
           x: {
             type: "number",
-            description: "Maskinens mitt i meter längs hallen, från nedre vänstra hörnet.",
+            description:
+              "Maskinens mitt i meter längs hallen, från nedre vänstra hörnet.",
           },
           y: {
             type: "number",
-            description: "Maskinens mitt i meter tvärs hallen, från nedre vänstra hörnet.",
+            description:
+              "Maskinens mitt i meter tvärs hallen, från nedre vänstra hörnet.",
           },
           rotationDeg: {
             type: "integer",
@@ -349,9 +355,8 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
     {
       name: "draw_hall",
       description:
-        "Ritar upp lokalen i arbetskopian: hallens längd och bredd, väggar, portar, " +
-        "truckzoner och " +
-        "no-go-zoner. Väggarna anges som mittlinjer mellan två punkter — verktyget ger " +
+        "Ritar upp lokalen i arbetskopian: hallens längd och bredd, väggar, portar " +
+        "och zoner. Väggarna anges som mittlinjer mellan två punkter — verktyget ger " +
         "dem tjocklek, rätar dem till närmaste axel och stänger hörnen där de möts. " +
         "Portar anges som en punkt med bredd och sätts in i väggen de ligger närmast. " +
         "Allt ritas som markeringar på golvet — streckade linjer som visar var väggen går — " +
@@ -367,18 +372,20 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
         properties: {
           lengthM: {
             type: "number",
-            description: "Hallens längd i meter, 5–300. Utelämna för att behålla nuvarande.",
+            description:
+              "Hallens längd i meter, 5–300. Utelämna för att behålla nuvarande.",
           },
           widthM: {
             type: "number",
-            description: "Hallens bredd i meter, 5–150. Utelämna för att behålla nuvarande.",
+            description:
+              "Hallens bredd i meter, 5–150. Utelämna för att behålla nuvarande.",
           },
           scaleNote: {
             type: "string",
             description:
               "Måttet du skalade efter, ordagrant som det står på ritningen: " +
-              "\"15m längs långsidan\", \"måttkedjan 48 000 mm mot söder\", " +
-              "\"kunden uppgav 21 m mellan gavlarna\". Har ritningen flera mått: " +
+              '"15m längs långsidan", "måttkedjan 48 000 mm mot söder", ' +
+              '"kunden uppgav 21 m mellan gavlarna". Har ritningen flera mått: ' +
               "skriv det du utgick från och att de andra stämde mot det. " +
               "Kunden ska kunna kontrollera din utgångspunkt.",
           },
@@ -390,7 +397,8 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           },
           walls: {
             type: "array",
-            description: "Väggarnas mittlinjer. Namnges automatiskt: Vägg 1, Vägg 2 …",
+            description:
+              "Väggarnas mittlinjer. Namnges automatiskt: Vägg 1, Vägg 2 …",
             items: {
               type: "object",
               properties: {
@@ -422,12 +430,28 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
           areas: {
             type: "array",
             description:
-              "Ytor: truckzon (truck) eller spärrad yta (nogo), som rektanglar. " +
-              "Pelare, maskingropar och upplag ritas som nogo.",
+              "Zoner, som rektanglar. Sorterna är truck (truckzon eller hämtzon), " +
+              "nogo (spärrad yta — pelare, trappor, det som inte får byggas för), " +
+              "storage (lageryta eller upplag), operator (operatörsplats), " +
+              "service (serviceyta), electrical (elcentral eller styrskåp), " +
+              "foundation (fundament eller maskingrop — en maskin får stå där) " +
+              "och other (egen markering, varnar aldrig).",
             items: {
               type: "object",
               properties: {
-                kind: { type: "string", enum: ["truck", "nogo"] },
+                kind: {
+                  type: "string",
+                  enum: [
+                    "truck",
+                    "nogo",
+                    "storage",
+                    "operator",
+                    "service",
+                    "electrical",
+                    "foundation",
+                    "other",
+                  ],
+                },
                 xM: { type: "number" },
                 yM: { type: "number" },
                 lengthM: { type: "number" },
@@ -498,7 +522,9 @@ export function executeTool(
           widthM: machine.footprint.widthMm / 1000,
           capacityPerHour: machine.capacity.packagesPerHour,
           variants: machine.variants?.map((v) => v.id),
-          outPorts: machine.ports.filter((p) => p.role === "out").map((p) => p.id),
+          outPorts: machine.ports
+            .filter((p) => p.role === "out")
+            .map((p) => p.id),
           requires: machine.requires?.length ? machine.requires : undefined,
         }));
     }
@@ -519,7 +545,11 @@ export function executeTool(
        * modell att göra om samma anrop tre gånger — den hade ju skickat ett
        * id, trodde den.
        */
-      if (input.machineId === undefined || input.machineId === null || input.machineId === "") {
+      if (
+        input.machineId === undefined ||
+        input.machineId === null ||
+        input.machineId === ""
+      ) {
         return {
           error:
             "Argumentet machineId saknas i anropet. Du skickade: " +
@@ -533,7 +563,10 @@ export function executeTool(
         return {
           error:
             `Okänd maskin: ${machineId}. Giltiga id: ` +
-            `${ctx.library.machines.slice(0, 12).map((machine) => machine.id).join(", ")}` +
+            `${ctx.library.machines
+              .slice(0, 12)
+              .map((machine) => machine.id)
+              .join(", ")}` +
             `${ctx.library.machines.length > 12 ? " …" : ""}.`,
         };
       }
@@ -563,7 +596,9 @@ export function executeTool(
        */
       if (typeof input.x === "number" && typeof input.y === "number") {
         item.pos = {
-          x: Math.round(Number(input.x) * 1000 - machine.footprint.lengthMm / 2),
+          x: Math.round(
+            Number(input.x) * 1000 - machine.footprint.lengthMm / 2,
+          ),
           y: Math.round(Number(input.y) * 1000 - machine.footprint.widthMm / 2),
         };
       } else {
@@ -584,8 +619,12 @@ export function executeTool(
           instanceId: item.instanceId,
           machineId,
           variantId: item.variantId,
-          xM: item.pos ? (item.pos.x + machine.footprint.lengthMm / 2) / 1000 : null,
-          yM: item.pos ? (item.pos.y + machine.footprint.widthMm / 2) / 1000 : null,
+          xM: item.pos
+            ? (item.pos.x + machine.footprint.lengthMm / 2) / 1000
+            : null,
+          yM: item.pos
+            ? (item.pos.y + machine.footprint.widthMm / 2) / 1000
+            : null,
         },
         layout: layoutSummary(ctx.draft, ctx.library),
       };
@@ -602,11 +641,16 @@ export function executeTool(
         };
       }
       const machine = getMachine(item.machineId, ctx.library);
-      if (!machine) return { error: `Maskinen ${item.machineId} finns inte i biblioteket.` };
+      if (!machine)
+        return {
+          error: `Maskinen ${item.machineId} finns inte i biblioteket.`,
+        };
 
       if (typeof input.x === "number" && typeof input.y === "number") {
         item.pos = {
-          x: Math.round(Number(input.x) * 1000 - machine.footprint.lengthMm / 2),
+          x: Math.round(
+            Number(input.x) * 1000 - machine.footprint.lengthMm / 2,
+          ),
           y: Math.round(Number(input.y) * 1000 - machine.footprint.widthMm / 2),
         };
       }
@@ -637,13 +681,21 @@ export function executeTool(
     case "set_hall": {
       const hall = input as Partial<Configuration["hall"]>;
       if (typeof hall.lengthMm === "number") {
-        ctx.draft.hall.lengthMm = clamp(Math.round(hall.lengthMm), 5000, 300_000);
+        ctx.draft.hall.lengthMm = clamp(
+          Math.round(hall.lengthMm),
+          5000,
+          300_000,
+        );
       }
       if (typeof hall.widthMm === "number") {
         ctx.draft.hall.widthMm = clamp(Math.round(hall.widthMm), 5000, 150_000);
       }
       if (typeof hall.clearHeightMm === "number") {
-        ctx.draft.hall.clearHeightMm = clamp(Math.round(hall.clearHeightMm), 2000, 30_000);
+        ctx.draft.hall.clearHeightMm = clamp(
+          Math.round(hall.clearHeightMm),
+          2000,
+          30_000,
+        );
       }
       return {
         hall: ctx.draft.hall,
@@ -756,20 +808,36 @@ export function executeTool(
       const scaleVerified = !!note;
 
       if (typeof input.lengthM === "number") {
-        ctx.draft.hall.lengthMm = clamp(Math.round(input.lengthM * 1000), 5000, 300_000);
+        ctx.draft.hall.lengthMm = clamp(
+          Math.round(input.lengthM * 1000),
+          5000,
+          300_000,
+        );
       }
       if (typeof input.widthM === "number") {
-        ctx.draft.hall.widthMm = clamp(Math.round(input.widthM * 1000), 5000, 150_000);
+        ctx.draft.hall.widthMm = clamp(
+          Math.round(input.widthM * 1000),
+          5000,
+          150_000,
+        );
       }
       if (typeof input.clearHeightM === "number") {
-        ctx.draft.hall.clearHeightMm = clamp(Math.round(input.clearHeightM * 1000), 2000, 30_000);
+        ctx.draft.hall.clearHeightMm = clamp(
+          Math.round(input.clearHeightM * 1000),
+          2000,
+          30_000,
+        );
       }
 
       const mm = (value: unknown) => Math.round(Number(value) * 1000);
-      const walls = (input.walls as Record<string, unknown>[] | undefined) ?? [];
-      const doors = (input.doors as Record<string, unknown>[] | undefined) ?? [];
-      const areas = (input.areas as Record<string, unknown>[] | undefined) ?? [];
-      const finite = (...values: number[]) => values.every((v) => Number.isFinite(v));
+      const walls =
+        (input.walls as Record<string, unknown>[] | undefined) ?? [];
+      const doors =
+        (input.doors as Record<string, unknown>[] | undefined) ?? [];
+      const areas =
+        (input.areas as Record<string, unknown>[] | undefined) ?? [];
+      const finite = (...values: number[]) =>
+        values.every((v) => Number.isFinite(v));
 
       const plan: Plan = {
         walls: walls
@@ -788,9 +856,17 @@ export function executeTool(
           .filter((d) => finite(d.at.x, d.at.y, d.widthMm)),
         areas: areas
           .map((a) => ({
-            kind: a.kind === "truck" ? ("truck" as const) : ("nogo" as const),
+            // Okänd sort blir en egen zon, inte en spärrad yta: en gissning
+            // som spärrar en yta kostar kunden ett falskt fel i ritningen.
+            kind:
+              typeof a.kind === "string" && isZoneId(a.kind) ? a.kind : "other",
             name: typeof a.name === "string" ? a.name : undefined,
-            box: { x: mm(a.xM), y: mm(a.yM), l: mm(a.lengthM), w: mm(a.widthM) },
+            box: {
+              x: mm(a.xM),
+              y: mm(a.yM),
+              l: mm(a.lengthM),
+              w: mm(a.widthM),
+            },
           }))
           .filter((a) => finite(a.box.x, a.box.y, a.box.l, a.box.w)),
       };
@@ -804,7 +880,11 @@ export function executeTool(
       ctx.scaleVerified = ctx.scaleVerified === true ? true : scaleVerified;
       ctx.hallDrawings = (ctx.hallDrawings ?? 0) + 1;
       if (input.replaceExisting === true) ctx.draft.drawn = [];
-      const { drawn, notes } = planToDrawn(plan, ctx.draft.hall, ctx.draft.drawn);
+      const { drawn, notes } = planToDrawn(
+        plan,
+        ctx.draft.hall,
+        ctx.draft.drawn,
+      );
       ctx.draft.drawn = [...ctx.draft.drawn, ...drawn].slice(0, MAX_DRAWN);
 
       return {
@@ -839,7 +919,9 @@ export function executeTool(
         config: clone(ctx.draft),
       };
       ctx.variants.push(variant);
-      const summary = layoutSummary(variant.config, ctx.library, { full: true });
+      const summary = layoutSummary(variant.config, ctx.library, {
+        full: true,
+      });
 
       /*
        * Ett förslag utan maskiner är sällan ett förslag.
@@ -856,10 +938,10 @@ export function executeTool(
           ctx.triedMachines
             ? "Förslaget innehåller inga maskiner."
             : "Förslaget innehåller inga maskiner, och du har inte anropat add_machine en " +
-              "enda gång i den här turen. Att kundens linje var tom är inte ett skäl att " +
-              "lämna den tom — visar underlaget maskiner ska du bygga linjen och spara ett " +
-              "nytt förslag. Layouten i det här svaret är facit: står det machineCount: 0 " +
-              "finns inga maskiner, oavsett vad du tror att du gjort.",
+                "enda gång i den här turen. Att kundens linje var tom är inte ett skäl att " +
+                "lämna den tom — visar underlaget maskiner ska du bygga linjen och spara ett " +
+                "nytt förslag. Layouten i det här svaret är facit: står det machineCount: 0 " +
+                "finns inga maskiner, oavsett vad du tror att du gjort.",
         );
       }
       if (JSON.stringify(variant.config) === JSON.stringify(ctx.original)) {

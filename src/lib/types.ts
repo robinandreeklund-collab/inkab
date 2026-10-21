@@ -1,3 +1,5 @@
+import type { ZoneId } from "./zones";
+
 /**
  * Domänmodell för INKAB Layout Configurator.
  *
@@ -220,7 +222,11 @@ export type Machine = {
  *   param.<id>.label, param.<id>.help, param.<id>.unit,
  *   param.<id>.choice.<värde>
  */
-export type MachineTranslation = { name?: string; summary?: string; texts?: Record<string, string> };
+export type MachineTranslation = {
+  name?: string;
+  summary?: string;
+  texts?: Record<string, string>;
+};
 
 /* ── Konfiguration ─────────────────────────────────────────────────────── */
 
@@ -270,14 +276,17 @@ export type LineItem = {
  * Objekt kunden ritar i hallen.
  *  wall  — vägg, alltid axelparallell
  *  door  — port i en vägg; truckens väg in och ut
- *  truck — truckgata eller hämtzon. Definieras av kunden, inte av linjen.
- *  nogo  — spärrad yta
+ *  zone  — en yta kunden markerar. Vilken sorts yta står i `zone`, och
+ *          sorterna står i lib/zones: truckzon, spärrad yta, lageryta,
+ *          operatörsplats, serviceyta, elcentral, fundament, egen zon.
  */
-export type DrawnKind = "wall" | "door" | "truck" | "nogo";
+export type DrawnKind = "wall" | "door" | "zone";
 
 export type DrawnObject = {
   id: string;
   kind: DrawnKind;
+  /** Zonsorten, när objektet är en zon. Se lib/zones. */
+  zone?: ZoneId;
   name: string;
   /** Världsbox, mm. */
   x: number;
@@ -392,7 +401,13 @@ export type Dimension = {
 
 export type Box = { x: number; y: number; l: number; w: number };
 
-export type PlacedPort = { id: string; role: "in" | "out"; pos: Vec2; dir: Dir; levelMm: number };
+export type PlacedPort = {
+  id: string;
+  role: "in" | "out";
+  pos: Vec2;
+  dir: Dir;
+  levelMm: number;
+};
 
 export type Placement = {
   instanceId: string;

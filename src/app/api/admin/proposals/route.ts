@@ -53,7 +53,8 @@ export async function GET(request: Request) {
 
   if (id) {
     const proposal = await readAnyProposal(id);
-    if (!proposal) return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
+    if (!proposal)
+      return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
     return NextResponse.json({ proposal });
   }
 
@@ -61,7 +62,13 @@ export async function GET(request: Request) {
   const rows = proposals.map((proposal) => {
     const config = proposal.config as Configuration;
     const layout = computeLayout(config, library);
-    const price = priceConfiguration(config, "admin", library, priceBook, proposal.adjustment);
+    const price = priceConfiguration(
+      config,
+      "admin",
+      library,
+      priceBook,
+      proposal.adjustment,
+    );
     return {
       id: proposal.id,
       name: proposal.name,
@@ -69,14 +76,19 @@ export async function GET(request: Request) {
       status: proposal.status,
       adjustment: proposal.adjustment,
       updatedAt: proposal.updatedAt,
-      ownerEmail: proposal.ownerEmail ?? null,
-      ownerName: proposal.ownerName ?? null,
+      ownerEmail: proposal.ownerEmail ?? proposal.contact?.email ?? null,
+      ownerName: proposal.ownerName ?? proposal.contact?.name ?? null,
+      // Den som skickade in offerten, när en kund gjort det själv. Utan
+      // detta syns en inskickning från en kund utan konto som "utan konto".
+      contact: proposal.contact ?? null,
       projectName: config.projectName,
       customer: config.customer ?? null,
       machineCount: config.line.length,
       totalLengthMm: layout.metrics.totalLengthMm,
-      errorCount: layout.diagnostics.filter((d) => d.severity === "error").length,
-      warningCount: layout.diagnostics.filter((d) => d.severity === "warning").length,
+      errorCount: layout.diagnostics.filter((d) => d.severity === "error")
+        .length,
+      warningCount: layout.diagnostics.filter((d) => d.severity === "warning")
+        .length,
       listSek: price.adjustment?.listSek ?? price.totals?.grandTotal ?? 0,
       finalSek: price.totals?.grandTotal ?? 0,
       logCount: Array.isArray(proposal.log) ? proposal.log.length : 0,
@@ -100,7 +112,8 @@ export async function PATCH(request: Request) {
     // Konfigurationen skrivs om via samma väg som allt annat: validerad, med
     // referensen räknad ur innehållet.
     const existing = await readAnyProposal(id);
-    if (!existing) return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
+    if (!existing)
+      return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
     await saveProposal({
       id,
       userId: existing.userId,
@@ -112,7 +125,8 @@ export async function PATCH(request: Request) {
   }
 
   const updated = await updateProposalMeta(id, patch);
-  if (!updated) return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
+  if (!updated)
+    return NextResponse.json({ error: "Hittades inte." }, { status: 404 });
 
   const { library, priceBook } = await activeContext();
   const price = priceConfiguration(

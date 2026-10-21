@@ -2,9 +2,19 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { BUILTIN_MACHINES } from "@/lib/library";
-import { libraryDocumentSchema, type LibraryDocument } from "@/lib/machineSchema";
-import { normaliseAdjustment, type QuoteAdjustment } from "@/lib/quoteAdjustment";
-import { isDocumentKind, isOrderState, type MachineDocument } from "@/lib/documents";
+import {
+  libraryDocumentSchema,
+  type LibraryDocument,
+} from "@/lib/machineSchema";
+import {
+  normaliseAdjustment,
+  type QuoteAdjustment,
+} from "@/lib/quoteAdjustment";
+import {
+  isDocumentKind,
+  isOrderState,
+  type MachineDocument,
+} from "@/lib/documents";
 import { BUILTIN_PRICE_BOOK } from "./pricebook";
 
 /**
@@ -70,7 +80,9 @@ async function readSeed(): Promise<LibraryDocument> {
     }
     console.warn(
       "data/library.json är ogiltig och ignoreras:",
-      parsed.error.issues.slice(0, 3).map((i) => `${i.path.join(".")}: ${i.message}`),
+      parsed.error.issues
+        .slice(0, 3)
+        .map((i) => `${i.path.join(".")}: ${i.message}`),
     );
   } catch {
     // Filen saknas — helt normalt innan första exporten.
@@ -135,7 +147,11 @@ export async function readDocument(): Promise<LibraryDocument> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
-      const result = await pool.query<{ doc: unknown; updated_at: Date; updated_by: string | null }>(
+      const result = await pool.query<{
+        doc: unknown;
+        updated_at: Date;
+        updated_by: string | null;
+      }>(
         "SELECT doc, updated_at, updated_by FROM library_document WHERE id = 'current'",
       );
       degradedReason = null;
@@ -148,12 +164,15 @@ export async function readDocument(): Promise<LibraryDocument> {
             updatedBy: result.rows[0].updated_by ?? undefined,
           };
         }
-        console.warn("Dokumentet i databasen är ogiltigt; faller tillbaka på utgångsläget.");
+        console.warn(
+          "Dokumentet i databasen är ogiltigt; faller tillbaka på utgångsläget.",
+        );
       }
       return readSeed();
     } catch (error) {
       // Databasen är otillgänglig — verktyget ska fortsätta fungera.
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -185,7 +204,8 @@ export async function writeDocument(
       memoryDoc = stamped;
       return { persisted: true, reason: null };
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
       memoryDoc = stamped;
       return { persisted: false, reason: degradedReason };
@@ -197,7 +217,9 @@ export async function writeDocument(
 }
 
 /** Återställer till det versionshanterade utgångsläget. */
-export async function resetDocument(updatedBy: string): Promise<LibraryDocument> {
+export async function resetDocument(
+  updatedBy: string,
+): Promise<LibraryDocument> {
   const seed = await readSeed();
   const fresh: LibraryDocument = JSON.parse(JSON.stringify(seed));
   await writeDocument(fresh, updatedBy);
@@ -218,7 +240,6 @@ export async function storeStatus(): Promise<StoreStatus> {
   };
 }
 
-
 /* ── Användare ─────────────────────────────────────────────────────────── */
 
 type UserRow = {
@@ -238,25 +259,32 @@ function fromRow(row: UserRow): StoredUser {
     email: row.email,
     name: row.name,
     company: row.company,
-    role: (row.role === "admin" || row.role === "sales" ? row.role : "customer") as
-      StoredUser["role"],
+    role: (row.role === "admin" || row.role === "sales"
+      ? row.role
+      : "customer") as StoredUser["role"],
     passwordHash: row.password_hash,
     salt: row.salt,
     createdAt: row.created_at.toISOString(),
   };
 }
 
-export async function findUserByEmail(email: string): Promise<StoredUser | null> {
+export async function findUserByEmail(
+  email: string,
+): Promise<StoredUser | null> {
   const key = email.trim().toLowerCase();
 
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
-      const result = await pool.query<UserRow>("SELECT * FROM app_user WHERE email = $1", [key]);
+      const result = await pool.query<UserRow>(
+        "SELECT * FROM app_user WHERE email = $1",
+        [key],
+      );
       degradedReason = null;
       return result.rows[0] ? fromRow(result.rows[0]) : null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -268,11 +296,15 @@ export async function findUserById(id: string): Promise<StoredUser | null> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
-      const result = await pool.query<UserRow>("SELECT * FROM app_user WHERE id = $1", [id]);
+      const result = await pool.query<UserRow>(
+        "SELECT * FROM app_user WHERE id = $1",
+        [id],
+      );
       degradedReason = null;
       return result.rows[0] ? fromRow(result.rows[0]) : null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -290,20 +322,30 @@ export async function insertUser(user: StoredUser): Promise<void> {
       await pool.query(
         `INSERT INTO app_user (id, email, name, company, role, password_hash, salt)
          VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [user.id, key, user.name, user.company, user.role, user.passwordHash, user.salt],
+        [
+          user.id,
+          key,
+          user.name,
+          user.company,
+          user.role,
+          user.passwordHash,
+          user.salt,
+        ],
       );
       degradedReason = null;
       return;
     } catch (error) {
       // Ett unikhetsfel ska bubbla upp; bara anslutningsfel faller tillbaka.
       const message = error instanceof Error ? error.message : "";
-      if (message.includes("duplicate key")) throw new Error("E-postadressen är redan registrerad.");
+      if (message.includes("duplicate key"))
+        throw new Error("E-postadressen är redan registrerad.");
       degradedReason = message || "Okänt databasfel.";
       poolPromise = null;
     }
   }
 
-  if (memoryUsers.has(key)) throw new Error("E-postadressen är redan registrerad.");
+  if (memoryUsers.has(key))
+    throw new Error("E-postadressen är redan registrerad.");
   memoryUsers.set(key, { ...user, email: key });
 }
 
@@ -311,26 +353,38 @@ export async function listUsers(): Promise<StoredUser[]> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
-      const result = await pool.query<UserRow>("SELECT * FROM app_user ORDER BY created_at");
+      const result = await pool.query<UserRow>(
+        "SELECT * FROM app_user ORDER BY created_at",
+      );
       degradedReason = null;
       return result.rows.map(fromRow);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
-  return [...memoryUsers.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return [...memoryUsers.values()].sort((a, b) =>
+    a.createdAt.localeCompare(b.createdAt),
+  );
 }
 
-export async function updateUserRole(id: string, role: StoredUser["role"]): Promise<void> {
+export async function updateUserRole(
+  id: string,
+  role: StoredUser["role"],
+): Promise<void> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
-      await pool.query("UPDATE app_user SET role = $2 WHERE id = $1", [id, role]);
+      await pool.query("UPDATE app_user SET role = $2 WHERE id = $1", [
+        id,
+        role,
+      ]);
       degradedReason = null;
       return;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -347,11 +401,13 @@ export async function deleteUser(id: string): Promise<void> {
       degradedReason = null;
       return;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
-  for (const [key, user] of memoryUsers) if (user.id === id) memoryUsers.delete(key);
+  for (const [key, user] of memoryUsers)
+    if (user.id === id) memoryUsers.delete(key);
 }
 
 export async function countUsers(): Promise<number> {
@@ -463,7 +519,8 @@ export async function putModel(model: {
       degradedReason = null;
       return { persisted: true, reason: null };
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
       // Faller igenom till minnet: modellen ska gå att se nu även om den
       // inte överlever en omstart. Anroparen får veta att den inte sparades.
@@ -478,7 +535,9 @@ export async function putModel(model: {
   return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
 }
 
-export async function readModel(id: string): Promise<{ meta: StoredModel; data: Buffer } | null> {
+export async function readModel(
+  id: string,
+): Promise<{ meta: StoredModel; data: Buffer } | null> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
@@ -493,7 +552,8 @@ export async function readModel(id: string): Promise<{ meta: StoredModel; data: 
         return { meta: modelMeta(result.rows[0]), data: result.rows[0].data };
       }
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -519,7 +579,8 @@ export async function listModels(machineId?: string): Promise<StoredModel[]> {
       degradedReason = null;
       return result.rows.map(modelMeta);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -538,13 +599,13 @@ export async function deleteModel(id: string): Promise<void> {
       await pool.query("DELETE FROM machine_model WHERE id = $1", [id]);
       degradedReason = null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
   memoryModels.delete(id);
 }
-
 
 /* ── Sparade förslag ───────────────────────────────────────────────────── */
 
@@ -569,6 +630,24 @@ export const PROPOSAL_STATUS_LABEL: Record<ProposalStatus, string> = {
   lost: "Förlorad",
 };
 
+/**
+ * Den som skickade in offerten.
+ *
+ * En kund behöver inget konto för att bygga en anläggning, och ska inte
+ * behöva skaffa ett för att höra av sig. Kontaktuppgifterna följer därför
+ * med inskickningen i stället för att hämtas ur ett användarkonto — och är
+ * det enda vi vet om avsändaren när det inte finns något konto.
+ */
+export type ProposalContact = {
+  name: string;
+  email: string;
+  company?: string;
+  phone?: string;
+  message?: string;
+  /** När offerten skickades in. */
+  submittedAt: string;
+};
+
 export type StoredProposal = {
   id: string;
   userId: string;
@@ -586,6 +665,8 @@ export type StoredProposal = {
   /** Ägarens namn och e-post, ifyllt i adminlistan. */
   ownerEmail?: string;
   ownerName?: string;
+  /** Satt när kunden skickat in offerten. */
+  contact?: ProposalContact;
 };
 
 const memoryProposals = new Map<string, StoredProposal>();
@@ -605,12 +686,21 @@ async function ensureProposalTable(pool: PgPool) {
     )
   `);
   // Tabellen kan vara skapad före de senare kolumnerna fanns.
-  await pool.query("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS log jsonb NOT NULL DEFAULT '[]'::jsonb");
-  await pool.query("ALTER TABLE proposal ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft'");
+  await pool.query(
+    "ALTER TABLE proposal ADD COLUMN IF NOT EXISTS log jsonb NOT NULL DEFAULT '[]'::jsonb",
+  );
+  await pool.query(
+    "ALTER TABLE proposal ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'draft'",
+  );
+  await pool.query(
+    "ALTER TABLE proposal ADD COLUMN IF NOT EXISTS contact jsonb",
+  );
   await pool.query(
     "ALTER TABLE proposal ADD COLUMN IF NOT EXISTS adjustment jsonb NOT NULL DEFAULT '{}'::jsonb",
   );
-  await pool.query("CREATE INDEX IF NOT EXISTS proposal_user ON proposal (user_id)");
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS proposal_user ON proposal (user_id)",
+  );
 }
 
 type ProposalRow = {
@@ -622,6 +712,7 @@ type ProposalRow = {
   log: unknown[] | null;
   status: ProposalStatus | null;
   adjustment: QuoteAdjustment | null;
+  contact: ProposalContact | null;
   updated_at: Date;
   owner_email?: string;
   owner_name?: string;
@@ -637,6 +728,7 @@ const fromProposalRow = (row: ProposalRow): StoredProposal => ({
   status: row.status ?? "draft",
   adjustment: normaliseAdjustment(row.adjustment),
   updatedAt: row.updated_at.toISOString(),
+  ...(row.contact ? { contact: row.contact } : {}),
   ...(row.owner_email ? { ownerEmail: row.owner_email } : {}),
   ...(row.owner_name ? { ownerName: row.owner_name } : {}),
 });
@@ -655,6 +747,9 @@ export async function saveProposal(proposal: {
     status: memoryProposals.get(proposal.id)?.status ?? "draft",
     adjustment: memoryProposals.get(proposal.id)?.adjustment ?? {},
     updatedAt: new Date().toISOString(),
+    ...(memoryProposals.get(proposal.id)?.contact
+      ? { contact: memoryProposals.get(proposal.id)!.contact }
+      : {}),
   };
 
   if (postgresConfigured()) {
@@ -679,7 +774,8 @@ export async function saveProposal(proposal: {
       degradedReason = null;
       return { persisted: true, reason: null };
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
       memoryProposals.set(stored.id, stored);
       return { persisted: false, reason: degradedReason };
@@ -687,6 +783,68 @@ export async function saveProposal(proposal: {
   }
 
   memoryProposals.set(stored.id, stored);
+  return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
+}
+
+/**
+ * Kunden skickar in offerten.
+ *
+ * Samma rad som ett sparat förslag, men med kontaktuppgifterna och läget
+ * "skickad" — så att den dyker upp i säljarens lista utan en egen inkorg
+ * vid sidan av. En kund utan konto får ett användar-id som bara är ett
+ * fack för inskickningen; ingen kan logga in på det.
+ *
+ * Skickar kunden in två gånger skrivs raden över i stället för att lägga en
+ * kopia bredvid: det är samma underlag, och säljaren ska se det senaste.
+ */
+export async function submitProposal(proposal: {
+  id: string;
+  userId: string;
+  name: string;
+  reference: string;
+  config: unknown;
+  log?: unknown[];
+  contact: ProposalContact;
+}): Promise<{ persisted: boolean; reason: string | null }> {
+  const stored: StoredProposal = {
+    ...proposal,
+    log: proposal.log ?? [],
+    status: "sent",
+    adjustment: memoryProposals.get(proposal.id)?.adjustment ?? {},
+    updatedAt: new Date().toISOString(),
+  };
+  memoryProposals.set(stored.id, stored);
+
+  if (postgresConfigured()) {
+    try {
+      const pool = await getPool();
+      await ensureProposalTable(pool);
+      await pool.query(
+        `INSERT INTO proposal (id, user_id, name, reference, config, log, status, contact, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, 'sent', $7, now())
+         ON CONFLICT (id) DO UPDATE
+           SET name = $3, reference = $4, config = $5, log = $6,
+               status = 'sent', contact = $7, updated_at = now()`,
+        [
+          stored.id,
+          stored.userId,
+          stored.name,
+          stored.reference,
+          JSON.stringify(stored.config),
+          JSON.stringify(stored.log),
+          JSON.stringify(stored.contact),
+        ],
+      );
+      degradedReason = null;
+      return { persisted: true, reason: null };
+    } catch (error) {
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
+      poolPromise = null;
+      return { persisted: false, reason: degradedReason };
+    }
+  }
+
   return { persisted: false, reason: "Ingen DATABASE_URL är satt." };
 }
 
@@ -702,7 +860,8 @@ export async function listProposals(userId: string): Promise<StoredProposal[]> {
       degradedReason = null;
       return result.rows.map(fromProposalRow);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -713,7 +872,10 @@ export async function listProposals(userId: string): Promise<StoredProposal[]> {
 }
 
 /** Ett förslag, men bara till den som äger det. */
-export async function readProposal(id: string, userId: string): Promise<StoredProposal | null> {
+export async function readProposal(
+  id: string,
+  userId: string,
+): Promise<StoredProposal | null> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
@@ -725,7 +887,8 @@ export async function readProposal(id: string, userId: string): Promise<StoredPr
       degradedReason = null;
       return result.rows[0] ? fromProposalRow(result.rows[0]) : null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -756,7 +919,8 @@ export async function listAllProposals(): Promise<StoredProposal[]> {
       degradedReason = null;
       return result.rows.map(fromProposalRow);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -771,7 +935,9 @@ export async function listAllProposals(): Promise<StoredProposal[]> {
 }
 
 /** En offert utan ägarkontroll. Anropas bara bakom en admin-spärr. */
-export async function readAnyProposal(id: string): Promise<StoredProposal | null> {
+export async function readAnyProposal(
+  id: string,
+): Promise<StoredProposal | null> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
@@ -785,7 +951,8 @@ export async function readAnyProposal(id: string): Promise<StoredProposal | null
       degradedReason = null;
       if (result.rows[0]) return fromProposalRow(result.rows[0]);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -799,7 +966,11 @@ export async function readAnyProposal(id: string): Promise<StoredProposal | null
  */
 export async function updateProposalMeta(
   id: string,
-  patch: { name?: string; status?: ProposalStatus; adjustment?: QuoteAdjustment },
+  patch: {
+    name?: string;
+    status?: ProposalStatus;
+    adjustment?: QuoteAdjustment;
+  },
 ): Promise<StoredProposal | null> {
   const current = await readAnyProposal(id);
   if (!current) return null;
@@ -808,7 +979,9 @@ export async function updateProposalMeta(
     ...current,
     name: patch.name?.trim() || current.name,
     status: patch.status ?? current.status,
-    adjustment: patch.adjustment ? normaliseAdjustment(patch.adjustment) : current.adjustment,
+    adjustment: patch.adjustment
+      ? normaliseAdjustment(patch.adjustment)
+      : current.adjustment,
     updatedAt: new Date().toISOString(),
   };
   memoryProposals.set(id, next);
@@ -825,7 +998,8 @@ export async function updateProposalMeta(
       );
       degradedReason = null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -839,25 +1013,33 @@ export async function proposalAdjustment(id: string): Promise<{
   userId: string;
 } | null> {
   const proposal = await readAnyProposal(id);
-  return proposal ? { adjustment: proposal.adjustment, userId: proposal.userId } : null;
+  return proposal
+    ? { adjustment: proposal.adjustment, userId: proposal.userId }
+    : null;
 }
 
-export async function deleteProposal(id: string, userId: string): Promise<void> {
+export async function deleteProposal(
+  id: string,
+  userId: string,
+): Promise<void> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
       await ensureProposalTable(pool);
-      await pool.query("DELETE FROM proposal WHERE id = $1 AND user_id = $2", [id, userId]);
+      await pool.query("DELETE FROM proposal WHERE id = $1 AND user_id = $2", [
+        id,
+        userId,
+      ]);
       degradedReason = null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
   const found = memoryProposals.get(id);
   if (found && found.userId === userId) memoryProposals.delete(id);
 }
-
 
 /* ── Förslag som byggs i bakgrunden ────────────────────────────────────── */
 
@@ -888,9 +1070,20 @@ export type DraftJobDetail = {
   provider?: string;
   rounds?: number;
   stopReason?: string;
-  steps?: { name: string; ok: boolean; error?: string; ms?: number; input?: string }[];
+  steps?: {
+    name: string;
+    ok: boolean;
+    error?: string;
+    ms?: number;
+    input?: string;
+  }[];
   /** Tiden per runda: modellens egen och verktygens. */
-  timeline?: { round: number; modelMs: number; toolMs: number; tools: number }[];
+  timeline?: {
+    round: number;
+    modelMs: number;
+    toolMs: number;
+    tools: number;
+  }[];
   totalMs?: number;
   /** När det nuvarande steget började. Utan det syns bara jobbets totaltid. */
   stepSince?: string;
@@ -915,7 +1108,12 @@ export type StoredDraftJob = {
   step: string;
   /** Assistentens sammanfattning när jobbet är klart. */
   summary: string;
-  variants: { id: string; name: string; description: string; config: unknown }[];
+  variants: {
+    id: string;
+    name: string;
+    description: string;
+    config: unknown;
+  }[];
   detail: DraftJobDetail;
   error: string | null;
   createdAt: string;
@@ -948,8 +1146,12 @@ async function ensureDraftJobTable(pool: PgPool) {
     )
   `);
   // Tabellen kan vara skapad före detail-kolumnen fanns.
-  await pool.query("ALTER TABLE draft_job ADD COLUMN IF NOT EXISTS detail jsonb NOT NULL DEFAULT '{}'::jsonb");
-  await pool.query("CREATE INDEX IF NOT EXISTS draft_job_user ON draft_job (user_id)");
+  await pool.query(
+    "ALTER TABLE draft_job ADD COLUMN IF NOT EXISTS detail jsonb NOT NULL DEFAULT '{}'::jsonb",
+  );
+  await pool.query(
+    "CREATE INDEX IF NOT EXISTS draft_job_user ON draft_job (user_id)",
+  );
 }
 
 type DraftJobRow = {
@@ -1011,7 +1213,8 @@ export async function writeDraftJob(job: StoredDraftJob): Promise<void> {
     );
     degradedReason = null;
   } catch (error) {
-    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    degradedReason =
+      error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
   }
 }
@@ -1030,11 +1233,15 @@ export async function readDraftJob(
     try {
       const pool = await getPool();
       await ensureDraftJobTable(pool);
-      const result = await pool.query<DraftJobRow>("SELECT * FROM draft_job WHERE id = $1", [id]);
+      const result = await pool.query<DraftJobRow>(
+        "SELECT * FROM draft_job WHERE id = $1",
+        [id],
+      );
       degradedReason = null;
       found = result.rows[0] ? fromDraftJobRow(result.rows[0]) : null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1076,7 +1283,8 @@ export async function listDraftJobs(userId: string): Promise<StoredDraftJob[]> {
       degradedReason = null;
       return result.rows.map(fromDraftJobRow);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1103,12 +1311,15 @@ export async function deleteAnyProposal(id: string): Promise<void> {
     await pool.query("DELETE FROM proposal WHERE id = $1", [id]);
     degradedReason = null;
   } catch (error) {
-    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    degradedReason =
+      error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
   }
 }
 
-export async function listRecentDraftJobs(limit = 20): Promise<StoredDraftJob[]> {
+export async function listRecentDraftJobs(
+  limit = 20,
+): Promise<StoredDraftJob[]> {
   const rows: StoredDraftJob[] = [];
 
   if (postgresConfigured()) {
@@ -1122,7 +1333,8 @@ export async function listRecentDraftJobs(limit = 20): Promise<StoredDraftJob[]>
       degradedReason = null;
       rows.push(...result.rows.map(fromDraftJobRow));
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1132,10 +1344,15 @@ export async function listRecentDraftJobs(limit = 20): Promise<StoredDraftJob[]>
     if (!rows.some((row) => row.id === job.id)) rows.push(job);
   }
 
-  return rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt)).slice(0, limit);
+  return rows
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    .slice(0, limit);
 }
 
-export async function deleteDraftJob(id: string, userId: string | null): Promise<void> {
+export async function deleteDraftJob(
+  id: string,
+  userId: string | null,
+): Promise<void> {
   const found = await readDraftJob(id, userId);
   if (!found) return;
   memoryJobs.delete(id);
@@ -1146,11 +1363,11 @@ export async function deleteDraftJob(id: string, userId: string | null): Promise
     await pool.query("DELETE FROM draft_job WHERE id = $1", [id]);
     degradedReason = null;
   } catch (error) {
-    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    degradedReason =
+      error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
   }
 }
-
 
 /* ── Driftinställningar ────────────────────────────────────────────────── */
 
@@ -1184,10 +1401,12 @@ export async function readSetting<T>(id: string, fallback: T): Promise<T> {
         [id],
       );
       degradedReason = null;
-      if (result.rows[0]) return { ...fallback, ...(result.rows[0].value as object) } as T;
+      if (result.rows[0])
+        return { ...fallback, ...(result.rows[0].value as object) } as T;
       return fallback;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1216,12 +1435,12 @@ export async function writeSetting<T>(
     degradedReason = null;
     return { persisted: true, reason: null };
   } catch (error) {
-    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    degradedReason =
+      error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
     return { persisted: false, reason: degradedReason };
   }
 }
-
 
 /* ── Maskinernas underlag ──────────────────────────────────────────────── */
 
@@ -1234,7 +1453,10 @@ export async function writeSetting<T>(
  * ska till legotillverkaren, det som monteras efter, det som beställs.
  */
 
-const memoryDocuments = new Map<string, { meta: MachineDocument; data: Buffer }>();
+const memoryDocuments = new Map<
+  string,
+  { meta: MachineDocument; data: Buffer }
+>();
 /** Samma tanke som för modellerna: minnet är en reserv, inte ett arkiv. */
 const MEMORY_DOCUMENT_BUDGET = 120_000_000;
 
@@ -1306,7 +1528,11 @@ const documentMeta = (row: DocumentRow): MachineDocument => ({
 export async function putDocument(document: {
   meta: Omit<MachineDocument, "bytes" | "createdAt">;
   data: Uint8Array;
-}): Promise<{ persisted: boolean; reason: string | null; meta: MachineDocument }> {
+}): Promise<{
+  persisted: boolean;
+  reason: string | null;
+  meta: MachineDocument;
+}> {
   const data = Buffer.from(document.data);
   const meta: MachineDocument = {
     ...document.meta,
@@ -1344,7 +1570,8 @@ export async function putDocument(document: {
       degradedReason = null;
       return { persisted: true, reason: null, meta };
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1358,7 +1585,9 @@ export async function putDocument(document: {
   };
 }
 
-export async function listDocuments(machineId?: string): Promise<MachineDocument[]> {
+export async function listDocuments(
+  machineId?: string,
+): Promise<MachineDocument[]> {
   if (postgresConfigured()) {
     try {
       const pool = await getPool();
@@ -1378,7 +1607,8 @@ export async function listDocuments(machineId?: string): Promise<MachineDocument
       degradedReason = null;
       return result.rows.map(documentMeta);
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1406,7 +1636,8 @@ export async function readDocumentFile(
       const row = result.rows[0];
       if (row) return { meta: documentMeta(row), data: row.data };
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1416,7 +1647,12 @@ export async function readDocumentFile(
 /** Ändrar det som beskriver filen. Innehållet byts genom att ladda upp nytt. */
 export async function updateDocumentMeta(
   id: string,
-  patch: Partial<Pick<MachineDocument, "kind" | "title" | "revision" | "note" | "orderState" | "supplier">>,
+  patch: Partial<
+    Pick<
+      MachineDocument,
+      "kind" | "title" | "revision" | "note" | "orderState" | "supplier"
+    >
+  >,
 ): Promise<MachineDocument | null> {
   const current = await readDocumentFile(id);
   if (!current) return null;
@@ -1433,11 +1669,20 @@ export async function updateDocumentMeta(
         `UPDATE machine_document
             SET kind = $2, title = $3, revision = $4, note = $5, order_state = $6, supplier = $7
           WHERE id = $1`,
-        [id, meta.kind, meta.title, meta.revision, meta.note, meta.orderState, meta.supplier],
+        [
+          id,
+          meta.kind,
+          meta.title,
+          meta.revision,
+          meta.note,
+          meta.orderState,
+          meta.supplier,
+        ],
       );
       degradedReason = null;
     } catch (error) {
-      degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+      degradedReason =
+        error instanceof Error ? error.message : "Okänt databasfel.";
       poolPromise = null;
     }
   }
@@ -1454,7 +1699,8 @@ export async function deleteDocument(id: string): Promise<void> {
     await pool.query("DELETE FROM machine_document WHERE id = $1", [id]);
     degradedReason = null;
   } catch (error) {
-    degradedReason = error instanceof Error ? error.message : "Okänt databasfel.";
+    degradedReason =
+      error instanceof Error ? error.message : "Okänt databasfel.";
     poolPromise = null;
   }
 }

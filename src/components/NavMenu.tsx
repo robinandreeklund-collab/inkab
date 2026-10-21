@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { AREA_GROUPS, AREA_ORDER, firstOpenArea, isAreaDone, type Area } from "@/lib/areas";
+import {
+  AREA_GROUPS,
+  AREA_ORDER,
+  firstOpenArea,
+  isAreaDone,
+  type Area,
+} from "@/lib/areas";
 import { meters } from "@/lib/format";
 import { useT } from "@/lib/i18n";
 import { cx, Tip } from "./ui";
@@ -17,27 +23,39 @@ import { cx, Tip } from "./ui";
  */
 export function NavMenu() {
   const t = useT();
-  const { config, layout, area, setArea, confirmedAreas, selectedId } = useConfigStore();
+  const { config, layout, area, setArea, confirmedAreas, selectedId } =
+    useConfigStore();
   const confirmed = new Set(confirmedAreas);
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
 
   const next = firstOpenArea(config, layout, confirmed);
-  const doneCount = AREA_ORDER.filter((a) => isAreaDone(a, config, layout, confirmed)).length;
-  const count = (kind: string) => config.drawn.filter((d) => d.kind === kind).length;
-  const errors = layout.diagnostics.filter((d) => d.severity === "error").length;
-  const warnings = layout.diagnostics.filter((d) => d.severity === "warning").length;
+  const doneCount = AREA_ORDER.filter((a) =>
+    isAreaDone(a, config, layout, confirmed),
+  ).length;
+  const count = (kind: string) =>
+    config.drawn.filter((d) => d.kind === kind).length;
+  const errors = layout.diagnostics.filter(
+    (d) => d.severity === "error",
+  ).length;
+  const warnings = layout.diagnostics.filter(
+    (d) => d.severity === "warning",
+  ).length;
 
   const status: Record<Area, string> = {
     hall: `${meters(config.hall.lengthMm)} × ${meters(config.hall.widthMm)} m`,
-    walls: t("nav.status.walls", { doors: count("door"), walls: count("wall") }),
-    zones: t("nav.status.zones", { count: count("nogo") }),
+    walls: t("nav.status.walls", {
+      doors: count("door"),
+      walls: count("wall"),
+    }),
+    zones: t("nav.status.zones", { count: count("zone") }),
     machines: t("nav.status.machines", { count: config.line.length }),
     line:
       errors + warnings === 0
         ? t("nav.status.lineOk")
         : t("nav.status.lineIssues", { errors, warnings }),
-    points: t("nav.status.points", { count: 1 + (config.flow.markers?.length ?? 0) }),
-    truck: t("nav.status.truck", { count: count("truck") }),
+    points: t("nav.status.points", {
+      count: 1 + (config.flow.markers?.length ?? 0),
+    }),
     product: `${meters(config.product.packageWidthMinMm)}–${meters(config.product.packageWidthMaxMm)} m · ${config.product.targetPackagesPerHour} pkt/h`,
     quote: t("nav.status.quote"),
   };
@@ -46,7 +64,9 @@ export function NavMenu() {
     <nav className="scroll-thin flex h-full w-[232px] flex-none flex-col overflow-y-auto border-r border-divider bg-white">
       <div className="border-b border-divider px-3 py-3">
         <div className="kicker">{t("nav.title")}</div>
-        <div className="text-sm">{t("guide.progress", { done: doneCount, total: AREA_ORDER.length })}</div>
+        <div className="text-sm">
+          {t("guide.progress", { done: doneCount, total: AREA_ORDER.length })}
+        </div>
         <div className="mt-2 h-1 bg-paper">
           <div
             className="h-1 bg-accent transition-all"
@@ -57,16 +77,29 @@ export function NavMenu() {
 
       {AREA_GROUPS.map((group) => {
         const closed = collapsed[group.id];
-        const groupDone = group.areas.filter((a) => isAreaDone(a, config, layout, confirmed)).length;
+        const groupDone = group.areas.filter((a) =>
+          isAreaDone(a, config, layout, confirmed),
+        ).length;
         return (
           <div key={group.id} className="border-b border-divider">
             <button
-              onClick={() => setCollapsed((c) => ({ ...c, [group.id]: !closed }))}
+              onClick={() =>
+                setCollapsed((c) => ({ ...c, [group.id]: !closed }))
+              }
               aria-expanded={!closed}
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-paper"
             >
-              <span className={cx("text-[10px] text-muted transition-transform", closed ? "-rotate-90" : "")}>▾</span>
-              <span className="flex-1 text-[13px] font-medium">{t(`group.${group.id}`)}</span>
+              <span
+                className={cx(
+                  "text-[10px] text-muted transition-transform",
+                  closed ? "-rotate-90" : "",
+                )}
+              >
+                ▾
+              </span>
+              <span className="flex-1 text-[13px] font-medium">
+                {t(`group.${group.id}`)}
+              </span>
               <span className="kicker">
                 {groupDone}/{group.areas.length}
               </span>
@@ -79,13 +112,20 @@ export function NavMenu() {
                   const isNext = id === next;
                   return (
                     <li key={id}>
-                      <Tip block side="right" title={t(`area.${id}.title`)} body={t(`area.${id}.why`)}>
+                      <Tip
+                        block
+                        side="right"
+                        title={t(`area.${id}.title`)}
+                        body={t(`area.${id}.why`)}
+                      >
                         <button
                           onClick={() => setArea(id)}
                           aria-current={active ? "page" : undefined}
                           className={cx(
                             "flex w-full items-start gap-2 border-l-2 py-1.5 pl-4 pr-3 text-left",
-                            active ? "border-accent bg-accent/10" : "border-transparent hover:bg-paper",
+                            active
+                              ? "border-accent bg-accent/10"
+                              : "border-transparent hover:bg-paper",
                           )}
                         >
                           <span
@@ -102,7 +142,12 @@ export function NavMenu() {
                           </span>
                           <span className="min-w-0 flex-1">
                             <span className="flex items-center gap-1.5">
-                              <span className={cx("truncate text-[13px]", active && "text-accent")}>
+                              <span
+                                className={cx(
+                                  "truncate text-[13px]",
+                                  active && "text-accent",
+                                )}
+                              >
                                 {t(`area.${id}.title`)}
                               </span>
                               {isNext ? (
@@ -111,7 +156,9 @@ export function NavMenu() {
                                 </span>
                               ) : null}
                             </span>
-                            <span className="num block truncate text-[11px] text-muted">{status[id]}</span>
+                            <span className="num block truncate text-[11px] text-muted">
+                              {status[id]}
+                            </span>
                           </span>
                         </button>
                       </Tip>

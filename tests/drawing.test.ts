@@ -17,7 +17,12 @@ const HALL = { lengthMm: 46000, widthMm: 22500 };
 describe("wallFromLine", () => {
   it("ger en vågrät vägg tjocklek kring sin mittlinje", () => {
     const wall = wallFromLine({ x: 0, y: 5000 }, { x: 20000, y: 5000 })!;
-    expect(wall.box).toEqual({ x: 0, y: 5000 - WALL_THICKNESS_MM / 2, l: 20000, w: WALL_THICKNESS_MM });
+    expect(wall.box).toEqual({
+      x: 0,
+      y: 5000 - WALL_THICKNESS_MM / 2,
+      l: 20000,
+      w: WALL_THICKNESS_MM,
+    });
     expect(wall.skewMm).toBe(0);
   });
 
@@ -89,7 +94,16 @@ describe("planToDrawn", () => {
 
   it("namnger i samma serie som det som redan är ritat", () => {
     const existing: DrawnObject[] = [
-      { id: "w1", kind: "wall", name: "Vägg 1", x: 0, y: 0, l: 1000, w: 300, h: 3000 },
+      {
+        id: "w1",
+        kind: "wall",
+        name: "Vägg 1",
+        x: 0,
+        y: 0,
+        l: 1000,
+        w: 300,
+        h: 3000,
+      },
     ];
     const { drawn } = planToDrawn(
       { walls: [{ from: { x: 0, y: 9000 }, to: { x: 9000, y: 9000 } }] },
@@ -121,13 +135,18 @@ describe("planToDrawn", () => {
     const { drawn } = planToDrawn(
       {
         areas: [
-          { kind: "nogo", name: "Pelare", box: { x: 12000, y: 6000, l: 800, w: 800 } },
+          {
+            kind: "nogo",
+            name: "Pelare",
+            box: { x: 12000, y: 6000, l: 800, w: 800 },
+          },
           { kind: "truck", box: { x: 0, y: 18000, l: 40000, w: 4000 } },
         ],
       },
       HALL,
     );
-    expect(drawn.map((d) => d.kind)).toEqual(["nogo", "truck"]);
+    expect(drawn.map((d) => d.kind)).toEqual(["zone", "zone"]);
+    expect(drawn.map((d) => d.zone)).toEqual(["nogo", "truck"]);
     expect(drawn[0].name).toBe("Pelare");
     expect(drawn[1].name).toBe("Truckzon 1");
   });

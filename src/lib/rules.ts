@@ -1,12 +1,28 @@
-import { BUILTIN_LIBRARY, CATEGORY_ORDER, getMachine, type MachineLibrary } from "./library";
-import { boxCenter, boxContains, boxesOverlap, overlapAreaMm2, segmentIntersectsBox, unionBox } from "./geometry";
+import {
+  BUILTIN_LIBRARY,
+  CATEGORY_ORDER,
+  getMachine,
+  type MachineLibrary,
+} from "./library";
+import {
+  boxCenter,
+  boxContains,
+  boxesOverlap,
+  overlapAreaMm2,
+  segmentIntersectsBox,
+  unionBox,
+} from "./geometry";
 import type { SolveOutput } from "./solver";
 import { CONNECT_REACH_MM, findConnections, isLinked } from "./connections";
 import type { Box, Configuration, Diagnostic, Placement } from "./types";
 import { translate } from "./i18n/translate";
+import { blocksMachines } from "./zones";
 
 /** Textslagning på kundens språk. Se lib/i18n. */
-export type Translate = (key: string, vars?: Record<string, string | number>) => string;
+export type Translate = (
+  key: string,
+  vars?: Record<string, string | number>,
+) => string;
 
 const m = (mm: number) => (mm / 1000).toFixed(1).replace(".", ",");
 
@@ -46,13 +62,24 @@ const DOOR_REACH_MM = 1500;
  * Geometrin räcker för att skilja ändarna från sidorna.
  */
 function sidesOnly(zone: Box, p: Placement): Box {
-  const alongX = Math.abs(p.bbox.l - p.size.lengthMm) < Math.abs(p.bbox.w - p.size.lengthMm);
+  const alongX =
+    Math.abs(p.bbox.l - p.size.lengthMm) < Math.abs(p.bbox.w - p.size.lengthMm);
   if (alongX) {
     const x = Math.max(zone.x, p.bbox.x);
-    return { x, y: zone.y, l: Math.max(0, Math.min(zone.x + zone.l, p.bbox.x + p.bbox.l) - x), w: zone.w };
+    return {
+      x,
+      y: zone.y,
+      l: Math.max(0, Math.min(zone.x + zone.l, p.bbox.x + p.bbox.l) - x),
+      w: zone.w,
+    };
   }
   const y = Math.max(zone.y, p.bbox.y);
-  return { x: zone.x, y, l: zone.l, w: Math.max(0, Math.min(zone.y + zone.w, p.bbox.y + p.bbox.w) - y) };
+  return {
+    x: zone.x,
+    y,
+    l: zone.l,
+    w: Math.max(0, Math.min(zone.y + zone.w, p.bbox.y + p.bbox.w) - y),
+  };
 }
 
 function hallBox(config: Configuration): Box {
@@ -75,7 +102,9 @@ export function runRules(
   t: Translate = (key, vars) => translate("sv", key, vars),
 ): Diagnostic[] {
   const out: Diagnostic[] = [];
-  const line = layout.placements.filter((p) => !p.aux).sort((a, b) => a.pos - b.pos);
+  const line = layout.placements
+    .filter((p) => !p.aux)
+    .sort((a, b) => a.pos - b.pos);
   const aux = layout.placements.filter((p) => p.aux);
   const all = layout.placements;
   const hall = hallBox(config);
@@ -85,7 +114,8 @@ export function runRules(
    * ett hörn är inget intrång i maskinzonen.
    */
   const { connections, mismatches } = findConnections(all);
-  const linked = (a: Placement, b: Placement) => isLinked(connections, a.instanceId, b.instanceId);
+  const linked = (a: Placement, b: Placement) =>
+    isLinked(connections, a.instanceId, b.instanceId);
   /*
    * Pulpeten och ströfacksmagasinet ska stå intill maskinerna — det är där
    * operatören och trucken behöver dem. Att de står i en maskins zon är
@@ -121,7 +151,12 @@ export function runRules(
     for (const zone of p.zones.filter((z) => z.type === "service")) {
       const box = sidesOnly(zone.box, p);
       for (const other of all) {
-        if (other.instanceId === p.instanceId || linked(p, other) || besideByDesign(p, other)) continue;
+        if (
+          other.instanceId === p.instanceId ||
+          linked(p, other) ||
+          besideByDesign(p, other)
+        )
+          continue;
         if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
         out.push({
           code: "R-104",
@@ -129,7 +164,10 @@ export function runRules(
           // hindrar bygget. Den som vill se den hittar den i listan.
           severity: "info",
           title: t("rule.service.t"),
-          detail: t("rule.service.d", { other: other.machine.name, machine: p.machine.name }),
+          detail: t("rule.service.d", {
+            other: other.machine.name,
+            machine: p.machine.name,
+          }),
           instanceIds: [p.instanceId, other.instanceId],
           anchor: boxCenter(box),
         });
@@ -144,27 +182,41 @@ export function runRules(
     const sides = sidesOnly(clearance.box, p);
 
     for (const other of all) {
-      if (other.instanceId === p.instanceId || linked(p, other) || besideByDesign(p, other)) continue;
+      if (
+        other.instanceId === p.instanceId ||
+        linked(p, other) ||
+        besideByDesign(p, other)
+      )
+        continue;
       if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "warning",
         title: t("rule.clearance.t"),
-        detail: t("rule.clearance.d", { other: other.machine.name, machine: p.machine.name }),
+        detail: t("rule.clearance.d", {
+          other: other.machine.name,
+          machine: p.machine.name,
+        }),
         instanceIds: [p.instanceId, other.instanceId],
         anchor: boxCenter(other.bbox),
       });
     }
 
     for (const obj of config.drawn) {
-      if (obj.kind === "door" || obj.kind === "truck") continue;
+      // Bara det som verkligen är i vägen. En truckzon hanteras av R-203,
+      // en port är en öppning, och en ren markering — ett fundament, en
+      // egen zon kunden ritat för sin egen skull — är inget hinder alls.
+      if (!blocksMachines(obj)) continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
       if (!boxesOverlap(sides, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
         code: "R-106",
         severity: "warning",
         title: t("rule.clearance.t"),
-        detail: t("rule.clearanceObj.d", { obj: obj.name, machine: p.machine.name }),
+        detail: t("rule.clearanceObj.d", {
+          obj: obj.name,
+          machine: p.machine.name,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(box),
       });
@@ -185,10 +237,13 @@ export function runRules(
       code: "R-602",
       severity: "warning",
       title: t("rule.reversed.t"),
-      detail: t(mm.role === "out" ? "rule.reversedOut.d" : "rule.reversedIn.d", {
-        a: a.machine.name,
-        b: b.machine.name,
-      }),
+      detail: t(
+        mm.role === "out" ? "rule.reversedOut.d" : "rule.reversedIn.d",
+        {
+          a: a.machine.name,
+          b: b.machine.name,
+        },
+      ),
       instanceIds: [a.instanceId, b.instanceId],
       anchor: mm.at,
     });
@@ -203,13 +258,24 @@ export function runRules(
   if (line.length >= 2) {
     for (const p of line) {
       if (p.ports.length === 0) continue;
-      if (connections.some((c) => c.from === p.instanceId || c.to === p.instanceId)) continue;
-      if (mismatches.some((mm) => mm.a === p.instanceId || mm.b === p.instanceId)) continue;
+      if (
+        connections.some(
+          (c) => c.from === p.instanceId || c.to === p.instanceId,
+        )
+      )
+        continue;
+      if (
+        mismatches.some((mm) => mm.a === p.instanceId || mm.b === p.instanceId)
+      )
+        continue;
       out.push({
         code: "R-601",
         severity: "warning",
         title: t("rule.loose.t"),
-        detail: t("rule.loose.d", { machine: p.machine.name, reach: m(CONNECT_REACH_MM) }),
+        detail: t("rule.loose.d", {
+          machine: p.machine.name,
+          reach: m(CONNECT_REACH_MM),
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -225,7 +291,10 @@ export function runRules(
           code: "R-105",
           severity: "error",
           title: t("rule.safety.t"),
-          detail: t("rule.safety.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
+          detail: t("rule.safety.d", {
+            machine: p.machine.name,
+            aisle: aisle.label.toLowerCase(),
+          }),
           instanceIds: [p.instanceId],
           anchor: boxCenter(zone.box),
         });
@@ -285,7 +354,10 @@ export function runRules(
         code: "R-203",
         severity: "error",
         title: t("rule.auxAisle.t", { machine: p.machine.name }),
-        detail: t("rule.auxAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
+        detail: t("rule.auxAisle.d", {
+          machine: p.machine.name,
+          aisle: aisle.label.toLowerCase(),
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -301,7 +373,9 @@ export function runRules(
       const c = boxCenter(a.box);
       const d = Math.hypot(c.x - magazineCenter.x, c.y - magazineCenter.y);
       const bc = boxCenter(best.box);
-      return d < Math.hypot(bc.x - magazineCenter.x, bc.y - magazineCenter.y) ? a : best;
+      return d < Math.hypot(bc.x - magazineCenter.x, bc.y - magazineCenter.y)
+        ? a
+        : best;
     });
     const from = boxCenter(nearest.box);
     const to = boxCenter(magazine.bbox);
@@ -315,7 +389,10 @@ export function runRules(
           blocking: blocking.map((b) => b.machine.name).join(", "),
           magazine: magazine.machine.name,
         }),
-        instanceIds: [magazine.instanceId, ...blocking.map((b) => b.instanceId)],
+        instanceIds: [
+          magazine.instanceId,
+          ...blocking.map((b) => b.instanceId),
+        ],
         anchor: boxCenter(magazine.bbox),
       });
     }
@@ -326,7 +403,11 @@ export function runRules(
   if (doors.length > 0 && layout.aisles.length > 0) {
     for (const aisle of layout.aisles) {
       const reaches = doors.some((door) =>
-        boxesOverlap(aisle.box, { x: door.x, y: door.y, l: door.l, w: door.w }, -DOOR_REACH_MM),
+        boxesOverlap(
+          aisle.box,
+          { x: door.x, y: door.y, l: door.l, w: door.w },
+          -DOOR_REACH_MM,
+        ),
       );
       if (reaches) continue;
       out.push({
@@ -389,9 +470,14 @@ export function runRules(
 
     // Portarna måste rymma hela virkesbreddsintervallet, inte bara ett värde.
     for (const port of p.ports) {
-      const [portMin, portMax] = p.machine.ports.find((x) => x.id === port.id)?.widthMm ?? [0, 0];
+      const [portMin, portMax] = p.machine.ports.find((x) => x.id === port.id)
+        ?.widthMm ?? [0, 0];
       if (portMax <= 0) continue;
-      if (prod.packageWidthMinMm >= portMin && prod.packageWidthMaxMm <= portMax) continue;
+      if (
+        prod.packageWidthMinMm >= portMin &&
+        prod.packageWidthMaxMm <= portMax
+      )
+        continue;
       out.push({
         code: "R-304",
         severity: "warning",
@@ -461,7 +547,8 @@ export function runRules(
     for (const obj of config.drawn) {
       // Portar är öppningar och truckzoner hanteras av R-203; varken eller
       // är ett hinder som maskinen kan "krocka" med.
-      if (obj.kind === "door" || obj.kind === "truck") continue;
+      // Zonsorten avgör: en spärrad yta spärrar, ett fundament gör det inte.
+      if (!blocksMachines(obj)) continue;
       const box: Box = { x: obj.x, y: obj.y, l: obj.l, w: obj.w };
       if (!boxesOverlap(p.bbox, box, TOUCH_TOLERANCE_MM)) continue;
       out.push({
@@ -483,7 +570,10 @@ export function runRules(
         code: "R-404",
         severity: "error",
         title: t("rule.inAisle.t"),
-        detail: t("rule.inAisle.d", { machine: p.machine.name, aisle: aisle.label.toLowerCase() }),
+        detail: t("rule.inAisle.d", {
+          machine: p.machine.name,
+          aisle: aisle.label.toLowerCase(),
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
       });
@@ -500,10 +590,17 @@ export function runRules(
         code: "R-501",
         severity: "error",
         title: t("rule.requires.t"),
-        detail: t("rule.requires.d", { machine: p.machine.name, needs: reqMachine?.name ?? req }),
+        detail: t("rule.requires.d", {
+          machine: p.machine.name,
+          needs: reqMachine?.name ?? req,
+        }),
         instanceIds: [p.instanceId],
         anchor: boxCenter(p.bbox),
-        fix: { kind: "addMachine", machineId: req, label: t("rule.addFix", { machine: reqMachine?.name ?? req }) },
+        fix: {
+          kind: "addMachine",
+          machineId: req,
+          label: t("rule.addFix", { machine: reqMachine?.name ?? req }),
+        },
       });
     }
     for (const conflict of p.machine.conflictsWith ?? []) {
@@ -581,7 +678,10 @@ function dedupe(list: Diagnostic[]): Diagnostic[] {
       seen.add(key);
       return true;
     })
-    .sort((a, b) => order[a.severity] - order[b.severity] || a.code.localeCompare(b.code));
+    .sort(
+      (a, b) =>
+        order[a.severity] - order[b.severity] || a.code.localeCompare(b.code),
+    );
 }
 
 export function boundsOfAll(placements: Placement[]): Box {

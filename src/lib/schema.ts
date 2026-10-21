@@ -1,8 +1,10 @@
 import { z } from "zod";
+import { migrateDrawn } from "./zones";
 import { MAX_DIMENSIONS } from "./dimensions";
 import { HALL_LIMITS, PRODUCT_LIMITS } from "./limits";
 
-const bounded = ([min, max]: readonly [number, number]) => z.number().int().min(min).max(max);
+const bounded = ([min, max]: readonly [number, number]) =>
+  z.number().int().min(min).max(max);
 
 /** Serverns validering av inkommande konfiguration. Klienten är aldrig betrodd. */
 
@@ -19,26 +21,42 @@ export const lineItemSchema = z.object({
    * släpper igenom okända nycklar utan att ta med dem vidare.
    */
   pos: vec2.optional(),
-  rotation: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  rotation: z
+    .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+    .optional(),
   mirrored: z.boolean().optional(),
   lengthMm: z.number().int().min(100).max(60000).optional(),
   selectedOptions: z.array(z.string().max(64)).max(12),
   parameters: z
-    .record(z.string().max(64), z.union([z.string().max(200), z.number().finite(), z.boolean()]))
+    .record(
+      z.string().max(64),
+      z.union([z.string().max(200), z.number().finite(), z.boolean()]),
+    )
     .optional(),
   note: z.string().max(1000).optional(),
 });
 
-export const drawnSchema = z.object({
-  id: z.string().min(1).max(64),
-  kind: z.enum(["wall", "door", "truck", "nogo"]),
-  name: z.string().max(120),
-  x: z.number().finite(),
-  y: z.number().finite(),
-  l: z.number().finite().nonnegative(),
-  w: z.number().finite().nonnegative(),
-  h: z.number().finite().nonnegative(),
-});
+/*
+ * Ritade objekt, med de gamla typerna kvar i ingången.
+ *
+ * `truck` och `nogo` var egna objekttyper innan zonerna blev en katalog, och
+ * de finns kvar i delningslänkar och i sparade offerter. Schemat släpper in
+ * dem och låter migreringen göra dem till zoner, så att ett underlag sparat
+ * i våras fortfarande öppnas — och så att resten av koden bara möter zoner.
+ */
+export const drawnSchema = z
+  .object({
+    id: z.string().min(1).max(64),
+    kind: z.enum(["wall", "door", "zone", "truck", "nogo"]),
+    zone: z.string().max(32).optional(),
+    name: z.string().max(120),
+    x: z.number().finite(),
+    y: z.number().finite(),
+    l: z.number().finite().nonnegative(),
+    w: z.number().finite().nonnegative(),
+    h: z.number().finite().nonnegative(),
+  })
+  .transform(migrateDrawn);
 
 export const flowSchema = z.object({
   truckPickupSide: z.enum(["right", "left"]),

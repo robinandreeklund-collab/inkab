@@ -2,12 +2,19 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import { zoneDef } from "@/lib/zones";
 import { meters } from "@/lib/format";
 import { orientationEuler } from "@/lib/cad/orientation";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { useT } from "@/lib/i18n";
 import { Tip } from "./ui";
-import type { LayoutResult, Configuration, Machine, Placement, Vec2 } from "@/lib/types";
+import type {
+  LayoutResult,
+  Configuration,
+  Machine,
+  Placement,
+  Vec2,
+} from "@/lib/types";
 
 /** Maskinernas färg i 3D: INKAB:s stålblå, mörk nog att synas mot golvet. */
 const MACHINE_TINT = "#3d566e";
@@ -57,7 +64,10 @@ export function ModelView() {
   const [azimuth, setAzimuth] = useState(0);
 
   const [status, setStatus] = useState("Startar 3D-vyn…");
-  const [loaded, setLoaded] = useState<{ withModel: number; total: number } | null>(null);
+  const [loaded, setLoaded] = useState<{
+    withModel: number;
+    total: number;
+  } | null>(null);
   /** Maskiner där modellens mått inte stämmer med bibliotekets. */
   const [mismatches, setMismatches] = useState<string[]>([]);
   /**
@@ -74,12 +84,13 @@ export function ModelView() {
     if (!element) return;
 
     (async () => {
-      const [THREE, { GLTFLoader }, { OrbitControls }, { MeshoptDecoder }] = await Promise.all([
-        import("three"),
-        import("three/examples/jsm/loaders/GLTFLoader.js"),
-        import("three/examples/jsm/controls/OrbitControls.js"),
-        import("three/examples/jsm/libs/meshopt_decoder.module.js"),
-      ]);
+      const [THREE, { GLTFLoader }, { OrbitControls }, { MeshoptDecoder }] =
+        await Promise.all([
+          import("three"),
+          import("three/examples/jsm/loaders/GLTFLoader.js"),
+          import("three/examples/jsm/controls/OrbitControls.js"),
+          import("three/examples/jsm/libs/meshopt_decoder.module.js"),
+        ]);
       if (disposed) return;
 
       const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -110,7 +121,14 @@ export function ModelView() {
       sun.castShadow = true;
       sun.shadow.mapSize.set(2048, 2048);
       const s = 60;
-      Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 1, far: 200 });
+      Object.assign(sun.shadow.camera, {
+        left: -s,
+        right: s,
+        top: s,
+        bottom: -s,
+        near: 1,
+        far: 200,
+      });
       scene.add(sun);
 
       /*
@@ -121,12 +139,16 @@ export function ModelView() {
        * metallisk yta gör att ljuset tar i kanterna.
        */
       const TINT = new THREE.Color(MACHINE_TINT);
-      const tinted = (material: import("three").Material | import("three").Material[]) => {
+      const tinted = (
+        material: import("three").Material | import("three").Material[],
+      ) => {
         const one = (m: import("three").Material) => {
           const copy = m.clone() as import("three").MeshStandardMaterial;
           if (copy.color) copy.color.multiply(TINT);
-          if ("metalness" in copy) copy.metalness = Math.max(copy.metalness ?? 0, 0.35);
-          if ("roughness" in copy) copy.roughness = Math.min(copy.roughness ?? 1, 0.6);
+          if ("metalness" in copy)
+            copy.metalness = Math.max(copy.metalness ?? 0, 0.35);
+          if ("roughness" in copy)
+            copy.roughness = Math.min(copy.roughness ?? 1, 0.6);
           return copy;
         };
         return Array.isArray(material) ? material.map(one) : one(material);
@@ -182,7 +204,10 @@ export function ModelView() {
       };
       const floorAt = (clientX: number, clientY: number): Vec2 | null => {
         raycaster.setFromCamera(ndc(clientX, clientY), camera);
-        const hit = raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3());
+        const hit = raycaster.ray.intersectPlane(
+          floorPlane,
+          new THREE.Vector3(),
+        );
         return hit ? { x: hit.x * 1000, y: hit.z * 1000 } : null;
       };
       const machineAt = (clientX: number, clientY: number): string | null => {
@@ -217,7 +242,11 @@ export function ModelView() {
           // Tomt golv: ett klick utan rörelse avmarkerar, ett drag vrider kameran.
           const up = (e: PointerEvent) => {
             window.removeEventListener("pointerup", up);
-            if (Math.hypot(e.clientX - startScreen.x, e.clientY - startScreen.y) < 4) store.select(null);
+            if (
+              Math.hypot(e.clientX - startScreen.x, e.clientY - startScreen.y) <
+              4
+            )
+              store.select(null);
           };
           window.addEventListener("pointerup", up);
           return;
@@ -242,7 +271,10 @@ export function ModelView() {
           const now = floorAt(e.clientX, e.clientY);
           if (!now) return;
           // Positionen snappas, inte förflyttningen — samma raster som i planvyn.
-          target = { x: snap(origin.x + now.x - start.x), y: snap(origin.y + now.y - start.y) };
+          target = {
+            x: snap(origin.x + now.x - start.x),
+            y: snap(origin.y + now.y - start.y),
+          };
           group.position.set(
             from.x + (target.x - origin.x) / 1000,
             from.y,
@@ -277,7 +309,11 @@ export function ModelView() {
         const h = Math.max(machine.footprint.heightMm, 200) / 1000;
         ghostMesh = new THREE.Mesh(
           new THREE.BoxGeometry(l, h, w),
-          new THREE.MeshStandardMaterial({ color: "#5980a6", transparent: true, opacity: 0.35 }),
+          new THREE.MeshStandardMaterial({
+            color: "#5980a6",
+            transparent: true,
+            opacity: 0.35,
+          }),
         );
         ghostMesh.position.set(at.x / 1000, h / 2, at.y / 1000);
         scene.add(ghostMesh);
@@ -296,7 +332,10 @@ export function ModelView() {
         targetTo: import("three").Vector3;
         start: number;
       } | null = null;
-      const fly = (to: import("three").Vector3, target: import("three").Vector3) => {
+      const fly = (
+        to: import("three").Vector3,
+        target: import("three").Vector3,
+      ) => {
         flight = {
           from: camera.position.clone(),
           to,
@@ -309,12 +348,24 @@ export function ModelView() {
         const centre = new THREE.Vector3(hallSize.l / 2, 0, hallSize.w / 2);
         const span = Math.max(hallSize.l, hallSize.w);
         const at = {
-          overview: new THREE.Vector3(centre.x - span * 0.55, span * 0.5, centre.z + span * 0.75),
+          overview: new THREE.Vector3(
+            centre.x - span * 0.55,
+            span * 0.5,
+            centre.z + span * 0.75,
+          ),
           // Rakt uppifrån, med en hårsmån lutning så att orbitkontrollen vet var norr är.
           top: new THREE.Vector3(centre.x, span * 1.15, centre.z + 0.01),
-          infeed: new THREE.Vector3(centre.x - span * 0.85, span * 0.22, centre.z),
+          infeed: new THREE.Vector3(
+            centre.x - span * 0.85,
+            span * 0.22,
+            centre.z,
+          ),
           side: new THREE.Vector3(centre.x, span * 0.3, centre.z + span * 0.9),
-          outfeed: new THREE.Vector3(centre.x + span * 0.85, span * 0.22, centre.z),
+          outfeed: new THREE.Vector3(
+            centre.x + span * 0.85,
+            span * 0.22,
+            centre.z,
+          ),
         }[name];
         fly(at, centre);
       };
@@ -326,10 +377,16 @@ export function ModelView() {
           controls.maxPolarAngle,
           Math.max(0.05, spherical.phi + (polarDeg * Math.PI) / 180),
         );
-        fly(new THREE.Vector3().setFromSpherical(spherical).add(controls.target), controls.target.clone());
+        fly(
+          new THREE.Vector3().setFromSpherical(spherical).add(controls.target),
+          controls.target.clone(),
+        );
       };
       const zoom = (factor: number) => {
-        const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor);
+        const offset = camera.position
+          .clone()
+          .sub(controls.target)
+          .multiplyScalar(factor);
         fly(offset.add(controls.target), controls.target.clone());
       };
       let framedFor = "";
@@ -365,33 +422,56 @@ export function ModelView() {
         floor.receiveShadow = true;
         world.add(floor);
 
-        const grid = new THREE.GridHelper(Math.max(hallL, hallW), Math.round(Math.max(hallL, hallW)), 0xb8bec5, 0xd3d8dd);
+        const grid = new THREE.GridHelper(
+          Math.max(hallL, hallW),
+          Math.round(Math.max(hallL, hallW)),
+          0xb8bec5,
+          0xd3d8dd,
+        );
         grid.position.set(hallL / 2, 0.002, hallW / 2);
         world.add(grid);
 
-        // Ritade objekt: väggar, portar, truckzoner.
+        // Ritade objekt: väggar, portar och kundens zoner.
         for (const object of cfg.drawn) {
           const l = object.l / 1000;
           const w = object.w / 1000;
           const h = Math.max(object.h, 1) / 1000;
-          const colour = { wall: "#c8ccd1", door: "#5980a6", truck: "#cfd6dd", nogo: "#c98a9a" }[object.kind];
-          const flat = object.kind === "truck" || object.kind === "nogo";
+          // Zonerna tar sin färg ur katalogen, så att en ny sorts zon syns
+          // i modellen med samma färg som i planen utan en rad här.
+          const colour =
+            object.kind === "zone"
+              ? zoneDef(object.zone).tint
+              : object.kind === "door"
+                ? "#5980a6"
+                : "#c8ccd1";
+          const flat = object.kind === "zone";
           const mesh = new THREE.Mesh(
             new THREE.BoxGeometry(l, flat ? 0.01 : h, w),
             new THREE.MeshStandardMaterial({
               color: colour,
               roughness: 0.9,
               transparent: object.kind !== "wall",
-              opacity: object.kind === "wall" ? 1 : object.kind === "door" ? 0.35 : 0.55,
+              opacity:
+                object.kind === "wall"
+                  ? 1
+                  : object.kind === "door"
+                    ? 0.35
+                    : 0.55,
             }),
           );
-          mesh.position.set(object.x / 1000 + l / 2, flat ? 0.006 : h / 2, object.y / 1000 + w / 2);
+          mesh.position.set(
+            object.x / 1000 + l / 2,
+            flat ? 0.006 : h / 2,
+            object.y / 1000 + w / 2,
+          );
           mesh.receiveShadow = true;
           if (object.kind === "wall") mesh.castShadow = true;
           world.add(mesh);
         }
 
-        const withModel = result.placements.filter((p) => p.machine.model?.glb).length;
+        const withModel = result.placements.filter(
+          (p) => p.machine.model?.glb,
+        ).length;
         const found: string[] = [];
         const absent: string[] = [];
         setLoaded({ withModel, total: result.placements.length });
@@ -408,7 +488,11 @@ export function ModelView() {
           const group = new THREE.Group();
           // Solverns origo är maskinens minhörn; modellens origo är
           // inmatningsporten i golvnivå, alltså samma punkt.
-          group.position.set(placement.bbox.x / 1000, 0, placement.bbox.y / 1000);
+          group.position.set(
+            placement.bbox.x / 1000,
+            0,
+            placement.bbox.y / 1000,
+          );
           group.userData.instanceId = placement.instanceId;
           world.add(group);
           groups.set(placement.instanceId, group);
@@ -514,7 +598,9 @@ export function ModelView() {
         zoom,
         dispose: () => {
           cancelAnimationFrame(frame);
-          element.removeEventListener("pointerdown", onPointerDown, { capture: true });
+          element.removeEventListener("pointerdown", onPointerDown, {
+            capture: true,
+          });
           observer.disconnect();
           controls.dispose();
           renderer.dispose();
@@ -544,7 +630,9 @@ export function ModelView() {
   }, [selectedId]);
 
   const dropMachine = (event: React.DragEvent): Machine | null => {
-    const id = useConfigStore.getState().draggingMachineId ?? event.dataTransfer.getData(MACHINE_DRAG_TYPE);
+    const id =
+      useConfigStore.getState().draggingMachineId ??
+      event.dataTransfer.getData(MACHINE_DRAG_TYPE);
     return id ? (library.machines.find((m) => m.id === id) ?? null) : null;
   };
 
@@ -553,7 +641,10 @@ export function ModelView() {
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
     const at = api.current?.floorAt(event.clientX, event.clientY) ?? null;
-    api.current?.ghost(dropMachine(event), at ? { x: snap(at.x), y: snap(at.y) } : null);
+    api.current?.ghost(
+      dropMachine(event),
+      at ? { x: snap(at.x), y: snap(at.y) } : null,
+    );
   };
 
   const onDrop = (event: React.DragEvent) => {
@@ -563,10 +654,14 @@ export function ModelView() {
     if (!id) return;
     event.preventDefault();
     const at = api.current?.floorAt(event.clientX, event.clientY);
-    if (at) useConfigStore.getState().addMachine(id, { pos: { x: snap(at.x), y: snap(at.y) } });
+    if (at)
+      useConfigStore
+        .getState()
+        .addMachine(id, { pos: { x: snap(at.x), y: snap(at.y) } });
   };
 
-  const selected = layout.placements.find((p) => p.instanceId === selectedId) ?? null;
+  const selected =
+    layout.placements.find((p) => p.instanceId === selectedId) ?? null;
 
   return (
     <div
@@ -586,11 +681,15 @@ export function ModelView() {
 
       {selected ? (
         <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent/60 bg-white/60 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-white/95">
-          <span className="max-w-[220px] truncate">{selected.machine.name}</span>
+          <span className="max-w-[220px] truncate">
+            {selected.machine.name}
+          </span>
           <span className="text-muted">{t("model.dragHint")}</span>
           <Tip title={t("model.turnLeft")} shortcut="⇧R">
             <button
-              onClick={() => useConfigStore.getState().turnMachine(selected.instanceId, -1)}
+              onClick={() =>
+                useConfigStore.getState().turnMachine(selected.instanceId, -1)
+              }
               className="border border-divider px-2 py-0.5 hover:border-accent"
               aria-label={t("model.turnLeft")}
             >
@@ -599,7 +698,9 @@ export function ModelView() {
           </Tip>
           <Tip title={t("model.turnRight")} shortcut="R">
             <button
-              onClick={() => useConfigStore.getState().turnMachine(selected.instanceId, 1)}
+              onClick={() =>
+                useConfigStore.getState().turnMachine(selected.instanceId, 1)
+              }
               className="border border-divider px-2 py-0.5 hover:border-accent"
               aria-label={t("model.turnRight")}
             >
@@ -607,7 +708,9 @@ export function ModelView() {
             </button>
           </Tip>
           <button
-            onClick={() => useConfigStore.getState().removeItem(selected.instanceId)}
+            onClick={() =>
+              useConfigStore.getState().removeItem(selected.instanceId)
+            }
             className="px-1 text-muted hover:text-danger"
             aria-label={t("model.remove")}
           >
@@ -617,7 +720,9 @@ export function ModelView() {
       ) : null}
       {missing.length > 0 ? (
         <div className="absolute left-2 top-2 max-w-md border border-danger bg-white/95 p-2">
-          <div className="kicker mb-1 text-danger">Modellfilen gick inte att hämta</div>
+          <div className="kicker mb-1 text-danger">
+            Modellfilen gick inte att hämta
+          </div>
           <ul className="space-y-0.5">
             {missing.map((name, i) => (
               <li key={i} className="text-[11px] leading-relaxed text-ink">
@@ -626,14 +731,17 @@ export function ModelView() {
             ))}
           </ul>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            Maskinen ritas som sitt fotavtryck så länge. Vanligaste orsaken är att servern
-            saknar <code className="num">DATABASE_URL</code> — då ligger uppladdade modeller
-            bara i minnet och försvinner när instansen startar om.
+            Maskinen ritas som sitt fotavtryck så länge. Vanligaste orsaken är
+            att servern saknar <code className="num">DATABASE_URL</code> — då
+            ligger uppladdade modeller bara i minnet och försvinner när
+            instansen startar om.
           </p>
         </div>
       ) : mismatches.length > 0 ? (
         <div className="absolute left-2 top-2 max-w-md border border-warn bg-white/95 p-2">
-          <div className="kicker mb-1 text-warn">Modell och mått skiljer sig</div>
+          <div className="kicker mb-1 text-warn">
+            Modell och mått skiljer sig
+          </div>
           <ul className="space-y-0.5">
             {mismatches.map((m, i) => (
               <li key={i} className="text-[11px] leading-relaxed text-ink">
@@ -642,15 +750,17 @@ export function ModelView() {
             ))}
           </ul>
           <p className="mt-1 text-[11px] leading-relaxed text-muted">
-            Modellen visas i sin verkliga storlek — den är måttriktig ur STEP-filen, så det
-            är maskindatan som behöver rättas. Ladda upp filen igen i admin, så tas måtten
-            därifrån.
+            Modellen visas i sin verkliga storlek — den är måttriktig ur
+            STEP-filen, så det är maskindatan som behöver rättas. Ladda upp
+            filen igen i admin, så tas måtten därifrån.
           </p>
         </div>
       ) : null}
 
       <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-2">
-        <span className="kicker max-w-[60%] bg-paper/85 px-1 leading-relaxed">{status}</span>
+        <span className="kicker max-w-[60%] bg-paper/85 px-1 leading-relaxed">
+          {status}
+        </span>
         {loaded ? (
           <span className="kicker bg-paper/85 px-1">
             {loaded.withModel}/{loaded.total} modeller
@@ -736,7 +846,11 @@ function frameCamera(
 ) {
   const centre = new THREE.Vector3(hallL / 2, 0, hallW / 2);
   const span = Math.max(hallL, hallW);
-  camera.position.set(centre.x - span * 0.55, span * 0.5, centre.z + span * 0.75);
+  camera.position.set(
+    centre.x - span * 0.55,
+    span * 0.5,
+    centre.z + span * 0.75,
+  );
   controls.target.copy(centre);
   controls.update();
 }
@@ -760,7 +874,12 @@ function OrbitPanel({
   onZoom: (factor: number) => void;
 }) {
   const t = useT();
-  const arrow = (label: string, d: string, onClick: () => void, className: string) => (
+  const arrow = (
+    label: string,
+    d: string,
+    onClick: () => void,
+    className: string,
+  ) => (
     <button
       onClick={onClick}
       aria-label={label}
@@ -794,10 +913,30 @@ function OrbitPanel({
             X
           </text>
         </svg>
-        {arrow(t("model.tiltUp"), "M6 2 L11 9 L1 9Z", () => onOrbit(0, -15), "left-1/2 top-0 -translate-x-1/2")}
-        {arrow(t("model.tiltDown"), "M6 10 L11 3 L1 3Z", () => onOrbit(0, 15), "bottom-0 left-1/2 -translate-x-1/2")}
-        {arrow(t("model.rotateLeft"), "M2 6 L9 1 L9 11Z", () => onOrbit(-45, 0), "left-0 top-1/2 -translate-y-1/2")}
-        {arrow(t("model.rotateRight"), "M10 6 L3 1 L3 11Z", () => onOrbit(45, 0), "right-0 top-1/2 -translate-y-1/2")}
+        {arrow(
+          t("model.tiltUp"),
+          "M6 2 L11 9 L1 9Z",
+          () => onOrbit(0, -15),
+          "left-1/2 top-0 -translate-x-1/2",
+        )}
+        {arrow(
+          t("model.tiltDown"),
+          "M6 10 L11 3 L1 3Z",
+          () => onOrbit(0, 15),
+          "bottom-0 left-1/2 -translate-x-1/2",
+        )}
+        {arrow(
+          t("model.rotateLeft"),
+          "M2 6 L9 1 L9 11Z",
+          () => onOrbit(-45, 0),
+          "left-0 top-1/2 -translate-y-1/2",
+        )}
+        {arrow(
+          t("model.rotateRight"),
+          "M10 6 L3 1 L3 11Z",
+          () => onOrbit(45, 0),
+          "right-0 top-1/2 -translate-y-1/2",
+        )}
         <button
           onClick={() => onPreset("overview")}
           title={t("model.view.overview")}
@@ -807,23 +946,35 @@ function OrbitPanel({
         </button>
       </div>
       <div className="flex w-full gap-1">
-        <button onClick={() => onZoom(0.8)} className="flex-1 border border-divider py-0.5 text-sm hover:border-accent" aria-label={t("model.zoomIn")} title={t("model.zoomIn")}>
+        <button
+          onClick={() => onZoom(0.8)}
+          className="flex-1 border border-divider py-0.5 text-sm hover:border-accent"
+          aria-label={t("model.zoomIn")}
+          title={t("model.zoomIn")}
+        >
           +
         </button>
-        <button onClick={() => onZoom(1.25)} className="flex-1 border border-divider py-0.5 text-sm hover:border-accent" aria-label={t("model.zoomOut")} title={t("model.zoomOut")}>
+        <button
+          onClick={() => onZoom(1.25)}
+          className="flex-1 border border-divider py-0.5 text-sm hover:border-accent"
+          aria-label={t("model.zoomOut")}
+          title={t("model.zoomOut")}
+        >
           −
         </button>
       </div>
       <div className="grid w-full grid-cols-1 gap-1">
-        {(["overview", "top", "infeed", "side", "outfeed"] as const).map((name) => (
-          <button
-            key={name}
-            onClick={() => onPreset(name)}
-            className="border border-divider/70 bg-white/30 px-1 py-0.5 text-left text-[11px] hover:border-accent hover:bg-white hover:text-accent"
-          >
-            {t(`model.view.${name}`)}
-          </button>
-        ))}
+        {(["overview", "top", "infeed", "side", "outfeed"] as const).map(
+          (name) => (
+            <button
+              key={name}
+              onClick={() => onPreset(name)}
+              className="border border-divider/70 bg-white/30 px-1 py-0.5 text-left text-[11px] hover:border-accent hover:bg-white hover:text-accent"
+            >
+              {t(`model.view.${name}`)}
+            </button>
+          ),
+        )}
       </div>
     </div>
   );

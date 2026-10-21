@@ -56,7 +56,10 @@ function signature(config: Configuration): string {
   });
 }
 
-export function quoteReference(config: Configuration, date = new Date()): string {
+export function quoteReference(
+  config: Configuration,
+  date = new Date(),
+): string {
   const year = date.getFullYear().toString().slice(2);
   const month = String(date.getMonth() + 1).padStart(2, "0");
   // Versaler och siffror, utan I/O/0/1 som läses fel i telefon.
@@ -75,4 +78,19 @@ export function validUntil(from = new Date(), days = 30): string {
   const date = new Date(from);
   date.setDate(date.getDate() + days);
   return date.toISOString().slice(0, 10);
+}
+
+/**
+ * Om underlaget går att skicka in till INKAB.
+ *
+ * Ett underlag utan en enda maskin är ingen offert: det ger säljaren inget
+ * att svara på och kunden inget att vänta på. Regelverkets anmärkningar
+ * hindrar däremot inte — en anläggning med en varning är fortfarande en
+ * fråga värd att ställa, och vad som är rätt avgör säljaren.
+ *
+ * Både knappen och servern frågar den här, så att de aldrig säger olika
+ * saker om samma underlag.
+ */
+export function canSubmitQuote(config: Configuration): boolean {
+  return config.line.length > 0;
 }

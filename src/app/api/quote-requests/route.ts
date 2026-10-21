@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { createHash } from "node:crypto";
 import { configurationSchema } from "@/lib/schema";
-import { quoteReference } from "@/lib/quote";
+import { canSubmitQuote, quoteReference } from "@/lib/quote";
 import { currentUser } from "@/lib/server/session";
 import { submitProposal } from "@/lib/server/store";
 import type { Configuration } from "@/lib/types";
@@ -79,9 +79,26 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         error: "Underlaget kunde inte skickas in.",
+        reason: "invalid",
         field: issue?.path.join(".") ?? null,
       },
       { status: 400 },
+    );
+  }
+
+  /*
+   * Ett tomt underlag går inte vidare.
+   *
+   * En offert utan en enda maskin är ingen offert: den ger säljaren inget
+   * att svara på och kunden inget att vänta på. Spärren ligger här och inte
+   * bara i knappen, för klienten är aldrig betrodd — och ett tomt underlag
+   * som ändå tog sig in skulle bli en rad i säljarens lista som ingen kan
+   * göra något med.
+   */
+  if (!canSubmitQuote(parsed.data.config as unknown as Configuration)) {
+    return NextResponse.json(
+      { error: "Underlaget innehåller ingen maskin.", reason: "empty" },
+      { status: 422 },
     );
   }
 

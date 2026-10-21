@@ -8,12 +8,12 @@ import { adjustmentLabel } from "@/lib/quoteAdjustment";
 import { meters, sek, todayISO } from "@/lib/format";
 import { useT } from "@/lib/i18n";
 import { dimensionLength } from "@/lib/dimensions";
-import { quoteReference, validUntil } from "@/lib/quote";
+import { canSubmitQuote, quoteReference, validUntil } from "@/lib/quote";
 import { COMPANY } from "@/lib/company";
 import { QuotePlan } from "./QuotePlan";
 import { SubmitQuoteDialog } from "./SubmitQuoteDialog";
 import { Button, Tag } from "./ui";
-import type { SessionUser } from "./AuthDialog";
+import { AuthDialog, type SessionUser } from "./AuthDialog";
 import type { PriceResult, Role } from "@/lib/server/pricing";
 
 /**
@@ -61,7 +61,11 @@ export function QuoteView({
 
   return (
     <div className="scroll-thin h-full overflow-y-auto bg-paper print:overflow-visible print:bg-white">
-      <Toolbar reference={reference} onBack={() => setScreen("configurator")} />
+      <Toolbar
+        reference={reference}
+        onBack={() => setScreen("configurator")}
+        user={user}
+      />
 
       <article className="quote mx-auto max-w-[210mm] bg-white p-8 shadow-sm print:max-w-none print:p-0 print:shadow-none">
         {/*
@@ -499,12 +503,24 @@ export function QuoteView({
 function Toolbar({
   reference,
   onBack,
+  user,
 }: {
   reference: string;
   onBack: () => void;
+  user: SessionUser | null;
 }) {
   const t = useT();
+  const { config } = useConfigStore();
   const [submitting, setSubmitting] = useState(false);
+  const [login, setLogin] = useState(false);
+  /*
+   * Ett underlag utan en enda maskin går inte att skicka in.
+   *
+   * Knappen säger det i stället för att låta kunden fylla i ett formulär
+   * som ändå skulle avvisas. Servern spärrar samma sak — klienten är
+   * aldrig betrodd.
+   */
+  const empty = !canSubmitQuote(config);
 
   /*
    * Två handlingar, och inget annat.
@@ -533,17 +549,43 @@ function Toolbar({
             <Button onClick={() => window.print()}>
               {t("quote.downloadPdf")}
             </Button>
-            <Button variant="primary" onClick={() => setSubmitting(true)}>
+            <Button
+              variant="primary"
+              disabled={empty}
+              title={empty ? t("submit.emptyLine") : undefined}
+              onClick={() => setSubmitting(true)}
+            >
               {t("quote.submit")}
             </Button>
           </div>
         </div>
-        <p className="mx-auto max-w-[210mm] px-8 pb-2 text-[11px] leading-relaxed text-muted">
-          {t("quote.toolbarHint")}
+        <p
+          className={`mx-auto max-w-[210mm] px-8 pb-2 text-[11px] leading-relaxed ${
+            empty ? "text-warn" : "text-muted"
+          }`}
+        >
+          {empty ? t("submit.emptyLine") : t("quote.toolbarHint")}
         </p>
       </div>
       {submitting ? (
-        <SubmitQuoteDialog onClose={() => setSubmitting(false)} />
+        <SubmitQuoteDialog
+          onClose={() => setSubmitting(false)}
+          user={user}
+          onLogin={() => {
+            setSubmitting(false);
+            setLogin(true);
+          }}
+        />
+      ) : null}
+      {login ? (
+        <AuthDialog
+          onClose={() => setLogin(false)}
+          onSuccess={() => {
+            // Tillbaka till inskickningen direkt: kunden var på väg dit.
+            setLogin(false);
+            setSubmitting(true);
+          }}
+        />
       ) : null}
     </>
   );

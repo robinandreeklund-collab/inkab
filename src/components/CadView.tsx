@@ -48,6 +48,8 @@ const GRID_MM = 1000;
 /** Maskiner snappar till detta raster vid drag, mm. */
 const SNAP_MM = 250;
 const PAD_MM = 4000;
+/** Hallens yttervägg i planen, mm. Ritad utanför måtten, som ett väggsnitt. */
+const HALL_WALL_MM = 450;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 
@@ -765,10 +767,19 @@ export function CadView() {
          * proportioner inte matchar blir det en remsa ovanför och under —
          * och med färgen bara på rutan fick man två olika "utanför".
          */
-        style={{ cursor, background: "#e3e4e7" }}
+        style={{ cursor, background: "#d8dade" }}
         onWheel={onWheel}
       >
         <defs>
+          <filter id="hallShadow" x="-8%" y="-12%" width="116%" height="124%">
+            <feDropShadow
+              dx="0"
+              dy={strokeUnit * 2}
+              stdDeviation={strokeUnit * 3}
+              floodColor="#1d2d3d"
+              floodOpacity="0.28"
+            />
+          </filter>
           <pattern
             id="grid"
             width={GRID_MM}
@@ -843,7 +854,7 @@ export function CadView() {
           y={viewBox.y}
           width={viewBox.l}
           height={viewBox.w}
-          fill="#e3e4e7"
+          fill="#d8dade"
           onPointerDown={startGround}
         />
 
@@ -1048,16 +1059,36 @@ function Plan2D({
   return (
     <g>
       {/*
-       * Hallens golv och gräns.
+       * Hallen ritas som en byggnad, inte som en rektangel.
        *
-       * Golvet bär rutnätet, så att rastret i sig säger var lokalen går.
-       * Kanten är en heldragen linje och inte en streckad hårstreck: den
-       * som drar in en maskin ska se gränsen utan att leta efter den.
-       * Dras något ur katalogen lyser kanten upp, och sticker en maskin
-       * utanför blir den varningsfärgad — allt pointer-genomsläppligt, så
-       * att bakgrunden under fortsätter fånga klicken.
+       * Först var den ett streckat hårstreck i ett raster som täckte hela
+       * utsnittet. Sedan ett vitt fält mot en ljusgrå ton — men en ljusare
+       * rektangel säger inte "det är här inne du arbetar", hur stark
+       * tonskillnaden än görs. Det som säger det är väggen: en snittad
+       * yttervägg runt om, så som varje planritning visar en lokal.
+       *
+       * Väggen ligger utanför hallens mått, så att golvet man bygger på är
+       * exakt de mått kunden angett. Bandet byter färg när en maskin dras
+       * in ur katalogen och när något hamnar utanför.
        */}
       <g pointerEvents="none">
+        <path
+          d={
+            `M${hallBox.x - HALL_WALL_MM} ${hallBox.y - HALL_WALL_MM}` +
+            `h${hallBox.l + HALL_WALL_MM * 2}v${hallBox.w + HALL_WALL_MM * 2}` +
+            `h${-(hallBox.l + HALL_WALL_MM * 2)}Z` +
+            `M${hallBox.x} ${hallBox.y}h${hallBox.l}v${hallBox.w}h${-hallBox.l}Z`
+          }
+          fillRule="evenodd"
+          fill={
+            outsideHall.length > 0
+              ? "#b45309"
+              : dragging
+                ? "#5980a6"
+                : "#1d2d3d"
+          }
+          filter="url(#hallShadow)"
+        />
         <rect
           x={hallBox.x}
           y={hallBox.y}
@@ -1072,45 +1103,11 @@ function Plan2D({
           height={hallBox.w}
           fill="url(#grid)"
         />
-        <rect
-          x={hallBox.x}
-          y={hallBox.y}
-          width={hallBox.l}
-          height={hallBox.w}
-          fill="none"
-          stroke={
-            outsideHall.length > 0
-              ? "#b45309"
-              : dragging
-                ? "#5980a6"
-                : "#1d1f20"
-          }
-          strokeOpacity={outsideHall.length > 0 || dragging ? 1 : 0.65}
-          strokeWidth={
-            strokeUnit * (outsideHall.length > 0 || dragging ? 3.4 : 2.4)
-          }
-        />
-        {/* Hörnmarkeringar, som husets blueprint-ram. */}
-        {(
-          [
-            [hallBox.x, hallBox.y, 1, 1],
-            [hallBox.x + hallBox.l, hallBox.y, -1, 1],
-            [hallBox.x + hallBox.l, hallBox.y + hallBox.w, -1, -1],
-            [hallBox.x, hallBox.y + hallBox.w, 1, -1],
-          ] as const
-        ).map(([cx, cy, sx, sy]) => (
-          <path
-            key={`${cx}-${cy}`}
-            d={`M${cx + sx * strokeUnit * 22} ${cy}H${cx}V${cy + sy * strokeUnit * 22}`}
-            fill="none"
-            stroke="#5980a6"
-            strokeWidth={strokeUnit * 3.4}
-          />
-        ))}
       </g>
+
       <text
-        x={hallBox.x + 400}
-        y={hallBox.y - 500}
+        x={hallBox.x}
+        y={hallBox.y - HALL_WALL_MM - 500}
         fontSize={strokeUnit * 16}
         fill="#1d1f20"
         fillOpacity="0.55"
@@ -1124,7 +1121,7 @@ function Plan2D({
       {outsideHall.length > 0 ? (
         <text
           x={hallBox.x + hallBox.l}
-          y={hallBox.y - 500}
+          y={hallBox.y - HALL_WALL_MM - 500}
           textAnchor="end"
           fontSize={strokeUnit * 15}
           fill="#b45309"
@@ -1549,6 +1546,12 @@ function DrawnShape({
             object.kind === "door" ? "#5980a6" : (zone?.stroke ?? "#1d1f20")
           }
           fillOpacity={object.kind === "door" ? 1 : 0.75}
+          /* Porten sitter i hallens vägg, och väggen är mörk. Stödkanten
+             gör namnet läsbart både på väggen och på golvet. */
+          stroke="#ffffff"
+          strokeWidth={strokeUnit * 2.6}
+          strokeLinejoin="round"
+          paintOrder="stroke"
           className="num"
           pointerEvents="none"
         >

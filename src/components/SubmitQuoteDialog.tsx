@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
-import { quoteReference } from "@/lib/quote";
+import { canSubmitQuote, quoteReference } from "@/lib/quote";
 import { useT } from "@/lib/i18n";
 import { Button } from "./ui";
+import type { SessionUser } from "./AuthDialog";
 
 /**
  * Kunden skickar in sitt underlag.
@@ -31,7 +32,16 @@ type Fields = {
   message: string;
 };
 
-export function SubmitQuoteDialog({ onClose }: { onClose: () => void }) {
+export function SubmitQuoteDialog({
+  onClose,
+  user,
+  onLogin,
+}: {
+  onClose: () => void;
+  /** Inloggad kund: då vet vi redan vem som frågar. */
+  user: SessionUser | null;
+  onLogin: () => void;
+}) {
   const {
     config,
     log,
@@ -42,10 +52,15 @@ export function SubmitQuoteDialog({ onClose }: { onClose: () => void }) {
   const t = useT();
   const reference = quoteReference(config);
 
+  /*
+   * Är kunden inloggad vet vi redan vem det är: namn och adress kommer ur
+   * kontot i stället för att frågas en gång till. Fälten går att ändra —
+   * den som bygger åt en kollega ska kunna skriva kollegans adress.
+   */
   const [fields, setFields] = useState<Fields>({
-    name: config.customer?.contact ?? "",
-    email: "",
-    company: config.customer?.company ?? "",
+    name: user?.name || config.customer?.contact || "",
+    email: user?.email ?? "",
+    company: user?.company || config.customer?.company || "",
     phone: "",
     message: "",
   });
@@ -59,10 +74,20 @@ export function SubmitQuoteDialog({ onClose }: { onClose: () => void }) {
   const set = (key: keyof Fields) => (value: string) =>
     setFields((current) => ({ ...current, [key]: value }));
 
-  // Samma krav som servern ställer, så att knappen inte lovar något den inte
-  // kan hålla: ett namn och en adress som går att svara till.
-  const ready =
-    fields.name.trim().length > 0 && /.+@.+\..+/.test(fields.email.trim());
+  /*
+   * Vad som saknas, utskrivet.
+   *
+   * Förut var knappen bara avstängd, utan ett ord om varför — och ett tomt
+   * underlag gick dessutom igenom. Samma krav som servern ställer, så att
+   * knappen inte lovar något den inte kan hålla: minst en maskin, ett namn
+   * och en adress som går att svara till.
+   */
+  const missing: string[] = [];
+  if (!canSubmitQuote(config)) missing.push(t("submit.needMachine"));
+  if (fields.name.trim().length === 0) missing.push(t("submit.needName"));
+  if (!/.+@.+\..+/.test(fields.email.trim()))
+    missing.push(t("submit.needEmail"));
+  const ready = missing.length === 0;
 
   const submit = async () => {
     setBusy(true);
@@ -142,6 +167,34 @@ export function SubmitQuoteDialog({ onClose }: { onClose: () => void }) {
               })}
             </p>
 
+            {/*
+              Vem som frågar är kravet, och det ska stå utskrivet.
+              Inloggad: vi vet redan. Gäst: namn och e-post gör samma jobb,
+              och inloggningen finns kvar som genväg för den som har konto.
+            */}
+            {user ? (
+              <p className="mb-3 border border-accent bg-accent/5 px-2 py-1.5 text-[11px] leading-relaxed">
+                {t("submit.signedIn", { name: user.name || user.email })}
+              </p>
+            ) : (
+              <p className="mb-3 border border-divider px-2 py-1.5 text-[11px] leading-relaxed text-muted">
+                {t("submit.identify")}{" "}
+                <button
+                  onClick={onLogin}
+                  className="text-accent underline hover:text-ink"
+                >
+                  {t("submit.logIn")}
+                </button>
+              </p>
+            )}
+
+            {/* Tomt underlag stoppas här och på servern. */}
+            {!canSubmitQuote(config) ? (
+              <p className="mb-3 border border-warn bg-warn/5 px-2 py-1.5 text-[11px] leading-relaxed text-warn">
+                {t("submit.emptyLine")}
+              </p>
+            ) : null}
+
             {error ? (
               <p className="mb-3 border border-danger px-2 py-1 text-xs text-danger">
                 {error}
@@ -198,6 +251,12 @@ export function SubmitQuoteDialog({ onClose }: { onClose: () => void }) {
             >
               {busy ? t("submit.sending") : t("submit.send")}
             </Button>
+            {/* En avstängd knapp utan ett ord om varför är en återvändsgränd. */}
+            {!ready ? (
+              <p className="mt-2 text-[11px] leading-relaxed text-warn">
+                {t("submit.missing", { what: missing.join(", ") })}
+              </p>
+            ) : null}
             <p className="mt-2 text-[11px] leading-relaxed text-muted">
               {t("submit.privacy")}
             </p>

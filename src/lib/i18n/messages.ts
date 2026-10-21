@@ -188,6 +188,17 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.mirrorDo": "Spegla",
     "cad.mirror": "Spegelvänd maskinen (S)",
     "submit.title": "Skicka in offert",
+    "submit.identify":
+      "Vi behöver veta vem som frågar för att kunna svara. Fyll i namn och e-post nedan, eller",
+    "submit.logIn": "logga in",
+    "submit.signedIn":
+      "Inskickas som {name}. Ändra uppgifterna nedan om någon annan ska ha svaret.",
+    "submit.emptyLine":
+      "Underlaget innehåller ingen maskin. Lägg till minst en i steget Anläggningen innan du skickar in.",
+    "submit.missing": "Saknas: {what}.",
+    "submit.needMachine": "minst en maskin",
+    "submit.needName": "ditt namn",
+    "submit.needEmail": "en giltig e-postadress",
     "submit.close": "Stäng",
     "submit.lead":
       "Underlag {reference} med {machines} maskiner går till INKAB: maskinlistan, planritningen, zonerna och dina anteckningar. Vi hör av oss med ett prisförslag.",
@@ -878,6 +889,17 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.mirrorDo": "Mirror",
     "cad.mirror": "Mirror the machine (S)",
     "submit.title": "Submit quote",
+    "submit.identify":
+      "We need to know who is asking in order to answer. Fill in your name and email below, or",
+    "submit.logIn": "log in",
+    "submit.signedIn":
+      "Submitted as {name}. Change the details below if somebody else should get the answer.",
+    "submit.emptyLine":
+      "The specification holds no machine. Add at least one in the step The plant before you submit.",
+    "submit.missing": "Missing: {what}.",
+    "submit.needMachine": "at least one machine",
+    "submit.needName": "your name",
+    "submit.needEmail": "a valid email address",
     "submit.close": "Close",
     "submit.lead":
       "Specification {reference} with {machines} machines goes to INKAB: the machine list, the plan drawing, the zones and your notes. We will come back to you with a price proposal.",
@@ -1577,6 +1599,17 @@ export const MESSAGES: Record<Locale, Messages> = {
     "inspector.mirrorDo": "Spiegeln",
     "cad.mirror": "Maschine spiegeln (S)",
     "submit.title": "Angebot anfragen",
+    "submit.identify":
+      "Wir müssen wissen, wer fragt, um antworten zu können. Tragen Sie unten Name und E-Mail ein, oder",
+    "submit.logIn": "melden Sie sich an",
+    "submit.signedIn":
+      "Wird gesendet als {name}. Ändern Sie die Angaben unten, wenn jemand anderes die Antwort bekommen soll.",
+    "submit.emptyLine":
+      "Die Planung enthält keine Maschine. Fügen Sie im Schritt Die Anlage mindestens eine hinzu, bevor Sie senden.",
+    "submit.missing": "Es fehlt: {what}.",
+    "submit.needMachine": "mindestens eine Maschine",
+    "submit.needName": "Ihr Name",
+    "submit.needEmail": "eine gültige E-Mail-Adresse",
     "submit.close": "Schließen",
     "submit.lead":
       "Planung {reference} mit {machines} Maschinen geht an INKAB: Maschinenliste, Grundrissplan, Zonen und Ihre Notizen. Wir melden uns mit einem Preisvorschlag.",

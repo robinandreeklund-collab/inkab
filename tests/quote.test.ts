@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { decodeConfig, encodeConfig, shareUrl } from "@/lib/share";
-import { quoteReference, validUntil } from "@/lib/quote";
-import { defaultConfig, lineItem } from "@/lib/templates";
+import { canSubmitQuote, quoteReference, validUntil } from "@/lib/quote";
+import { defaultConfig, emptyConfig, lineItem } from "@/lib/templates";
 import { machineListCsv, planDxf, exportName } from "@/lib/export";
 import { computeLayout } from "@/lib/layout";
 import { templateConfig } from "@/lib/templates";
@@ -43,7 +43,9 @@ describe("delningslänk", () => {
   });
 
   it("säger att innehåll som inte är en konfiguration är ogiltigt", async () => {
-    const bogus = Buffer.from(JSON.stringify({ version: 1, projectName: "" })).toString("base64url");
+    const bogus = Buffer.from(
+      JSON.stringify({ version: 1, projectName: "" }),
+    ).toString("base64url");
     const result = await decodeConfig(bogus);
     expect(result).toEqual({ ok: false, reason: "invalid" });
   });
@@ -67,13 +69,20 @@ describe("delningslänk", () => {
 describe("underlagsnummer", () => {
   it("är stabilt för samma konfiguration", () => {
     const date = new Date("2026-03-04");
-    expect(quoteReference(config, date)).toBe(quoteReference(templateConfig("strolinje"), date));
+    expect(quoteReference(config, date)).toBe(
+      quoteReference(templateConfig("strolinje"), date),
+    );
   });
 
   it("ändras när linjen ändras", () => {
     const date = new Date("2026-03-04");
-    const changed: Configuration = { ...config, line: config.line.slice(0, -1) };
-    expect(quoteReference(changed, date)).not.toBe(quoteReference(config, date));
+    const changed: Configuration = {
+      ...config,
+      line: config.line.slice(0, -1),
+    };
+    expect(quoteReference(changed, date)).not.toBe(
+      quoteReference(config, date),
+    );
   });
 
   it("ändras inte av kundfält eller projektnamn", () => {
@@ -89,7 +98,9 @@ describe("underlagsnummer", () => {
 
   it("har formen INKAB-ÅÅMM-XXXXX utan tecken som läses fel", () => {
     const reference = quoteReference(config, new Date("2026-03-04"));
-    expect(reference).toMatch(/^INKAB-2603-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}$/);
+    expect(reference).toMatch(
+      /^INKAB-2603-[23456789ABCDEFGHJKLMNPQRSTUVWXYZ]{5}$/,
+    );
   });
 
   it("ger en giltighetsdag i framtiden", () => {
@@ -117,7 +128,9 @@ describe("export", () => {
 
   it("citerar fält som innehåller citattecken", () => {
     const named: Configuration = { ...config, projectName: 'Linje "A"' };
-    expect(machineListCsv(named, layout, null, "guest")).toContain('"Linje ""A"""');
+    expect(machineListCsv(named, layout, null, "guest")).toContain(
+      '"Linje ""A"""',
+    );
   });
 
   it("skriver en DXF med sektioner, lager och entiteter", () => {
@@ -179,5 +192,32 @@ describe("underlagsnumret följer anläggningen", () => {
 
   it("bryr sig inte om anteckningen", () => {
     expect(med({ note: "flyttas från hall 2" })).toBe(med({}));
+  });
+});
+
+describe("vad som går att skicka in", () => {
+  /*
+   * Ett underlag utan en enda maskin är ingen offert: det ger säljaren
+   * inget att svara på och kunden inget att vänta på. Spärren delas av
+   * knappen och av servern, så att de aldrig säger olika saker.
+   */
+  it("en tom linje går inte att skicka in", () => {
+    expect(canSubmitQuote(emptyConfig())).toBe(false);
+  });
+
+  it("en linje med en maskin går att skicka in", () => {
+    const config = emptyConfig();
+    config.line.push(lineItem("rullbana"));
+    expect(canSubmitQuote(config)).toBe(true);
+  });
+
+  it("en mall går att skicka in", () => {
+    expect(canSubmitQuote(templateConfig("strolinje"))).toBe(true);
+  });
+
+  it("fel i regelverket hindrar inte inskickning — det är kundens sak", () => {
+    const config = templateConfig("strolinje");
+    config.hall.lengthMm = 15000;
+    expect(canSubmitQuote(config)).toBe(true);
   });
 });

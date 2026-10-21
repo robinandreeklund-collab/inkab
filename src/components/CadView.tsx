@@ -13,7 +13,12 @@ import {
   snapToWalls,
   WALL_THICKNESS_MM,
 } from "@/lib/walls";
-import { nextName } from "@/lib/drawing";
+import {
+  commitDraft,
+  doorWalls,
+  draftPreview,
+  DRAFT_SNAP_MM,
+} from "@/lib/draft";
 import { zoneDef } from "@/lib/zones";
 import { HALL_LIMITS } from "@/lib/limits";
 import { markerNumber } from "@/lib/flowMarkers";
@@ -45,8 +50,8 @@ import { useT } from "@/lib/i18n";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
-/** Maskiner snappar till detta raster vid drag, mm. */
-const SNAP_MM = 250;
+/** Maskiner snappar till samma raster som det som ritas, mm. */
+const SNAP_MM = DRAFT_SNAP_MM;
 const PAD_MM = 4000;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
@@ -80,68 +85,6 @@ type TipHandlers = (
   onPointerMove: (e: React.PointerEvent) => void;
   onPointerLeave: () => void;
 };
-
-/** Väggar en port kan sitta i: de ritade och hallens egna kanter. */
-const doorWalls = (
-  walls: DrawnObject[],
-  hall: { lengthMm: number; widthMm: number },
-) => [...walls, ...hallWalls(hall)];
-
-/**
- * Väggar och portar låses till närmaste axel så att de alltid blir raka —
- * man drar i grova drag åt det håll man menar och får en ren linje.
- * Truckzoner och no-go-zoner ritas som fria rektanglar.
- */
-function draftBox(
-  kind: Exclude<Tool, "select" | "measure">,
-  from: Vec2,
-  to: Vec2,
-  walls: DrawnObject[] = [],
-): Box {
-  if (kind === "wall" || kind === "door") {
-    // Ändarna dras till befintliga väggar så att linjerna möts där man siktar.
-    from = snapToWalls(from, walls);
-    to = snapToWalls(to, walls);
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const half = WALL_THICKNESS_MM / 2;
-    return Math.abs(dx) >= Math.abs(dy)
-      ? {
-          x: snap(Math.min(from.x, to.x)),
-          y: snap(from.y) - half,
-          l: Math.max(0, snap(Math.abs(dx))),
-          w: WALL_THICKNESS_MM,
-        }
-      : {
-          x: snap(from.x) - half,
-          y: snap(Math.min(from.y, to.y)),
-          l: WALL_THICKNESS_MM,
-          w: Math.max(0, snap(Math.abs(dy))),
-        };
-  }
-  return {
-    x: snap(Math.min(from.x, to.x)),
-    y: snap(Math.min(from.y, to.y)),
-    l: Math.max(0, snap(Math.abs(to.x - from.x))),
-    w: Math.max(0, snap(Math.abs(to.y - from.y))),
-  };
-}
-
-/**
- * Färdigställer det ritade: väggar får sina hörn stängda, portar sätts in i
- * väggen de ritades på. Utan det blir en port en ruta på golvet och ett hörn
- * ett hål på en halv väggtjocklek.
- */
-function finishDraft(
-  kind: DrawnKind,
-  box: Box,
-  walls: DrawnObject[],
-  hall: { lengthMm: number; widthMm: number },
-): Box {
-  if (kind === "wall") return closeCorners(box, walls);
-  if (kind === "door") return fitDoorToWall(box, doorWalls(walls, hall)) ?? box;
-  return box;
-}
 
 export function CadView() {
   const {
@@ -278,8 +221,14 @@ export function CadView() {
   /* ── Drag av maskin ──────────────────────────────────────────────────── */
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
     event.stopPropagation();
+    // Med ett ritverktyg i handen ritar man, också ovanpå en maskin. Förut
+    // svalde maskinen trycket och ingenting hände: en truckgata som skulle
+    // dras tvärs över linjen gick inte att börja där den skulle börja.
+    if (tool !== "select") {
+      startGround(event);
+      return;
+    }
     select(placement.instanceId);
-    if (tool !== "select") return;
 
     /*
      * Koordinatsystemet låses vid draget.
@@ -329,8 +278,13 @@ export function CadView() {
   /* ── Drag av ritat objekt ────────────────────────────────────────────── */
   const startDragDrawn = (object: DrawnObject, event: React.PointerEvent) => {
     event.stopPropagation();
+    // Samma sak som för maskinerna: ritverktyget går före. En zon ritas lika
+    // gärna ovanpå en annan.
+    if (tool !== "select") {
+      startGround(event);
+      return;
+    }
     select(object.id);
-    if (tool !== "select") return;
 
     const svg = svgRef.current;
     const ctm = svg?.getScreenCTM();
@@ -591,14 +545,10 @@ export function CadView() {
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
       if (!now) return;
-      const raw = draftBox(kind, start, now, walls);
-      // En port visas där den kommer att hamna — i väggen — redan medan man
-      // drar, så att avstånden till hörnen stämmer med resultatet.
-      const box =
-        kind === "door" && raw.l >= 200 && raw.w >= 100
-          ? (fitDoorToWall(raw, doorWalls(walls, config.hall)) ?? raw)
-          : raw;
-      latest = { kind, box };
+      latest = {
+        kind,
+        box: draftPreview(kind, start, now, walls, config.hall),
+      };
       setDraft(latest);
     };
 
@@ -609,29 +559,19 @@ export function CadView() {
       window.removeEventListener("pointerup", up);
       setDraft(null);
       const current = latest as NonNullable<Draft> | null;
-      if (current && current.box.l >= 200 && current.box.w >= 100) {
-        const box =
-          current.kind === "door"
-            ? current.box
-            : finishDraft(current.kind, current.box, walls, config.hall);
-        const zone = current.kind === "zone" ? zoneKind : undefined;
-        const object: DrawnObject = {
-          id: `${zone ?? current.kind}-${Date.now().toString(36)}`,
-          kind: current.kind,
-          ...(zone ? { zone } : {}),
-          // Namnet kommer ur ordlistan, så zonen heter samma sak som
-          // knappen kunden just tryckte på — på kundens eget språk.
-          name: nextName(current.kind, config.drawn, t, zone),
-          x: Math.round(box.x),
-          y: Math.round(box.y),
-          l: Math.round(box.l),
-          w: Math.round(box.w),
-          h:
-            current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
-        };
-        addDrawn(object);
-        setTool("select");
-      }
+      if (!current) return;
+      // Samma funktion som modellvyn anropar: ett objekt ritat i 3D blir
+      // exakt samma låda med exakt samma namn som ett ritat i planen.
+      const object = commitDraft(current.kind, current.box, {
+        drawn: config.drawn,
+        walls,
+        hall: config.hall,
+        zone: zoneKind,
+        t,
+      });
+      if (!object) return;
+      addDrawn(object);
+      setTool("select");
     };
 
     window.addEventListener("pointermove", move);

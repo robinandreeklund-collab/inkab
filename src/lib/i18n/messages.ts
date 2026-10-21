@@ -290,6 +290,8 @@ export const MESSAGES: Record<Locale, Messages> = {
     "model.turnLeft": "Vrid moturs",
     "model.turnRight": "Vrid medurs",
     "model.remove": "Ta bort maskinen",
+    "model.removeDrawn": "Ta bort",
+    "model.drawHint": "Dra på golvet. Mått och portavstånd ser du i planvyn.",
     "model.orbit": "Kamera",
     "model.tiltUp": "Luta uppåt",
     "model.tiltDown": "Luta nedåt",
@@ -993,6 +995,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "model.turnLeft": "Turn anticlockwise",
     "model.turnRight": "Turn clockwise",
     "model.remove": "Remove the machine",
+    "model.removeDrawn": "Remove",
+    "model.drawHint":
+      "Drag on the floor. Dimensions and door clearances are shown in the plan view.",
     "model.orbit": "Camera",
     "model.tiltUp": "Tilt up",
     "model.tiltDown": "Tilt down",
@@ -1704,6 +1709,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "model.turnLeft": "Gegen den Uhrzeigersinn drehen",
     "model.turnRight": "Im Uhrzeigersinn drehen",
     "model.remove": "Maschine entfernen",
+    "model.removeDrawn": "Entfernen",
+    "model.drawHint":
+      "Auf dem Boden ziehen. Maße und Torabstände zeigt die Planansicht.",
     "model.orbit": "Kamera",
     "model.tiltUp": "Nach oben neigen",
     "model.tiltDown": "Nach unten neigen",

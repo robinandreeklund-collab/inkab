@@ -313,3 +313,42 @@ describe("mallarna öppnar utan anmärkning", () => {
     }
   });
 });
+
+describe("hallens gränser", () => {
+  /*
+   * En maskin får sticka ut ur hallen. En rullbana som går vidare ut genom
+   * en port är vardag på ett sågverk, och var förut ett fel som gjorde att
+   * steget "Anläggningen" aldrig kunde bockas av.
+   */
+  const outside = (config: ReturnType<typeof defaultConfig>) =>
+    computeLayout(config).diagnostics.filter((d) => d.code === "R-401");
+
+  it("en maskin utanför hallen är en anmärkning, inte ett fel", () => {
+    const config = defaultConfig();
+    config.hall.lengthMm = 15000;
+    const hits = outside(config);
+    expect(hits.length).toBeGreaterThan(0);
+    expect(hits.every((d) => d.severity === "warning")).toBe(true);
+  });
+
+  it("går maskinen ut genom en ritad port sägs ingenting", () => {
+    const config = defaultConfig();
+    config.hall.lengthMm = 15000;
+    const before = outside(config).length;
+    // En port i gaveln, där linjen passerar ut.
+    for (const p of computeLayout(config).placements) {
+      if (p.bbox.x + p.bbox.l <= config.hall.lengthMm) continue;
+      config.drawn.push({
+        id: `d-${p.instanceId}`,
+        kind: "door",
+        name: "Port",
+        x: config.hall.lengthMm - 150,
+        y: p.bbox.y,
+        l: 300,
+        w: p.bbox.w,
+        h: 5000,
+      });
+    }
+    expect(outside(config).length).toBeLessThan(before);
+  });
+});

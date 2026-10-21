@@ -48,8 +48,6 @@ const GRID_MM = 1000;
 /** Maskiner snappar till detta raster vid drag, mm. */
 const SNAP_MM = 250;
 const PAD_MM = 4000;
-/** Hallens yttervägg i planen, mm. Ritad utanför måtten, som ett väggsnitt. */
-const HALL_WALL_MM = 450;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
 
@@ -663,30 +661,11 @@ export function CadView() {
       .flatMap((d) => d.instanceIds),
   );
 
-  /*
-   * Maskiner som sticker utanför hallen.
-   *
-   * R-401 säger ifrån när linjen inte får plats, men först i listan och
-   * först när man letar där. Den som drar in en maskin ska se det på
-   * maskinen, i samma ögonblick.
-   */
-  const outsideHall = layout.placements
-    .filter(
-      (p) =>
-        p.bbox.x < 0 ||
-        p.bbox.y < 0 ||
-        p.bbox.x + p.bbox.l > hall.lengthMm ||
-        p.bbox.y + p.bbox.w > hall.widthMm,
-    )
-    .map((p) => p.instanceId);
-  const outsideIds = new Set(outsideHall);
-
   const fillFor = (p: Placement) => (p.aux ? "#ffffff" : "#f7f7f8");
   const strokeFor = (p: Placement) => {
     if (p.instanceId === selectedId) return "#5980a6";
     if (errorIds.has(p.instanceId)) return "#9f1239";
-    if (warnIds.has(p.instanceId) || outsideIds.has(p.instanceId))
-      return "#b45309";
+    if (warnIds.has(p.instanceId)) return "#b45309";
     return "#1d1f20";
   };
   const labelFor = (p: Placement) =>
@@ -767,19 +746,10 @@ export function CadView() {
          * proportioner inte matchar blir det en remsa ovanför och under —
          * och med färgen bara på rutan fick man två olika "utanför".
          */
-        style={{ cursor, background: "#d8dade" }}
+        style={{ cursor, background: "#e9eaec" }}
         onWheel={onWheel}
       >
         <defs>
-          <filter id="hallShadow" x="-8%" y="-12%" width="116%" height="124%">
-            <feDropShadow
-              dx="0"
-              dy={strokeUnit * 2}
-              stdDeviation={strokeUnit * 3}
-              floodColor="#1d2d3d"
-              floodOpacity="0.28"
-            />
-          </filter>
           <pattern
             id="grid"
             width={GRID_MM}
@@ -854,7 +824,7 @@ export function CadView() {
           y={viewBox.y}
           width={viewBox.l}
           height={viewBox.w}
-          fill="#d8dade"
+          fill="#e9eaec"
           onPointerDown={startGround}
         />
 
@@ -877,7 +847,6 @@ export function CadView() {
           strokeUnit={strokeUnit}
           fillFor={fillFor}
           strokeFor={strokeFor}
-          outsideHall={outsideHall}
           dragging={draggingMachineId !== null}
           labelFor={labelFor}
           onMachineDown={startDrag}
@@ -1007,7 +976,6 @@ function Plan2D({
   strokeUnit,
   fillFor,
   strokeFor,
-  outsideHall,
   dragging,
   labelFor,
   onMachineDown,
@@ -1037,8 +1005,6 @@ function Plan2D({
   strokeUnit: number;
   fillFor: (p: Placement) => string;
   strokeFor: (p: Placement) => string;
-  /** Maskiner som sticker utanför hallen — gränsen varnar då. */
-  outsideHall: string[];
   /** En maskin dras just nu ur katalogen; gränsen lyser upp. */
   dragging: boolean;
   labelFor: (p: Placement) => string;
@@ -1054,48 +1020,23 @@ function Plan2D({
   const bounds = layout.bounds;
   const t = useT();
   const handle = strokeUnit * 7;
+
   const hallTip = tip(t("cad.hallResize.title"), t("cad.hallResize.body"));
 
   return (
     <g>
       {/*
-       * Hallen ritas som en byggnad, inte som en rektangel.
+       * Var hallen slutar, som en markering på golvet.
        *
-       * Först var den ett streckat hårstreck i ett raster som täckte hela
-       * utsnittet. Sedan ett vitt fält mot en ljusgrå ton — men en ljusare
-       * rektangel säger inte "det är här inne du arbetar", hur stark
-       * tonskillnaden än görs. Det som säger det är väggen: en snittad
-       * yttervägg runt om, så som varje planritning visar en lokal.
+       * Vägen hit gick via en streckad hårlinje, ett vitare golv och till
+       * slut en hel byggnad med väggar — och byggnaden var för mycket. Det
+       * som behövs är en tydlig linje som säger var lokalen tar slut, så
+       * som en hallgräns målas på ett golv i verkligheten.
        *
-       * Väggen ligger utanför hallens mått, så att golvet man bygger på är
-       * exakt de mått kunden angett. Bandet byter färg när en maskin dras
-       * in ur katalogen och när något hamnar utanför.
+       * Rutnätet ligger kvar innanför linjen och inte utanför: rastret är
+       * golvet, och tillsammans med linjen räcker det.
        */}
       <g pointerEvents="none">
-        <path
-          d={
-            `M${hallBox.x - HALL_WALL_MM} ${hallBox.y - HALL_WALL_MM}` +
-            `h${hallBox.l + HALL_WALL_MM * 2}v${hallBox.w + HALL_WALL_MM * 2}` +
-            `h${-(hallBox.l + HALL_WALL_MM * 2)}Z` +
-            `M${hallBox.x} ${hallBox.y}h${hallBox.l}v${hallBox.w}h${-hallBox.l}Z`
-          }
-          fillRule="evenodd"
-          fill={
-            outsideHall.length > 0
-              ? "#b45309"
-              : dragging
-                ? "#5980a6"
-                : "#1d2d3d"
-          }
-          filter="url(#hallShadow)"
-        />
-        <rect
-          x={hallBox.x}
-          y={hallBox.y}
-          width={hallBox.l}
-          height={hallBox.w}
-          fill="#ffffff"
-        />
         <rect
           x={hallBox.x}
           y={hallBox.y}
@@ -1103,11 +1044,21 @@ function Plan2D({
           height={hallBox.w}
           fill="url(#grid)"
         />
+        <rect
+          x={hallBox.x}
+          y={hallBox.y}
+          width={hallBox.l}
+          height={hallBox.w}
+          fill="none"
+          stroke="#9f1239"
+          strokeWidth={strokeUnit * (dragging ? 5 : 3.6)}
+          strokeOpacity={dragging ? 1 : 0.9}
+        />
       </g>
 
       <text
         x={hallBox.x}
-        y={hallBox.y - HALL_WALL_MM - 500}
+        y={hallBox.y - 700}
         fontSize={strokeUnit * 16}
         fill="#1d1f20"
         fillOpacity="0.55"
@@ -1116,21 +1067,6 @@ function Plan2D({
         HALL {meters(hall.lengthMm)} × {meters(hall.widthMm)} m · fri höjd{" "}
         {meters(hall.clearHeightMm)} m
       </text>
-
-      {/* Varför kanten är orange, utskrivet. En färg ensam säger inte vad. */}
-      {outsideHall.length > 0 ? (
-        <text
-          x={hallBox.x + hallBox.l}
-          y={hallBox.y - HALL_WALL_MM - 500}
-          textAnchor="end"
-          fontSize={strokeUnit * 15}
-          fill="#b45309"
-          className="num"
-          pointerEvents="none"
-        >
-          {t("cad.outsideHall", { count: outsideHall.length }).toUpperCase()}
-        </text>
-      ) : null}
 
       {/* Hallens kanter: dra för att ändra ytan direkt i ritningen. Under det
           ritade, så att en port i kanten går att ta tag i. */}

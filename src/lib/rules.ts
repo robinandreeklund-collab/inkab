@@ -511,11 +511,25 @@ export function runRules(
   }
 
   /* ── R-401 / R-402 Hallens gränser ──────────────────────────────────── */
+  /*
+   * En maskin får sticka ut ur hallen.
+   *
+   * Det var ett fel förut, och det var fel: en rullbana som går vidare ut
+   * genom en port är vardag på ett sågverk, och med ett fel på den gick
+   * steget "Anläggningen" aldrig att bocka av. Nu är det en anmärkning,
+   * och går maskinen ut genom en ritad port sägs ingenting alls — då är
+   * det inte en olycka utan en öppning man valt.
+   */
+  const openings = config.drawn.filter((d) => d.kind === "door");
   for (const p of all) {
     if (boxContains(hall, p.bbox, 1)) continue;
+    const throughDoor = openings.some((d) =>
+      boxesOverlap(p.bbox, { x: d.x, y: d.y, l: d.l, w: d.w }, -DOOR_REACH_MM),
+    );
+    if (throughDoor) continue;
     out.push({
       code: "R-401",
-      severity: "error",
+      severity: "warning",
       title: t("rule.outsideHall.t"),
       detail: t("rule.outsideHall.d", {
         machine: p.machine.name,

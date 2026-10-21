@@ -79,7 +79,6 @@ export const MESSAGES: Record<Locale, Messages> = {
 
     /* Ritningen */
     "cad.plan": "Planvy",
-    "cad.outsideHall": "{count} maskiner utanför hallen",
     "cad.zones": "Visa zoner",
     "cad.arrows": "Visa flödespilar",
     "cad.snap": "snapp {mm} mm",
@@ -772,7 +771,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "side.left": "Left",
 
     "cad.plan": "Plan view",
-    "cad.outsideHall": "{count} machines outside the hall",
     "cad.zones": "Show zones",
     "cad.arrows": "Show flow arrows",
     "cad.snap": "snap {mm} mm",
@@ -1470,7 +1468,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "side.left": "Links",
 
     "cad.plan": "Grundriss",
-    "cad.outsideHall": "{count} Maschinen außerhalb der Halle",
     "cad.zones": "Zonen anzeigen",
     "cad.arrows": "Flusspfeile anzeigen",
     "cad.snap": "Raster {mm} mm",

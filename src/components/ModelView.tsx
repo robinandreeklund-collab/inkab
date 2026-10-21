@@ -19,6 +19,11 @@ import type {
 /** Maskinernas färg i 3D: INKAB:s stålblå, mörk nog att synas mot golvet. */
 const MACHINE_TINT = "#3d566e";
 
+/** Bredden på hallgränsens målade markering i modellen, meter. */
+const HALL_MARK = 0.3;
+/** Hur långt marken går utanför hallen, meter. */
+const GROUND_PAD = 14;
+
 /** Maskiner snappar till samma raster som i planvyn, mm. */
 const SNAP_MM = 250;
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
@@ -421,23 +426,81 @@ export function ModelView() {
         const hallL = cfg.hall.lengthMm / 1000;
         const hallW = cfg.hall.widthMm / 1000;
 
+        /*
+         * Hallen är en byggnad, också här.
+         *
+         * Golvet låg förut som en ensam platta i nästan samma ton som
+         * bakgrunden, och rutnätet var kvadratiskt och spillde utanför den
+         * korta sidan — man såg inte var lokalen slutade. Nu finns mark
+         * under, ett ljust golv på den, rutnätet klippt till hallen, och en
+         * låg sockelmur runt om som ger byggnaden en kant i rummet. Muren
+         * är låg med flit: den ska rama in, inte skymma maskinerna.
+         */
+        const ground = new THREE.Mesh(
+          new THREE.PlaneGeometry(
+            hallL + GROUND_PAD * 2,
+            hallW + GROUND_PAD * 2,
+          ),
+          new THREE.MeshStandardMaterial({ color: "#dfe2e6", roughness: 1 }),
+        );
+        ground.rotation.x = -Math.PI / 2;
+        ground.position.set(hallL / 2, -0.02, hallW / 2);
+        ground.receiveShadow = true;
+        world.add(ground);
+
         const floor = new THREE.Mesh(
           new THREE.PlaneGeometry(hallL, hallW),
-          new THREE.MeshStandardMaterial({ color: "#e2e5e8", roughness: 0.95 }),
+          new THREE.MeshStandardMaterial({ color: "#f4f5f7", roughness: 0.95 }),
         );
         floor.rotation.x = -Math.PI / 2;
         floor.position.set(hallL / 2, 0, hallW / 2);
         floor.receiveShadow = true;
         world.add(floor);
 
-        const grid = new THREE.GridHelper(
-          Math.max(hallL, hallW),
-          Math.round(Math.max(hallL, hallW)),
-          0xb8bec5,
-          0xd3d8dd,
+        // Metersrutnät, klippt till hallen i stället för en kvadrat över den.
+        const metre: number[] = [];
+        for (let x = 1; x < hallL; x += 1)
+          metre.push(x, 0.003, 0, x, 0.003, hallW);
+        for (let z = 1; z < hallW; z += 1)
+          metre.push(0, 0.003, z, hallL, 0.003, z);
+        const metreGeom = new THREE.BufferGeometry();
+        metreGeom.setAttribute(
+          "position",
+          new THREE.Float32BufferAttribute(metre, 3),
         );
-        grid.position.set(hallL / 2, 0.002, hallW / 2);
-        world.add(grid);
+        world.add(
+          new THREE.LineSegments(
+            metreGeom,
+            new THREE.LineBasicMaterial({
+              color: 0xaeb6bf,
+              transparent: true,
+              opacity: 0.55,
+            }),
+          ),
+        );
+
+        /*
+         * Hallens gräns, målad på golvet.
+         *
+         * Först blev det en sockelmur runt om — en byggnad, och det var för
+         * mycket. Det som behövs är en tydlig markering som säger var
+         * lokalen tar slut, så som en hallgräns målas på ett golv. Den
+         * ligger platt, skymmer ingenting och syns från varje kameravinkel.
+         */
+        const markMat = new THREE.MeshBasicMaterial({ color: "#9f1239" });
+        const stripe = (l: number, w: number, cx: number, cz: number) => {
+          const mark = new THREE.Mesh(
+            new THREE.BoxGeometry(l, 0.02, w),
+            markMat,
+          );
+          mark.position.set(cx, 0.012, cz);
+          world.add(mark);
+        };
+        const MW = HALL_MARK;
+        stripe(hallL + MW, MW, hallL / 2, 0);
+        stripe(hallL + MW, MW, hallL / 2, hallW);
+        stripe(MW, hallW, 0, hallW / 2);
+        stripe(MW, hallW, hallL, hallW / 2);
 
         // Måttlagret: utan det är modellvyn en bild, inte en ritning.
         world.add(buildDimensions(THREE, cfg, result, tRef.current));
@@ -871,7 +934,7 @@ function frameCamera(
    * Ramas bara hallen in hamnar måtten utanför bild, och då finns de inte
    * för den som öppnar vyn. Marginalen är den som lagret faktiskt tar.
    */
-  const MARGIN = 3;
+  const MARGIN = 7;
   const centre = new THREE.Vector3(hallL / 2, 0, hallW / 2);
   const span = Math.max(hallL, hallW) + MARGIN * 2;
   camera.position.set(

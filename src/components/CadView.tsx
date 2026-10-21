@@ -661,11 +661,30 @@ export function CadView() {
       .flatMap((d) => d.instanceIds),
   );
 
+  /*
+   * Maskiner som sticker utanför hallen.
+   *
+   * R-401 säger ifrån när linjen inte får plats, men först i listan och
+   * först när man letar där. Den som drar in en maskin ska se det på
+   * maskinen, i samma ögonblick.
+   */
+  const outsideHall = layout.placements
+    .filter(
+      (p) =>
+        p.bbox.x < 0 ||
+        p.bbox.y < 0 ||
+        p.bbox.x + p.bbox.l > hall.lengthMm ||
+        p.bbox.y + p.bbox.w > hall.widthMm,
+    )
+    .map((p) => p.instanceId);
+  const outsideIds = new Set(outsideHall);
+
   const fillFor = (p: Placement) => (p.aux ? "#ffffff" : "#f7f7f8");
   const strokeFor = (p: Placement) => {
     if (p.instanceId === selectedId) return "#5980a6";
     if (errorIds.has(p.instanceId)) return "#9f1239";
-    if (warnIds.has(p.instanceId)) return "#b45309";
+    if (warnIds.has(p.instanceId) || outsideIds.has(p.instanceId))
+      return "#b45309";
     return "#1d1f20";
   };
   const labelFor = (p: Placement) =>
@@ -740,7 +759,13 @@ export function CadView() {
         viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.l} ${viewBox.w}`}
         preserveAspectRatio="xMidYMid meet"
         className="h-full w-full touch-none select-none"
-        style={{ cursor }}
+        /*
+         * Tonen utanför hallen sitter på svg-elementet och inte bara på
+         * bakgrundsrutan. Utsnittet är centrerat med "meet", så när vyns
+         * proportioner inte matchar blir det en remsa ovanför och under —
+         * och med färgen bara på rutan fick man två olika "utanför".
+         */
+        style={{ cursor, background: "#e3e4e7" }}
         onWheel={onWheel}
       >
         <defs>
@@ -802,13 +827,23 @@ export function CadView() {
           </pattern>
         </defs>
 
-        {/* Bakgrund fångar klick för att avmarkera och för ritverktygen. */}
+        {/*
+         * Utanför hallen är det inget golv.
+         *
+         * Rutnätet låg förut över hela utsnittet och hallen var en tunn
+         * streckad linje i det — man såg inte var lokalen tog slut förrän
+         * regelverket sa ifrån. Nu bär hallen rastret och ytan utanför en
+         * flat ton: det ljusa fältet är det man bygger på.
+         *
+         * Rutan fångar fortfarande klick för att avmarkera och för
+         * ritverktygen, som får användas utanför hallen precis som förut.
+         */}
         <rect
           x={viewBox.x}
           y={viewBox.y}
           width={viewBox.l}
           height={viewBox.w}
-          fill="url(#grid)"
+          fill="#e3e4e7"
           onPointerDown={startGround}
         />
 
@@ -831,6 +866,8 @@ export function CadView() {
           strokeUnit={strokeUnit}
           fillFor={fillFor}
           strokeFor={strokeFor}
+          outsideHall={outsideHall}
+          dragging={draggingMachineId !== null}
           labelFor={labelFor}
           onMachineDown={startDrag}
           onTurn={turnMachine}
@@ -959,6 +996,8 @@ function Plan2D({
   strokeUnit,
   fillFor,
   strokeFor,
+  outsideHall,
+  dragging,
   labelFor,
   onMachineDown,
   onTurn,
@@ -987,6 +1026,10 @@ function Plan2D({
   strokeUnit: number;
   fillFor: (p: Placement) => string;
   strokeFor: (p: Placement) => string;
+  /** Maskiner som sticker utanför hallen — gränsen varnar då. */
+  outsideHall: string[];
+  /** En maskin dras just nu ur katalogen; gränsen lyser upp. */
+  dragging: boolean;
   labelFor: (p: Placement) => string;
   onMachineDown: (p: Placement, e: React.PointerEvent) => void;
   onTurn: (instanceId: string, steps: number) => void;
@@ -1004,17 +1047,67 @@ function Plan2D({
 
   return (
     <g>
-      <rect
-        x={hallBox.x}
-        y={hallBox.y}
-        width={hallBox.l}
-        height={hallBox.w}
-        fill="none"
-        stroke="#1d1f20"
-        strokeOpacity="0.5"
-        strokeWidth={strokeUnit * 1.4}
-        strokeDasharray={`${strokeUnit * 12} ${strokeUnit * 5} ${strokeUnit * 3} ${strokeUnit * 5}`}
-      />
+      {/*
+       * Hallens golv och gräns.
+       *
+       * Golvet bär rutnätet, så att rastret i sig säger var lokalen går.
+       * Kanten är en heldragen linje och inte en streckad hårstreck: den
+       * som drar in en maskin ska se gränsen utan att leta efter den.
+       * Dras något ur katalogen lyser kanten upp, och sticker en maskin
+       * utanför blir den varningsfärgad — allt pointer-genomsläppligt, så
+       * att bakgrunden under fortsätter fånga klicken.
+       */}
+      <g pointerEvents="none">
+        <rect
+          x={hallBox.x}
+          y={hallBox.y}
+          width={hallBox.l}
+          height={hallBox.w}
+          fill="#ffffff"
+        />
+        <rect
+          x={hallBox.x}
+          y={hallBox.y}
+          width={hallBox.l}
+          height={hallBox.w}
+          fill="url(#grid)"
+        />
+        <rect
+          x={hallBox.x}
+          y={hallBox.y}
+          width={hallBox.l}
+          height={hallBox.w}
+          fill="none"
+          stroke={
+            outsideHall.length > 0
+              ? "#b45309"
+              : dragging
+                ? "#5980a6"
+                : "#1d1f20"
+          }
+          strokeOpacity={outsideHall.length > 0 || dragging ? 1 : 0.65}
+          strokeWidth={
+            strokeUnit * (outsideHall.length > 0 || dragging ? 3.4 : 2.4)
+          }
+        />
+        {/* Hörnmarkeringar, som husets blueprint-ram. */}
+        {(
+          [
+            [hallBox.x, hallBox.y, 1, 1],
+            [hallBox.x + hallBox.l, hallBox.y, -1, 1],
+            [hallBox.x + hallBox.l, hallBox.y + hallBox.w, -1, -1],
+            [hallBox.x, hallBox.y + hallBox.w, 1, -1],
+          ] as const
+        ).map(([cx, cy, sx, sy]) => (
+          <path
+            key={`${cx}-${cy}`}
+            d={`M${cx + sx * strokeUnit * 22} ${cy}H${cx}V${cy + sy * strokeUnit * 22}`}
+            fill="none"
+            stroke="#5980a6"
+            strokeWidth={strokeUnit * 3.4}
+          />
+        ))}
+      </g>
       <text
         x={hallBox.x + 400}
         y={hallBox.y - 500}
@@ -1026,6 +1119,21 @@ function Plan2D({
         HALL {meters(hall.lengthMm)} × {meters(hall.widthMm)} m · fri höjd{" "}
         {meters(hall.clearHeightMm)} m
       </text>
+
+      {/* Varför kanten är orange, utskrivet. En färg ensam säger inte vad. */}
+      {outsideHall.length > 0 ? (
+        <text
+          x={hallBox.x + hallBox.l}
+          y={hallBox.y - 500}
+          textAnchor="end"
+          fontSize={strokeUnit * 15}
+          fill="#b45309"
+          className="num"
+          pointerEvents="none"
+        >
+          {t("cad.outsideHall", { count: outsideHall.length }).toUpperCase()}
+        </text>
+      ) : null}
 
       {/* Hallens kanter: dra för att ändra ytan direkt i ritningen. Under det
           ritade, så att en port i kanten går att ta tag i. */}

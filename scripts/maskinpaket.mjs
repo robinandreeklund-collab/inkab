@@ -109,6 +109,9 @@ const { convertStep, suggestPorts } = await import(
   src("lib/cad/stepConvert.ts")
 );
 const { measureGlb } = await import(src("lib/cad/measureGlb.ts"));
+const { surveyStepText, tooManyParts } = await import(
+  src("lib/cad/stepSurvey.ts")
+);
 const { DEFAULT_ORIENTATION, orientedFootprint, orientationLabel } =
   await import(src("lib/cad/orientation.ts"));
 const { machineSchema, libraryDocumentSchema } = await import(
@@ -129,6 +132,7 @@ function parseArgs(argv) {
     if (a === "--ut") args.ut = argv[++i];
     else if (a === "--installera") args.installera = true;
     else if (a === "--ersatt") args.ersatt = true;
+    else if (a === "--tvinga") args.tvinga = true;
     else if (a === "--repo") args.repo = argv[++i];
     else if (a === "--riktning") args.riktning = argv[++i];
     else if (a === "--vrid") args.vrid = Number(argv[++i]);
@@ -432,6 +436,27 @@ async function paketera(input) {
   const bytes = new Uint8Array(await readFile(input));
   const redanGlb = isGlb(input);
   log(`\n${path.basename(input)}  ${(bytes.length / 1e6).toFixed(1)} MB`);
+
+  /*
+   * Räkna delarna först. Det tar en sekund och avgör om filen alls går att
+   * läsa — förut kom samma besked efter tio minuters tessellering, som ett
+   * minnesfel, och då hade man redan väntat.
+   */
+  if (!redanGlb) {
+    const survey = surveyStepText(bytes);
+    const minuter = Math.round(survey.estimatedSeconds / 60);
+    log(
+      `  Delar     ~${survey.estimatedParts.toLocaleString("sv-SE")}` +
+        (survey.verdict === "ok"
+          ? ""
+          : `   beräknad tid ${minuter < 60 ? `${minuter} min` : `${Math.round(minuter / 60)} h`}`),
+    );
+    const stopp = tooManyParts(survey);
+    if (stopp && !args.tvinga)
+      throw new Error(`${stopp}\n             (--tvinga kör ändå)`);
+    if (survey.verdict === "långsam")
+      log("  VARNING   Många delar. Det här tar en stund.");
+  }
 
   // En GLB är redan konverterad: den mäts och packas, den byggs inte om.
   const result = redanGlb

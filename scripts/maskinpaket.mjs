@@ -112,6 +112,8 @@ const { measureGlb } = await import(src("lib/cad/measureGlb.ts"));
 const { surveyStepText, tooManyParts } = await import(
   src("lib/cad/stepSurvey.ts")
 );
+const { convertStepNative, findNativeConverter, NATIVE_SETUP, optimiseGlb } =
+  await import(src("lib/cad/nativeConvert.ts"));
 const { DEFAULT_ORIENTATION, orientedFootprint, orientationLabel } =
   await import(src("lib/cad/orientation.ts"));
 const { machineSchema, libraryDocumentSchema } = await import(
@@ -133,6 +135,8 @@ function parseArgs(argv) {
     else if (a === "--installera") args.installera = true;
     else if (a === "--ersatt") args.ersatt = true;
     else if (a === "--tvinga") args.tvinga = true;
+    else if (a === "--nativ") args.nativ = true;
+    else if (a === "--python") args.python = argv[++i];
     else if (a === "--repo") args.repo = argv[++i];
     else if (a === "--riktning") args.riktning = argv[++i];
     else if (a === "--vrid") args.vrid = Number(argv[++i]);
@@ -442,8 +446,10 @@ async function paketera(input) {
    * läsa — förut kom samma besked efter tio minuters tessellering, som ett
    * minnesfel, och då hade man redan väntat.
    */
+  let nativ = null;
   if (!redanGlb) {
     const survey = surveyStepText(bytes);
+    const forStor = tooManyParts(survey) !== null;
     const minuter = Math.round(survey.estimatedSeconds / 60);
     log(
       `  Delar     ~${survey.estimatedParts.toLocaleString("sv-SE")}` +
@@ -451,21 +457,50 @@ async function paketera(input) {
           ? ""
           : `   beräknad tid ${minuter < 60 ? `${minuter} min` : `${Math.round(minuter / 60)} h`}`),
     );
-    const stopp = tooManyParts(survey);
-    if (stopp && !args.tvinga)
-      throw new Error(`${stopp}\n             (--tvinga kör ändå)`);
-    if (survey.verdict === "långsam")
+
+    /*
+     * För många delar för WASM-läsaren: ta den nativa vägen i stället för
+     * att vägra. Samma OpenCascade, men riktiga binärer utan 2 GB-tak, och
+     * glTF skrivet av OCCT självt i stället för koordinat för koordinat över
+     * gränsen till JavaScript — det är det senare som gör WASM-vägen långsam.
+     */
+    if (forStor || args.nativ) {
+      nativ = await findNativeConverter(args.python);
+      if (!nativ && !args.tvinga) {
+        throw new Error(
+          `${tooManyParts(survey) ?? "Nativ konvertering begärd."}\n` +
+            `             Den nativa vägen saknas. Installera den med:  ${NATIVE_SETUP}\n` +
+            "             (--tvinga försöker med WASM-läsaren ändå)",
+        );
+      }
+      if (nativ) log(`  Väg       nativ OpenCascade via ${nativ.command}`);
+    }
+    if (!nativ && survey.verdict === "långsam") {
       log("  VARNING   Många delar. Det här tar en stund.");
+    }
   }
 
   // En GLB är redan konverterad: den mäts och packas, den byggs inte om.
-  const result = redanGlb
-    ? { ...(await measureGlb(bytes)), glb: bytes }
-    : await convertStep(bytes, {
-        toleranceMm: args.tolerans,
-        minPartMm: args.minstaDel,
-        up: "z",
-      });
+  let result;
+  if (redanGlb) {
+    result = { ...(await measureGlb(bytes)), glb: bytes };
+  } else if (nativ) {
+    const rå = await convertStepNative(nativ, input, {
+      toleranceMm: args.tolerans,
+      onStage: (stage) => log(`            ${stage}`),
+    });
+    // Samma efterbehandling som WASM-vägen, annars blir filen mångdubbelt
+    // större för samma geometri och 3D-vyn får betala det.
+    const glb = await optimiseGlb(rå.glb);
+    result = { ...(await measureGlb(glb)), glb };
+    log(`  Former    ${rå.shapes} ur den nativa läsaren`);
+  } else {
+    result = await convertStep(bytes, {
+      toleranceMm: args.tolerans,
+      minPartMm: args.minstaDel,
+      up: "z",
+    });
+  }
 
   /*
    * Fotavtrycket mäts på den ovridna geometrin. Biblioteket ska bära måtten
@@ -496,7 +531,7 @@ async function paketera(input) {
   const kort = {
     id,
     source: path.basename(input),
-    sourceKind: redanGlb ? "glb" : "step",
+    sourceKind: redanGlb ? "glb" : nativ ? "step-nativ" : "step",
     generatedAt: new Date().toISOString(),
     /** Måtten som de står i CAD-filen, före riktningen. */
     measuredFootprint: result.footprint,
@@ -524,13 +559,13 @@ async function paketera(input) {
   );
   log(
     `  GLB       ${(result.glb.length / 1e6).toFixed(2)} MB` +
-      (redanGlb
-        ? `   ${result.stats.trianglesIn.toLocaleString("sv-SE")} trianglar   (inläst, inte konverterad)`
+      (redanGlb || nativ
+        ? `   ${result.stats.trianglesIn.toLocaleString("sv-SE")} trianglar${redanGlb ? "   (inläst, inte konverterad)" : ""}`
         : `   ${result.stats.partsKept} av ${result.stats.partsIn} delar` +
           `   ${result.stats.seconds} s`),
   );
   // Minnet är det som fäller en tung fil, så det syns när det börjar bli trångt.
-  if (!redanGlb && result.stats.readerMemoryMb >= 512) {
+  if (!redanGlb && !nativ && result.stats.readerMemoryMb >= 512) {
     log(
       `  Minne     ${result.stats.readerMemoryMb} MB av 2048 MB i STEP-läsaren`,
     );

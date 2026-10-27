@@ -49,15 +49,35 @@ export async function measureGlb(bytes: Uint8Array): Promise<GlbMeasurement> {
     throw new Error("GLB:n har ingen geometri att mäta.");
   }
 
+  /*
+   * Trianglar räknade per instans, inte per unik mesh.
+   *
+   * Avdubbleringen slår ihop likadan geometri: 87 000 identiska kuber blir
+   * en mesh om tolv trianglar som används 87 000 gånger. Räknat på mesharna
+   * blev svaret "12 trianglar" om en modell som i själva verket ritar över
+   * en miljon — och det är instanserna GPU:n betalar för, inte de unika.
+   */
   let triangles = 0;
+  const perMesh = new Map<unknown, number>();
   for (const mesh of doc.getRoot().listMeshes()) {
+    let count = 0;
     for (const primitive of mesh.listPrimitives()) {
-      const count =
+      const n =
         primitive.getIndices()?.getCount() ??
         primitive.getAttribute("POSITION")?.getCount() ??
         0;
-      triangles += count / 3;
+      count += n / 3;
     }
+    perMesh.set(mesh, count);
+  }
+  let instances = 0;
+  for (const scene of doc.getRoot().listScenes()) {
+    scene.traverse((node) => {
+      const mesh = node.getMesh();
+      if (!mesh) return;
+      triangles += perMesh.get(mesh) ?? 0;
+      instances += 1;
+    });
   }
 
   /* ── Rimlighetskontroll ──────────────────────────────────────────────── */
@@ -96,7 +116,8 @@ export async function measureGlb(bytes: Uint8Array): Promise<GlbMeasurement> {
     stats: {
       glbBytes: bytes.length,
       trianglesIn: Math.round(triangles),
-      meshes: doc.getRoot().listMeshes().length,
+      /** Antalet uppritade delar — instanser, inte unika meshar. */
+      meshes: instances || doc.getRoot().listMeshes().length,
     },
   };
 }

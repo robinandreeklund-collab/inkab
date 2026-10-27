@@ -12,3 +12,7 @@ next-env.d.ts
 # Kopieras från node_modules vid bygget, se scripts/copy-vendor-assets.mjs
 /public/occt/
 /public/pdf/
+
+# Råa STEP-filer som väntar på scripts/maskinpaket.mjs. Leverantörens CAD,
+# ofta tiotals megabyte, och behövs inte i repot — paketen räcker.
+/step-in/

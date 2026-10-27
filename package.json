@@ -16,7 +16,8 @@
     "test": "vitest run",
     "pretest": "node scripts/copy-vendor-assets.mjs",
     "test:watch": "vitest",
-    "step2glb": "node scripts/step-to-glb.mjs"
+    "step2glb": "node scripts/step-to-glb.mjs",
+    "maskinpaket": "node scripts/maskinpaket.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.124.0",

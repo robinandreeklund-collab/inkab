@@ -1,7 +1,16 @@
 import occtimportjs, { type OcctMesh } from "occt-import-js";
 import { Document, WebIO } from "@gltf-transform/core";
-import { ALL_EXTENSIONS, EXTMeshoptCompression } from "@gltf-transform/extensions";
-import { dedup, prune, quantize, simplify, weld } from "@gltf-transform/functions";
+import {
+  ALL_EXTENSIONS,
+  EXTMeshoptCompression,
+} from "@gltf-transform/extensions";
+import {
+  dedup,
+  prune,
+  quantize,
+  simplify,
+  weld,
+} from "@gltf-transform/functions";
 import { MeshoptEncoder, MeshoptSimplifier } from "meshoptimizer";
 import type { Port } from "@/lib/types";
 
@@ -66,9 +75,23 @@ export type ConvertResult = {
     trianglesIn: number;
     toleranceMm: number;
     minPartMm: number;
+    /** Toppnoteringen för STEP-läsarens WASM-minne, MB. Se READER_MEMORY_CEILING_MB. */
+    readerMemoryMb: number;
     seconds: number;
   };
 };
+
+/**
+ * Taket för STEP-läsaren, MB.
+ *
+ * OpenCascade körs som WebAssembly, och WASM-modulen har ett eget minne skilt
+ * från webbläsarens och från Nodes. Bygget av occt-import-js (0.0.23) är
+ * länkat med -sALLOW_MEMORY_GROWTH=1 utan MAXIMUM_MEMORY, vilket ger
+ * emscriptens standardtak på 2 GB för 32-bitars WASM. Siffran står i den
+ * publicerade .wasm-filens minnessektion och går inte att höja här:
+ * --max-old-space-size styr Nodes JS-heap, som är en annan sak.
+ */
+export const READER_MEMORY_CEILING_MB = 2048;
 
 const DEFAULTS = {
   toleranceMm: 2,
@@ -91,7 +114,11 @@ function bounds(positions: number[]): Omit<Part, "mesh"> {
       if (v > max[a]) max[a] = v;
     }
   }
-  return { min, max, size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]] };
+  return {
+    min,
+    max,
+    size: [max[0] - min[0], max[1] - min[1], max[2] - min[2]],
+  };
 }
 
 export type PartSurvey = {
@@ -111,7 +138,10 @@ export type PartSurvey = {
  * också: utan trianglar finns inget att bygga av, och att låta dem gå vidare
  * ger ett kryptiskt fel längre ner i stället för ett begripligt här.
  */
-export function surveyMeshes(meshes: OcctMesh[], minPartMm: number): PartSurvey {
+export function surveyMeshes(
+  meshes: OcctMesh[],
+  minPartMm: number,
+): PartSurvey {
   const parts: Part[] = [];
   let empty = 0;
 
@@ -129,7 +159,11 @@ export function surveyMeshes(meshes: OcctMesh[], minPartMm: number): PartSurvey 
     parts.push({ mesh, ...box });
   }
 
-  return { parts, kept: parts.filter((p) => Math.max(...p.size) >= minPartMm), empty };
+  return {
+    parts,
+    kept: parts.filter((p) => Math.max(...p.size) >= minPartMm),
+    empty,
+  };
 }
 
 /**
@@ -144,6 +178,8 @@ export function emptyResultError(
   survey: PartSurvey,
   minPartMm: number,
   stepBytes: number,
+  /** Hur mycket WASM-minne läsningen tog. 0 när det inte gick att mäta. */
+  readerMemoryMb = 0,
 ): string | null {
   if (survey.kept.length > 0) return null;
 
@@ -153,13 +189,41 @@ export function emptyResultError(
 
   const size = `${(stepBytes / 1e6).toFixed(0)} MB`;
   const read = survey.empty === 1 ? "1 del" : `${survey.empty} delar`;
-  return (
+  const inledning =
     `OpenCascade läste ${read} ur filen (${size}) men fick ingen geometri ur någon av dem. ` +
-    "Gränsen för smådelar har inget med det att göra — att sänka den hjälper inte. " +
-    "Vanligast är att webbläsaren fick slut på minne på en tung sammanställning: kör filen " +
-    "med `npm run step2glb` på en dator med mer minne, eller exportera en STEP utan skruv, " +
-    "kablage och inköpta komponenter och försök igen."
-  );
+    "Gränsen för smådelar har inget med det att göra — att sänka den hjälper inte.";
+
+  // Lättare fil, eller en modell gjord någon annanstans. Samma råd oavsett
+  // varför minnet tog slut, så texten står på ett ställe.
+  const utvagar =
+    `Exportera en STEP utan skruv, kablage och inköpta komponenter — ${survey.empty} delar ` +
+    "är mycket för en maskin — eller konvertera filen i ett program som kör OpenCascade " +
+    "nativt, lägg GLB:n i public/models och peka ut den i fältet GLB.";
+
+  /*
+   * Två helt olika fel ser likadana ut här, och bara minnessiffran skiljer
+   * dem åt. Utan den gissade felet på "tung sammanställning" även när filen
+   * var liten och problemet var att den saknade ytor helt.
+   */
+  if (readerMemoryMb >= READER_MEMORY_CEILING_MB * 0.9) {
+    return (
+      `${inledning} Minnet tog slut: ${readerMemoryMb} MB av de ` +
+      `${READER_MEMORY_CEILING_MB} MB som STEP-läsaren kan använda. Taket sitter i ` +
+      "WASM-bygget av OpenCascade och är detsamma i webbläsaren och i Node, så att köra om " +
+      `filen med \`npm run step2glb\` hjälper inte. ${utvagar}`
+    );
+  }
+
+  if (readerMemoryMb > 0) {
+    return (
+      `${inledning} Minnet räckte (${readerMemoryMb} MB av ${READER_MEMORY_CEILING_MB} MB), ` +
+      "så det är inte storleken. Då innehåller filen inga ytor att triangulera: vanligast är " +
+      "en export satt till kurvor eller wireframe i stället för solider. Exportera om som " +
+      "solid, AP214 eller AP242."
+    );
+  }
+
+  return `${inledning} ${utvagar}`;
 }
 
 export async function convertStep(
@@ -175,6 +239,12 @@ export async function convertStep(
   const occt = await occtimportjs(
     opt.wasmUrl ? { locateFile: () => opt.wasmUrl as string } : undefined,
   );
+  // Hur mycket WASM-minne läsningen krävde. Avgör vilket fel det är när
+  // ingenting kommer tillbaka, och är värt att veta på en tung fil ändå.
+  const readerMemoryMb = () =>
+    Math.round(
+      ((occt as { HEAPU8?: Uint8Array }).HEAPU8?.length ?? 0) / 1048576,
+    );
   report("tessellerar");
   const read = occt.ReadStepFile(step, {
     linearUnit: "millimeter",
@@ -183,19 +253,32 @@ export async function convertStep(
     angularDeflection: opt.angularDeflection,
   });
   if (!read.success || !read.meshes?.length) {
-    throw new Error("OpenCascade kunde inte läsa filen. Är det en giltig STEP?");
+    throw new Error(
+      "OpenCascade kunde inte läsa filen. Är det en giltig STEP?",
+    );
   }
 
   /* ── Släng det som inte syns ─────────────────────────────────────────── */
   report("rensar");
   const survey = surveyMeshes(read.meshes, opt.minPartMm);
-  const problem = emptyResultError(survey, opt.minPartMm, step.length);
+  const problem = emptyResultError(
+    survey,
+    opt.minPartMm,
+    step.length,
+    readerMemoryMb(),
+  );
   if (problem) throw new Error(problem);
   const { parts, kept } = survey;
-  const trianglesIn = kept.reduce((n, p) => n + p.mesh.index.array.length / 3, 0);
+  const trianglesIn = kept.reduce(
+    (n, p) => n + p.mesh.index.array.length / 3,
+    0,
+  );
 
   /* ── Normalisera: origo, upp-axel, meter ─────────────────────────────── */
-  const all = { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity] };
+  const all = {
+    min: [Infinity, Infinity, Infinity],
+    max: [-Infinity, -Infinity, -Infinity],
+  };
   for (const p of kept) {
     for (let a = 0; a < 3; a++) {
       all.min[a] = Math.min(all.min[a], p.min[a]);
@@ -205,8 +288,16 @@ export async function convertStep(
 
   const upIsZ = opt.up !== "y";
   const sizeMm = upIsZ
-    ? [all.max[0] - all.min[0], all.max[1] - all.min[1], all.max[2] - all.min[2]]
-    : [all.max[0] - all.min[0], all.max[2] - all.min[2], all.max[1] - all.min[1]];
+    ? [
+        all.max[0] - all.min[0],
+        all.max[1] - all.min[1],
+        all.max[2] - all.min[2],
+      ]
+    : [
+        all.max[0] - all.min[0],
+        all.max[2] - all.min[2],
+        all.max[1] - all.min[1],
+      ];
 
   // Origo i inmatningsporten vid golvnivå, X i flödesriktningen — samma
   // konvention som solvern, så modell och layout hamnar på samma plats.
@@ -274,7 +365,11 @@ export async function convertStep(
         }
         primitive.setAttribute(
           "NORMAL",
-          doc.createAccessor().setType("VEC3").setArray(normals).setBuffer(buffer),
+          doc
+            .createAccessor()
+            .setType("VEC3")
+            .setArray(normals)
+            .setBuffer(buffer),
         );
       }
 
@@ -282,7 +377,9 @@ export async function convertStep(
       // options-id i biblioteket tänds och släcks den med den optionen.
       const label = part.mesh.name || `del-${i + 1}`;
       scene.addChild(
-        doc.createNode(label).setMesh(doc.createMesh(label).addPrimitive(primitive)),
+        doc
+          .createNode(label)
+          .setMesh(doc.createMesh(label).addPrimitive(primitive)),
       );
     }
 
@@ -290,7 +387,10 @@ export async function convertStep(
     await MeshoptSimplifier.ready;
 
     const steps = [dedup(), weld(), prune()];
-    if (ratio < 1) steps.push(simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.002 }));
+    if (ratio < 1)
+      steps.push(
+        simplify({ simplifier: MeshoptSimplifier, ratio, error: 0.002 }),
+      );
     steps.push(quantize({ quantizePosition: 14, quantizeNormal: 10 }));
     await doc.transform(...steps);
     report("komprimerar");
@@ -298,11 +398,16 @@ export async function convertStep(
     doc
       .createExtension(EXTMeshoptCompression)
       .setRequired(true)
-      .setEncoderOptions({ method: EXTMeshoptCompression.EncoderMethod.QUANTIZE });
+      .setEncoderOptions({
+        method: EXTMeshoptCompression.EncoderMethod.QUANTIZE,
+      });
 
     const io = new WebIO()
       .registerExtensions(ALL_EXTENSIONS)
-      .registerDependencies({ "meshopt.encoder": MeshoptEncoder, "meshopt.decoder": null });
+      .registerDependencies({
+        "meshopt.encoder": MeshoptEncoder,
+        "meshopt.decoder": null,
+      });
     return io.writeBinary(doc);
   };
 
@@ -328,7 +433,9 @@ export async function convertStep(
     );
   }
   if (sizeMm[2] < 100) {
-    warnings.push(`Höjden ${m(sizeMm[2])} m är för låg för en maskin i biblioteket.`);
+    warnings.push(
+      `Höjden ${m(sizeMm[2])} m är för låg för en maskin i biblioteket.`,
+    );
   }
   // Enstaka tomma delar betyder ofta att tesselleringen tog slut på minne på
   // vägen. Modellen blir byggd ändå, men den är inte hel.
@@ -366,6 +473,7 @@ export async function convertStep(
       trianglesIn,
       toleranceMm: opt.toleranceMm,
       minPartMm: opt.minPartMm,
+      readerMemoryMb: readerMemoryMb(),
       seconds: Math.round((Date.now() - started) / 100) / 10,
     },
   };
@@ -391,6 +499,12 @@ export function suggestPorts(footprint: {
   };
   return [
     { id: "in", role: "in", pos: { x: 0, y }, dir: "x+", ...common },
-    { id: "out", role: "out", pos: { x: footprint.lengthMm, y }, dir: "x+", ...common },
+    {
+      id: "out",
+      role: "out",
+      pos: { x: footprint.lengthMm, y },
+      dir: "x+",
+      ...common,
+    },
   ];
 }

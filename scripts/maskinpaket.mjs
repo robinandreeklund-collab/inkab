@@ -108,6 +108,7 @@ const src = (p) => path.join(ROOT, "src", p);
 const { convertStep, suggestPorts } = await import(
   src("lib/cad/stepConvert.ts")
 );
+const { measureGlb } = await import(src("lib/cad/measureGlb.ts"));
 const { DEFAULT_ORIENTATION, orientedFootprint, orientationLabel } =
   await import(src("lib/cad/orientation.ts"));
 const { machineSchema, libraryDocumentSchema } = await import(
@@ -179,6 +180,14 @@ const RIKTNING = await orientation();
 
 const STANDARD_IN = "step-in";
 const isStep = (name) => /\.(stp|step)$/i.test(name);
+/**
+ * Färdiga modeller tas emot också. En sammanställning med tiotusentals delar
+ * går över STEP-läsarens 2 GB-tak, och taket sitter i WASM-bygget — det går
+ * inte att höja genom att köra någon annanstans. Då konverteras filen nativt
+ * och mäts här.
+ */
+const isGlb = (name) => /\.glb$/i.test(name) && !/\.proxy\.glb$/i.test(name);
+const kanLasas = (name) => isStep(name) || isGlb(name);
 const finns = (p) =>
   stat(p)
     .then(() => true)
@@ -214,7 +223,7 @@ async function gather(inputs) {
     let hittat = 0;
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       const p = path.join(input, entry.name);
-      if (entry.isFile() && isStep(entry.name)) {
+      if (entry.isFile() && kanLasas(entry.name)) {
         steps.push(p);
         hittat++;
       } else if (
@@ -420,14 +429,18 @@ async function paketera(input) {
   }
   tagna.add(id);
 
-  const step = new Uint8Array(await readFile(input));
-  log(`\n${path.basename(input)}  ${(step.length / 1e6).toFixed(1)} MB`);
+  const bytes = new Uint8Array(await readFile(input));
+  const redanGlb = isGlb(input);
+  log(`\n${path.basename(input)}  ${(bytes.length / 1e6).toFixed(1)} MB`);
 
-  const result = await convertStep(step, {
-    toleranceMm: args.tolerans,
-    minPartMm: args.minstaDel,
-    up: "z",
-  });
+  // En GLB är redan konverterad: den mäts och packas, den byggs inte om.
+  const result = redanGlb
+    ? { ...(await measureGlb(bytes)), glb: bytes }
+    : await convertStep(bytes, {
+        toleranceMm: args.tolerans,
+        minPartMm: args.minstaDel,
+        up: "z",
+      });
 
   /*
    * Fotavtrycket mäts på den ovridna geometrin. Biblioteket ska bära måtten
@@ -458,6 +471,7 @@ async function paketera(input) {
   const kort = {
     id,
     source: path.basename(input),
+    sourceKind: redanGlb ? "glb" : "step",
     generatedAt: new Date().toISOString(),
     /** Måtten som de står i CAD-filen, före riktningen. */
     measuredFootprint: result.footprint,
@@ -485,9 +499,17 @@ async function paketera(input) {
   );
   log(
     `  GLB       ${(result.glb.length / 1e6).toFixed(2)} MB` +
-      `   ${result.stats.partsKept} av ${result.stats.partsIn} delar` +
-      `   ${result.stats.seconds} s`,
+      (redanGlb
+        ? `   ${result.stats.trianglesIn.toLocaleString("sv-SE")} trianglar   (inläst, inte konverterad)`
+        : `   ${result.stats.partsKept} av ${result.stats.partsIn} delar` +
+          `   ${result.stats.seconds} s`),
   );
+  // Minnet är det som fäller en tung fil, så det syns när det börjar bli trångt.
+  if (!redanGlb && result.stats.readerMemoryMb >= 512) {
+    log(
+      `  Minne     ${result.stats.readerMemoryMb} MB av 2048 MB i STEP-läsaren`,
+    );
+  }
   log(`  Paket     ${mapp}/`);
   for (const w of result.warnings) log(`  VARNING   ${w}`);
   for (const f of fel) log(`  SCHEMAFEL ${f}`);

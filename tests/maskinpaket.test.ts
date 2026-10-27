@@ -172,3 +172,45 @@ describe("maskinpaket --installera", () => {
     }
   });
 });
+
+/**
+ * Vägen in för maskiner som STEP-läsaren inte rår på.
+ *
+ * OpenCascade körs som WebAssembly och har ett tak på 2 GB som sitter i
+ * bygget. En sammanställning med tiotusentals delar går över det, och då
+ * hjälper det inte att köra någon annanstans. Filen konverteras nativt och
+ * mäts här — och måtten måste bli desamma som om den konverterats här, annars
+ * säger modellen och biblioteket olika saker om samma maskin.
+ */
+describe("maskinpaket med färdig GLB", () => {
+  it("mäter upp modellen till samma fotavtryck som biblioteket har", () => {
+    const ut = mkdtempSync(path.join(tmpdir(), "glb-"));
+    const inn = mkdtempSync(path.join(tmpdir(), "glbin-"));
+    cpSync("public/models/rullbana.glb", path.join(inn, "rullbana.glb"));
+
+    const utskrift = kor([inn, "--ut", ut]);
+    expect(utskrift).toMatch(/inläst, inte konverterad/);
+
+    const maskin = JSON.parse(
+      readFileSync(path.join(ut, "rullbana", "maskin.json"), "utf-8"),
+    );
+    const biblioteket = JSON.parse(readFileSync("data/library.json", "utf-8"));
+    const facit = biblioteket.machines.find(
+      (m: { id: string }) => m.id === "rullbana",
+    );
+
+    // En millimeter ifrån: GLB:ns koordinater är kvantiserade, inte exakta.
+    for (const nyckel of ["lengthMm", "widthMm", "heightMm"] as const) {
+      expect(
+        Math.abs(maskin.footprint[nyckel] - facit.footprint[nyckel]),
+      ).toBeLessThanOrEqual(2);
+    }
+    expect(machineSchema.safeParse(maskin).success).toBe(true);
+
+    // Modellen ska kopieras orörd, inte byggas om.
+    const kort = JSON.parse(
+      readFileSync(path.join(ut, "rullbana", "kort.json"), "utf-8"),
+    );
+    expect(kort.sourceKind).toBe("glb");
+  });
+});

@@ -33,7 +33,15 @@ export type StepSurvey = {
   solids: number;
   /** Instanser av dem i sammanställningen. */
   occurrences: number;
-  /** Ungefär så många delar läsaren kommer att skapa. */
+  /**
+   * MINST så många delar läsaren kommer att skapa.
+   *
+   * Det är ett golv, inte en prognos. En fil räknad till 849 delar visade
+   * sig ge 87 012 i läsaren: CAD-system beskriver sammanställningar på fler
+   * sätt än de som går att räkna i texten, och en delmängd som instansieras
+   * djupt multipliceras på vägen. Siffran duger till att säga "den här är
+   * stor" — aldrig till att säga att en fil är liten.
+   */
   estimatedParts: number;
   /** Grov gissning på konverteringstiden, sekunder. */
   estimatedSeconds: number;
@@ -58,14 +66,66 @@ function secondsFor(parts: number): number {
  * provat mot provfilerna stämmer det på en del när eller exakt, vilket
  * räcker gott för att skilja 9 000 från 87 000.
  */
-export function surveyStepText(step: Uint8Array): StepSurvey {
-  // STEP är ASCII. latin1 undviker att en UTF-8-avkodning snubblar på
-  // namn med å, ä eller ö, och räkningen bryr sig inte om tecknen.
-  const text = Buffer.from(step).toString("latin1");
-  const count = (re: RegExp) => (text.match(re) || []).length;
+/**
+ * Hur mycket text som läses åt gången, och hur mycket som överlappar.
+ *
+ * En sträng i V8 tar slut vid drygt 512 MB, och en STEP kan vara större än
+ * så — en provfil på 832 MB fällde hela räkningen med "Cannot create a
+ * string longer than 0x1fffffe8 characters". Filen läses därför i bitar,
+ * med ett överlapp som är längre än det längsta mönstret så att ett namn
+ * som ligger över en skarv ändå räknas. En träff räknas till den bit den
+ * börjar i, så överlappet ger inga dubbletter.
+ */
+const CHUNK_BYTES = 32 * 1024 * 1024;
+const OVERLAP_BYTES = 64;
 
-  const solids = count(/MANIFOLD_SOLID_BREP/g);
-  const occurrences = count(/NEXT_ASSEMBLY_USAGE_OCCURRENCE/g);
+function countMatches(step: Uint8Array, patterns: RegExp[]): number[] {
+  const counts = patterns.map(() => 0);
+  const buffer = Buffer.from(step.buffer, step.byteOffset, step.byteLength);
+
+  for (let start = 0; start < buffer.length; start += CHUNK_BYTES) {
+    const stop = Math.min(buffer.length, start + CHUNK_BYTES + OVERLAP_BYTES);
+    // STEP är ASCII. latin1 undviker att en UTF-8-avkodning snubblar på
+    // namn med å, ä eller ö, och räkningen bryr sig inte om tecknen.
+    const text = buffer.toString("latin1", start, stop);
+    const last = stop === buffer.length;
+
+    patterns.forEach((pattern, i) => {
+      const re = new RegExp(pattern.source, "g");
+      let match: RegExpExecArray | null;
+      while ((match = re.exec(text)) !== null) {
+        if (last || match.index < CHUNK_BYTES) counts[i] += 1;
+      }
+    });
+  }
+  return counts;
+}
+
+/*
+ * Flera stavningar av samma sak, för att golvet ska bli så högt som möjligt.
+ * En solid kan vara en manifold, en skalmodell eller en facetterad kropp,
+ * och instansieringen sker antingen genom sammanställningsposter eller genom
+ * mappade objekt.
+ */
+const SOLIDS = [
+  /MANIFOLD_SOLID_BREP/,
+  /SHELL_BASED_SURFACE_MODEL/,
+  /FACETED_BREP/,
+  /BREP_WITH_VOIDS/,
+];
+const OCCURRENCES = [/NEXT_ASSEMBLY_USAGE_OCCURRENCE/, /MAPPED_ITEM/];
+
+/**
+ * Räknar delarna i en STEP utan att läsa geometrin.
+ *
+ * Antalet meshar läsaren producerar är soliderna plus instanserna av dem.
+ * Hade vi bara räknat soliderna hade 500 skruvar av samma sort sett ut som
+ * en enda del.
+ */
+export function surveyStepText(step: Uint8Array): StepSurvey {
+  const counts = countMatches(step, [...SOLIDS, ...OCCURRENCES]);
+  const solids = counts.slice(0, SOLIDS.length).reduce((a, b) => a + b, 0);
+  const occurrences = counts.slice(SOLIDS.length).reduce((a, b) => a + b, 0);
   const estimatedParts = solids + occurrences;
 
   return {
@@ -86,7 +146,7 @@ export function surveyStepText(step: Uint8Array): StepSurvey {
 export function tooManyParts(survey: StepSurvey): string | null {
   if (survey.verdict !== "för-stor") return null;
   return (
-    `Filen innehåller omkring ${survey.estimatedParts.toLocaleString("sv-SE")} delar. ` +
+    `Filen innehåller minst ${survey.estimatedParts.toLocaleString("sv-SE")} delar. ` +
     `STEP-läsaren rymmer ungefär ${PART_LIMIT.toLocaleString("sv-SE")} innan dess 2 GB tar ` +
     "slut, och varken toleransen, gränsen för smådelar eller --heap ändrar det: minnet går " +
     "åt till delarna, inte till trianglarna. Exportera en STEP utan skruv, kablage och " +

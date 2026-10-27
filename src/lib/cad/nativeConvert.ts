@@ -112,15 +112,23 @@ from OCP.BRepMesh import BRepMesh_IncrementalMesh
 from OCP.RWGltf import RWGltf_CafWriter
 from OCP.RWMesh import RWMesh_CoordinateSystem
 from OCP.Message import Message_ProgressRange
+from OCP.TopExp import TopExp_Explorer
+from OCP.TopAbs import TopAbs_ShapeEnum
+from OCP.Bnd import Bnd_Box
+from OCP.BRepBndLib import BRepBndLib
 from OCP.collections import (
     Sequence_TDF_Label,
     IndexedDataMap_TCollection_AsciiString_TCollection_AsciiString as FileInfo,
 )
 
-src, out, tol, angular = sys.argv[1], sys.argv[2], float(sys.argv[3]), float(sys.argv[4])
+src, out = sys.argv[1], sys.argv[2]
+tol, angular, min_part = float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5])
 started = time.time()
+
+
 def say(what):
     print("%s|%.1f" % (what, time.time() - started), flush=True)
+
 
 app = XCAFApp_Application.GetApplication_s()
 doc = TDocStd_Document(TCollection_ExtendedString("doc"))
@@ -139,11 +147,42 @@ if not reader.Transfer(doc):
 say("overford")
 
 tool = XCAFDoc_DocumentTool.ShapeTool_s(doc.Main())
-labels = Sequence_TDF_Label()
-tool.GetFreeShapes(labels)
-print("former|%d" % labels.Length(), flush=True)
-for i in range(1, labels.Length() + 1):
-    BRepMesh_IncrementalMesh(tool.GetShape_s(labels.Value(i)), tol, False, angular, True).Perform()
+roots = Sequence_TDF_Label()
+tool.GetFreeShapes(roots)
+
+# Tessellera solid for solid i stallet for hela trädet pa en gang. Da gar
+# det att hoppa over smadelarna — skruv, lager, kablage — och en solid utan
+# triangulering skrivs inte ut av glTF-skrivaren. Samma sallning som
+# WASM-vagen gor, fast innan arbetet laggs ner i stallet for efterat.
+kept = 0
+skipped = 0
+for i in range(1, roots.Length() + 1):
+    explorer = TopExp_Explorer(tool.GetShape_s(roots.Value(i)), TopAbs_ShapeEnum.TopAbs_SOLID)
+    while explorer.More():
+        solid = explorer.Current()
+        if min_part > 0:
+            box = Bnd_Box()
+            BRepBndLib.Add_s(solid, box, False)
+            if box.IsVoid():
+                biggest = 0.0
+            else:
+                lo, hi = box.CornerMin(), box.CornerMax()
+                biggest = max(hi.X() - lo.X(), hi.Y() - lo.Y(), hi.Z() - lo.Z())
+            if biggest < min_part:
+                skipped += 1
+                explorer.Next()
+                continue
+        BRepMesh_IncrementalMesh(solid, tol, False, angular, True).Perform()
+        kept += 1
+        if (kept + skipped) % 2000 == 0:
+            print("delar|%d av %d" % (kept, kept + skipped), flush=True)
+        explorer.Next()
+
+print("behallna|%d" % kept, flush=True)
+print("overhoppade|%d" % skipped, flush=True)
+if kept == 0:
+    print("FEL|Alla delar var mindre an gransen for smadelar. Sank den.", flush=True)
+    sys.exit(2)
 say("tesselerad")
 
 writer = RWGltf_CafWriter(TCollection_AsciiString(out), True)
@@ -161,8 +200,10 @@ say("skriven")
 
 export type NativeResult = {
   glb: Uint8Array;
-  shapes: number;
-  seconds: number;
+  /** Delar som tesselerades och skrevs ut. */
+  kept: number;
+  /** Delar som var mindre än gränsen och hoppades över. */
+  skipped: number;
 };
 
 /**
@@ -175,6 +216,8 @@ export async function convertStepNative(
   options: {
     toleranceMm?: number;
     angular?: number;
+    /** Delar vars låda är mindre än detta tesselleras inte och skrivs inte ut. */
+    minPartMm?: number;
     onStage?: (stage: string) => void;
   } = {},
 ): Promise<NativeResult> {
@@ -183,7 +226,8 @@ export async function convertStepNative(
   const out = path.join(dir, "ut.glb");
   await writeFile(script, PYTHON, "utf-8");
 
-  let shapes = 0;
+  let kept = 0;
+  let skipped = 0;
   let failure: string | null = null;
   const result = await run(
     tool.command,
@@ -194,11 +238,14 @@ export async function convertStepNative(
       out,
       String(options.toleranceMm ?? 2),
       String(options.angular ?? 0.5),
+      String(options.minPartMm ?? 0),
     ],
     (line) => {
       const [key, value] = line.split("|");
       if (key === "FEL") failure = value;
-      else if (key === "former") shapes = Number(value);
+      else if (key === "behallna") kept = Number(value);
+      else if (key === "overhoppade") skipped = Number(value);
+      else if (key === "delar") options.onStage?.(`tessellerar ${value}`);
       else if (value !== undefined) options.onStage?.(`${key} ${value} s`);
     },
   );
@@ -216,8 +263,7 @@ export async function convertStepNative(
     );
   }
 
-  const glb = new Uint8Array(await readFile(out));
-  return { glb, shapes, seconds: 0 };
+  return { glb: new Uint8Array(await readFile(out)), kept, skipped };
 }
 
 /**

@@ -135,7 +135,7 @@ function parseArgs(argv) {
     else if (a === "--installera") args.installera = true;
     else if (a === "--ersatt") args.ersatt = true;
     else if (a === "--tvinga") args.tvinga = true;
-    else if (a === "--nativ") args.nativ = true;
+    else if (a === "--wasm") args.wasm = true;
     else if (a === "--python") args.python = argv[++i];
     else if (a === "--repo") args.repo = argv[++i];
     else if (a === "--riktning") args.riktning = argv[++i];
@@ -446,60 +446,100 @@ async function paketera(input) {
    * läsa — förut kom samma besked efter tio minuters tessellering, som ett
    * minnesfel, och då hade man redan väntat.
    */
+  /*
+   * Vilken läsare som ska ta filen.
+   *
+   * Den nativa används när den finns. Den har inget 2 GB-tak, den är
+   * snabbare, och den ger samma geometri — mätt på as1-oc-214, som båda
+   * vägarna mäter till 0,08 × 0,20 × 0,15 m. WASM-läsaren är det som finns
+   * utan extra installation, och därför reserven.
+   *
+   * Att välja på antalet delar vore att lita på en gissning som inte går
+   * att lita på: en fil räknad till 849 delar i texten blev 87 012 i
+   * läsaren. Gissningen får säga "den här är stor", inte avgöra vägen.
+   */
   let nativ = null;
   if (!redanGlb) {
     const survey = surveyStepText(bytes);
-    const forStor = tooManyParts(survey) !== null;
     const minuter = Math.round(survey.estimatedSeconds / 60);
     log(
-      `  Delar     ~${survey.estimatedParts.toLocaleString("sv-SE")}` +
+      `  Delar     minst ~${survey.estimatedParts.toLocaleString("sv-SE")}` +
         (survey.verdict === "ok"
           ? ""
           : `   beräknad tid ${minuter < 60 ? `${minuter} min` : `${Math.round(minuter / 60)} h`}`),
     );
 
-    /*
-     * För många delar för WASM-läsaren: ta den nativa vägen i stället för
-     * att vägra. Samma OpenCascade, men riktiga binärer utan 2 GB-tak, och
-     * glTF skrivet av OCCT självt i stället för koordinat för koordinat över
-     * gränsen till JavaScript — det är det senare som gör WASM-vägen långsam.
-     */
-    if (forStor || args.nativ) {
-      nativ = await findNativeConverter(args.python);
-      if (!nativ && !args.tvinga) {
+    if (!args.wasm) nativ = await findNativeConverter(args.python);
+    if (nativ) {
+      log(`  Väg       nativ OpenCascade via ${nativ.command}`);
+    } else {
+      const stopp = tooManyParts(survey);
+      if (stopp && !args.tvinga) {
         throw new Error(
-          `${tooManyParts(survey) ?? "Nativ konvertering begärd."}\n` +
-            `             Den nativa vägen saknas. Installera den med:  ${NATIVE_SETUP}\n` +
-            "             (--tvinga försöker med WASM-läsaren ändå)",
+          `${stopp}\n` +
+            `             Installera den nativa vägen så tar skriptet den själv:  ${NATIVE_SETUP}\n` +
+            "             (--tvinga försöker med den inbyggda läsaren ändå)",
         );
       }
-      if (nativ) log(`  Väg       nativ OpenCascade via ${nativ.command}`);
-    }
-    if (!nativ && survey.verdict === "långsam") {
-      log("  VARNING   Många delar. Det här tar en stund.");
+      if (survey.verdict === "långsam") {
+        log("  VARNING   Många delar. Det här tar en stund.");
+      }
     }
   }
+
+  const körNativt = async (verktyg) => {
+    const rå = await convertStepNative(verktyg, input, {
+      toleranceMm: args.tolerans,
+      minPartMm: args.minstaDel,
+      onStage: (stage) => log(`            ${stage}`),
+    });
+    log(
+      `  Delar     ${rå.kept.toLocaleString("sv-SE")} behållna` +
+        (rå.skipped
+          ? `, ${rå.skipped.toLocaleString("sv-SE")} under ${args.minstaDel} mm överhoppade`
+          : ""),
+    );
+    // Samma efterbehandling som den inbyggda vägen, annars blir filen
+    // mångdubbelt större för samma geometri och 3D-vyn får betala det.
+    const glb = await optimiseGlb(rå.glb);
+    return { ...(await measureGlb(glb)), glb };
+  };
 
   // En GLB är redan konverterad: den mäts och packas, den byggs inte om.
   let result;
   if (redanGlb) {
     result = { ...(await measureGlb(bytes)), glb: bytes };
   } else if (nativ) {
-    const rå = await convertStepNative(nativ, input, {
-      toleranceMm: args.tolerans,
-      onStage: (stage) => log(`            ${stage}`),
-    });
-    // Samma efterbehandling som WASM-vägen, annars blir filen mångdubbelt
-    // större för samma geometri och 3D-vyn får betala det.
-    const glb = await optimiseGlb(rå.glb);
-    result = { ...(await measureGlb(glb)), glb };
-    log(`  Former    ${rå.shapes} ur den nativa läsaren`);
+    result = await körNativt(nativ);
   } else {
-    result = await convertStep(bytes, {
-      toleranceMm: args.tolerans,
-      minPartMm: args.minstaDel,
-      up: "z",
-    });
+    try {
+      result = await convertStep(bytes, {
+        toleranceMm: args.tolerans,
+        minPartMm: args.minstaDel,
+        up: "z",
+      });
+    } catch (error) {
+      /*
+       * Den inbyggda läsaren gav upp, och den nativa fanns inte — annars
+       * hade filen aldrig kommit hit. Felet ska säga vad som gör att nästa
+       * försök lyckas, inte bara vad som gick fel: gissningen på antalet
+       * delar är bara en gissning, så hit kommer man även när filen såg
+       * liten ut i texten.
+       */
+      const message = error instanceof Error ? error.message : String(error);
+      // Bara när det är läsarens kapacitet som tog slut. "Sänk gränsen för
+      // smådelar" är ett annat fel, och där hade den nativa läsaren gjort
+      // exakt samma sak — att skicka iväg någon på en installation då vore
+      // samma sorts felspår som --heap var.
+      const slutKapacitet = /fick ingen geometri ur någon av dem/.test(message);
+      throw new Error(
+        slutKapacitet
+          ? `${message}\n` +
+              "             Den nativa läsaren har inget sådant tak och hade klarat filen.\n" +
+              `             Installera den med:  ${NATIVE_SETUP}`
+          : message,
+      );
+    }
   }
 
   /*

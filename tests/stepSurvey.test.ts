@@ -52,7 +52,7 @@ describe("tooManyParts", () => {
     verdict: "för-stor" as const,
   };
 
-  it("säger hur många delar filen har och var gränsen går", () => {
+  it("säger hur många delar filen minst har och var gränsen går", () => {
     const message = tooManyParts(stor)!;
     // Svenska tusentalsavgränsare är ett hårt mellanslag, inte ett vanligt.
     expect(message).toContain((87_012).toLocaleString("sv-SE"));
@@ -69,5 +69,27 @@ describe("tooManyParts", () => {
     expect(message).toMatch(/varken toleransen/i);
     expect(message).toContain("--heap");
     expect(message).toMatch(/delarna, inte till trianglarna/);
+  });
+});
+
+/**
+ * En sträng i V8 tar slut vid drygt 512 MB, och en STEP kan vara större.
+ * En provfil på 832 MB fällde hela räkningen med "Cannot create a string
+ * longer than 0x1fffffe8 characters", och då blev beskedet ett kryptiskt
+ * JavaScript-fel i stället för en räkning. Filen läses i bitar nu, och
+ * provet här bevakar att skarvarna varken tappar eller dubblerar träffar.
+ */
+describe("stora filer", () => {
+  it("räknar lika över en skarv som utan", () => {
+    const rad =
+      "#1=MANIFOLD_SOLID_BREP('a',#2);#3=NEXT_ASSEMBLY_USAGE_OCCURRENCE('b');\n";
+    // Drygt två bitar, så att minst två skarvar passeras.
+    const text = rad.repeat(Math.ceil((32 * 1024 * 1024 * 2.2) / rad.length));
+    const survey = surveyStepText(new Uint8Array(Buffer.from(text, "latin1")));
+    const gånger = text.split("MANIFOLD_SOLID_BREP").length - 1;
+
+    expect(survey.solids).toBe(gånger);
+    expect(survey.occurrences).toBe(gånger);
+    expect(survey.estimatedParts).toBe(gånger * 2);
   });
 });

@@ -171,9 +171,9 @@
       "summary": "Lägger ett eller flera truckströ per stopp. Portal, magasin, paternosterverk.",
       "aiDescription": "En portalmaskin som placerar ett eller flera truckströ på virkespaketet vid varje bandningsstopp. Antalet strön per stopp avgörs av vald design. Maskinen består av portal, magasin, paternosterverk och transportörer.\nDen är byggd för högre kapacitetsbehov än den enkla varianten. Ett vakuumlyft lyfter ett helt lager truckströ från en pall till magasinet, vilket i praktiken tar bort den manuella efterfyllningen: operatören kör in en pall i cellen och maskinen sköter utläggningen tills pallen är tom.\nPLC-programmet har upp till 48 justerbara positioner för placering av truckströ. Maskinen är CE-märkt och levereras med maskinsäkerhet i form av nät, grindar och ljusbommar — det gör att den kräver större fritt utrymme runt sig än den enkla.\nMagasinet kan placeras på båda sidor av rullbanan.\nVälj den här framför den enkla när kunden kör hög takt, behöver flera strön per paket, eller vill slippa manuell magasinpåfyllning.",
       "footprint": {
-        "lengthMm": 6400,
-        "widthMm": 6800,
-        "heightMm": 4600
+        "lengthMm": 2000,
+        "widthMm": 1980,
+        "heightMm": 3756
       },
       "ports": [
         {
@@ -181,7 +181,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 3400
+            "y": 990
           },
           "dir": "x+",
           "levelMm": 900,
@@ -195,8 +195,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 6400,
-            "y": 3400
+            "x": 2000,
+            "y": 990
           },
           "dir": "x+",
           "levelMm": 900,
@@ -215,7 +215,7 @@
           "box": {
             "x": 0,
             "y": -1800,
-            "l": 6400,
+            "l": 2000,
             "w": 1800
           },
           "label": "Service och pallinkörning"
@@ -225,8 +225,8 @@
           "box": {
             "x": -900,
             "y": -900,
-            "l": 8200,
-            "w": 8600
+            "l": 3800,
+            "w": 3780
           },
           "label": "Skyddszon nät och ljusbommar"
         }
@@ -310,7 +310,12 @@
           "step": 1,
           "defaultNumber": 50
         }
-      ]
+      ],
+      "model": {
+        "glb": "/models/tsl-multi.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "underslagslaggare",
@@ -1663,9 +1668,9 @@
       "summary": "Kedjetransport med pneumatisk höj/sänk via lyftstativ med luftbälgar.",
       "aiDescription": "Samma kedjetransportprincip som mittdriftstransportören — rullkedja i KKR-kanaler på plåtränna med E-list, retur inne i kanalen, mittdrift med 40 eller 50 mm axel, UCF flänslager och SEW kuggväxel — men kanalerna är ledade med bussningar och axlar och kan höjas och sänkas.\nHöj- och sänkrörelsen sker med ett lyftstativ med luftbälgar, styrt med pneumatik och givare.\nVälj den här när paketet måste byta nivå i linjen, till exempel för att lämna över till en maskin på annan höjd eller för att passera under något. På raka sträckor där nivån är konstant räcker den vanliga kedjetransportören, som är billigare och enklare.",
       "footprint": {
-        "lengthMm": 4000,
-        "widthMm": 2200,
-        "heightMm": 1200
+        "lengthMm": 7220,
+        "widthMm": 5100,
+        "heightMm": 740
       },
       "ports": [
         {
@@ -1673,7 +1678,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1100
+            "y": 2550
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1687,8 +1692,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 4000,
-            "y": 1100
+            "x": 7220,
+            "y": 2550
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1707,7 +1712,7 @@
           "box": {
             "x": 0,
             "y": -1000,
-            "l": 4000,
+            "l": 7220,
             "w": 1000
           },
           "label": "Service och luftbälgar"
@@ -1779,7 +1784,12 @@
       ],
       "images": [
         "/bilder/kedjekanal-hojsank-1.webp"
-      ]
+      ],
+      "model": {
+        "glb": "/models/kedjekanal-hojsank.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "bandomforing",
@@ -1906,9 +1916,9 @@
       "summary": "Bandomföring med pneumatiskt spjut, slaglängd 1000 mm.",
       "aiDescription": "Samma bandomföringsstation som grundvarianten — Fromms E101-motor, bandram i plast HD 1000 med vingar i rostfri plåt, upphängning i arm med balansblock, knappdosa med nödstopp — men kompletterad med ett pneumatiskt drivet spjut med slaglängd 1000 mm.\nSpjutet förs in och automatiserar själva bandomföringen, vilket tar bort ett manuellt moment per band och därmed höjer takten.\nElskåpet innehåller huvudbrytare, nätaggregat 24 VDC, reläer och plintar, med elritningar i Elprocad. Bandavrullare samt anslutning av luft och el tillkommer.\nVälj den här framför grundvarianten när kunden kör hög takt eller vill minska operatörsberoendet vid bandningen. Spjutet kräver fritt utrymme för slaglängden.",
       "footprint": {
-        "lengthMm": 1900,
-        "widthMm": 3600,
-        "heightMm": 3000
+        "lengthMm": 3017,
+        "widthMm": 6970,
+        "heightMm": 2432
       },
       "ports": [
         {
@@ -1916,7 +1926,7 @@
           "role": "in",
           "pos": {
             "x": 0,
-            "y": 1800
+            "y": 3485
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1930,8 +1940,8 @@
           "id": "out",
           "role": "out",
           "pos": {
-            "x": 1900,
-            "y": 1800
+            "x": 3017,
+            "y": 3485
           },
           "dir": "x+",
           "levelMm": 900,
@@ -1950,7 +1960,7 @@
           "box": {
             "x": 0,
             "y": -1400,
-            "l": 1900,
+            "l": 3017,
             "w": 1400
           },
           "label": "Operatörsplats bandning"
@@ -1960,8 +1970,8 @@
           "box": {
             "x": 0,
             "y": -200,
-            "l": 3300,
-            "w": 4000
+            "l": 4417,
+            "w": 7370
           },
           "label": "Spjutets slagområde"
         }
@@ -2018,7 +2028,12 @@
       ],
       "images": [
         "/bilder/bandomforing-spjut-1.webp"
-      ]
+      ],
+      "model": {
+        "glb": "/models/bandomforing-spjut.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      }
     },
     {
       "id": "strofacksmagasin",
@@ -2238,6 +2253,162 @@
         "upAxis": "y",
         "yawDeg": 270
       }
+    },
+    {
+      "id": "lyft",
+      "sku": "LYFT",
+      "name": "Lyft",
+      "category": "processing",
+      "summary": "",
+      "footprint": {
+        "lengthMm": 889,
+        "widthMm": 999,
+        "heightMm": 2261
+      },
+      "ports": [
+        {
+          "id": "in",
+          "role": "in",
+          "pos": {
+            "x": 0,
+            "y": 500
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            1600
+          ],
+          "allowsDirectionChange": false
+        },
+        {
+          "id": "out",
+          "role": "out",
+          "pos": {
+            "x": 889,
+            "y": 500
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            1600
+          ],
+          "allowsDirectionChange": false
+        }
+      ],
+      "mirrorable": false,
+      "zones": [],
+      "capacity": {
+        "packagesPerHour": 0,
+        "packageLengthMm": [
+          0,
+          0
+        ],
+        "packageWidthMm": [
+          0,
+          0
+        ],
+        "packageHeightMm": [
+          0,
+          0
+        ],
+        "maxWeightKg": 0
+      },
+      "utilities": {
+        "powerKw": 0,
+        "airNlPerMin": 0
+      },
+      "foundation": {
+        "pitDepthMm": 0,
+        "pointLoadKn": 0
+      },
+      "leadTimeWeeks": 0,
+      "options": [],
+      "model": {
+        "glb": "/models/lyft.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      },
+      "dimensionsVerified": false
+    },
+    {
+      "id": "x-elevator",
+      "sku": "X-ELEVATOR",
+      "name": "X-elevator",
+      "category": "transport",
+      "summary": "",
+      "footprint": {
+        "lengthMm": 1922,
+        "widthMm": 5612,
+        "heightMm": 2071
+      },
+      "ports": [
+        {
+          "id": "in",
+          "role": "in",
+          "pos": {
+            "x": 0,
+            "y": 2806
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            1600
+          ],
+          "allowsDirectionChange": false
+        },
+        {
+          "id": "out",
+          "role": "out",
+          "pos": {
+            "x": 1922,
+            "y": 2806
+          },
+          "dir": "x+",
+          "levelMm": 900,
+          "widthMm": [
+            600,
+            1600
+          ],
+          "allowsDirectionChange": false
+        }
+      ],
+      "mirrorable": false,
+      "zones": [],
+      "capacity": {
+        "packagesPerHour": 0,
+        "packageLengthMm": [
+          0,
+          0
+        ],
+        "packageWidthMm": [
+          0,
+          0
+        ],
+        "packageHeightMm": [
+          0,
+          0
+        ],
+        "maxWeightKg": 0
+      },
+      "utilities": {
+        "powerKw": 0,
+        "airNlPerMin": 0
+      },
+      "foundation": {
+        "pitDepthMm": 0,
+        "pointLoadKn": 0
+      },
+      "leadTimeWeeks": 0,
+      "options": [],
+      "model": {
+        "glb": "/models/x-elevator.glb",
+        "upAxis": "y",
+        "yawDeg": 270
+      },
+      "dimensionsVerified": false
     }
   ],
   "priceBook": {
@@ -2339,6 +2510,16 @@
         "options": {}
       },
       "maskin-18": {
+        "list": 0,
+        "cost": 0,
+        "options": {}
+      },
+      "lyft": {
+        "list": 0,
+        "cost": 0,
+        "options": {}
+      },
+      "x-elevator": {
         "list": 0,
         "cost": 0,
         "options": {}

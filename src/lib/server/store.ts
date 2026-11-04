@@ -16,6 +16,7 @@ import {
   type MachineDocument,
 } from "@/lib/documents";
 import { BUILTIN_PRICE_BOOK } from "./pricebook";
+import { mergeSeedInto } from "@/lib/seedMerge";
 
 /**
  * Maskinbiblioteket och prisboken lagras som ETT dokument.
@@ -24,6 +25,8 @@ import { BUILTIN_PRICE_BOOK } from "./pricebook";
  *   1. `data/library.json` i repot, om den finns — det versionshanterade
  *      utgångsläget. Exportera från admin-vyn och committa filen.
  *   2. Postgres, om DATABASE_URL är satt — admins ändringar överlever omstart.
+ *      Grundmaskiner ur nivå 1 som databasen saknar fylls på vid läsning,
+ *      se `mergeSeedInto`.
  *   3. Minne — ändringarna lever så länge servern gör det. Admin-vyn säger
  *      det rakt ut och erbjuder export så att inget går förlorat i tysthet.
  */
@@ -158,8 +161,14 @@ export async function readDocument(): Promise<LibraryDocument> {
       if (result.rows.length > 0) {
         const parsed = libraryDocumentSchema.safeParse(result.rows[0].doc);
         if (parsed.success) {
+          // Grundmaskiner som kommit till i repot efter att databasen
+          // sparades fylls på, så att de syns efter varje deploy.
+          const { document: merged } = mergeSeedInto(
+            parsed.data as LibraryDocument,
+            await readSeed(),
+          );
           return {
-            ...(parsed.data as LibraryDocument),
+            ...merged,
             updatedAt: result.rows[0].updated_at.toISOString(),
             updatedBy: result.rows[0].updated_by ?? undefined,
           };

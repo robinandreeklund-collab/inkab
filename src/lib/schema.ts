@@ -58,23 +58,13 @@ export const drawnSchema = z
   })
   .transform(migrateDrawn);
 
-export const flowSchema = z.object({
-  truckPickupSide: z.enum(["right", "left"]),
-  startPoint: vec2,
-  startComment: z.string().max(300).optional(),
-  markers: z
-    .array(
-      z.object({
-        id: z.string().min(1).max(64),
-        role: z.enum(["start", "end"]),
-        pos: vec2,
-        comment: z.string().max(300),
-      }),
-    )
-    .max(12)
-    .optional(),
-});
-
+/*
+ * Gamla underlag bar ett `flow`-objekt: startpunkt, truckens hämtsida och
+ * markeringar. Funktionen finns inte längre, och nyckeln nämns inte här —
+ * zod släpper okända nycklar utan att ta med dem vidare, så en autosparad
+ * konfiguration eller en delningslänk från före borttagningen öppnar som
+ * vanligt, bara utan flödet.
+ */
 export const configurationSchema = z.object({
   version: z.literal(1),
   projectName: z.string().min(1).max(120),
@@ -93,7 +83,6 @@ export const configurationSchema = z.object({
     widthMm: bounded(HALL_LIMITS.widthMm),
     clearHeightMm: bounded(HALL_LIMITS.clearHeightMm),
   }),
-  flow: flowSchema,
   product: z
     .object({
       packageLengthMm: bounded(PRODUCT_LIMITS.packageLengthMm),

@@ -32,9 +32,7 @@ export function ruleBasedSuggestions(
   fixable.slice(0, 3).forEach((diagnostic, index) => {
     const fix = diagnostic.fix!;
     const next = clone(config);
-    if (fix.kind === "flow") {
-      Object.assign(next.flow, fix.patch);
-    } else if (fix.kind === "addMachine") {
+    if (fix.kind === "addMachine") {
       next.line.push({
         instanceId: `${fix.machineId}-fix-${index}`,
         machineId: fix.machineId,

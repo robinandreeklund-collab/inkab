@@ -31,7 +31,6 @@ const STEPS: Record<string, string> = {
   clear_line: "Rensar linjen",
   add_machine: "Lägger till maskiner",
   remove_machine: "Tar bort maskiner",
-  set_flow: "Sätter flödet",
   set_hall: "Sätter hallens mått",
   estimate_price: "Räknar pris",
   propose_variant: "Sammanställer förslaget",
@@ -50,8 +49,7 @@ const FOLLOWUP_PROMPT = `Du ritade upp lokalen men sparade ett förslag utan en 
 Nu ligger lokalen i arbetskopian. Bygg linjen efter samma underlag:
 1. Läs bilagorna igen och skriv vilka maskinrutor du ser, i flödets ordning.
 2. add_machine för var och en, med det utförande måtten anger. Kontrollera maskin-id mot maskinbiblioteket i systemprompten innan du anropar.
-3. set_flow efter hur paketen går in och ut.
-4. propose_variant när linjen står. Kontrollera i svaret att machineCount stämmer med antalet rutor på ritningen.
+3. propose_variant när linjen står. Kontrollera i svaret att machineCount stämmer med antalet rutor på ritningen.
 
 Visar underlaget verkligen inga maskiner — bara en lokal — så säg det i klartext och spara ingenting mer.`;
 
@@ -59,7 +57,7 @@ const JOB_PROMPT = `Kunden har laddat upp underlag och vill ha ett färdigt för
 
 1. Läs bilagorna. Skriv först vad du ser: en ritning över lokalen, ett flödesschema, en skiss, ett foto.
 2. Är det en ritning över lokalen — sätt hallens mått och rita upp den med draw_hall. Går skalan inte att fastställa ur ritningen eller ur kundens egna ord: rita inte. Skriv i stället vilket mått du behöver för att kunna göra det.
-3. Visar underlaget maskiner eller ett flöde — bygg linjen. clear_line först om du börjar om, sedan add_machine i den ordning flödet går, och set_flow för de fem flödesvalen. Att kundens linje är tom är själva anledningen till att du är här; bygg den efter bilden.
+3. Visar underlaget maskiner eller ett flöde — bygg linjen. clear_line först om du börjar om, sedan add_machine i den ordning flödet går. Att kundens linje är tom är själva anledningen till att du är här; bygg den efter bilden.
 4. Kontrollera med get_current_layout och rätta det du kan innan du sparar.
 5. Spara med propose_variant. Är du osäker på en tolkning: spara den rimligaste och beskriv osäkerheten i förslagets beskrivning.
 

@@ -1,7 +1,7 @@
 import { translate } from "./i18n/translate";
-import { defaultStartPoint, solveLayout, suggestTruckZone } from "./solver";
+import { solveLayout, suggestTruckZone } from "./solver";
 import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
-import type { Configuration, Flow, Hall, LineItem, Product } from "./types";
+import type { Configuration, Hall, LineItem, Product } from "./types";
 
 let counter = 0;
 export function newInstanceId(machineId: string): string {
@@ -35,17 +35,11 @@ export const DEFAULT_PRODUCT: Product = {
   targetPackagesPerHour: 18,
 };
 
-export const DEFAULT_FLOW: Flow = {
-  truckPickupSide: "left",
-  startPoint: { x: 2000, y: Math.round(DEFAULT_HALL.widthMm / 2) },
-};
-
 function base(projectName: string, machineIds: string[]): Configuration {
   return {
     version: 1,
     projectName,
     hall: { ...DEFAULT_HALL },
-    flow: { ...DEFAULT_FLOW },
     product: { ...DEFAULT_PRODUCT },
     line: machineIds.map((id) => lineItem(id)),
     drawn: [],
@@ -57,9 +51,8 @@ export type Template = {
   name: string;
   description: string;
   machineIds: string[];
-  /** Avvikelser från standardhallen och standardflödet för just denna mall. */
+  /** Avvikelser från standardhallen för just denna mall. */
   hall?: Partial<Hall>;
-  flow?: Partial<Flow>;
 };
 
 export const TEMPLATES: Template[] = [
@@ -162,9 +155,6 @@ export function templateConfig(
     template.machineIds,
   );
   Object.assign(config.hall, template.hall ?? {});
-  Object.assign(config.flow, template.flow ?? {});
-  // Startpunkten följer hallen och inmatningsriktningen om mallen ändrat dem.
-  config.flow.startPoint = defaultStartPoint(config);
 
   /*
    * Mallen ritar in en hämtzon vid utlastningen och en port i gaveln, som
@@ -185,11 +175,7 @@ export function templateConfig(
   }
 
   const solved = solveLayout(config, library);
-  const suggestion = suggestTruckZone(
-    solved.lineBounds,
-    "x+",
-    config.flow.truckPickupSide,
-  );
+  const suggestion = suggestTruckZone(solved.lineBounds, "x+");
 
   /*
    * Hämtzonen dras ut till närmaste vägg, och porten sätts mitt för den.

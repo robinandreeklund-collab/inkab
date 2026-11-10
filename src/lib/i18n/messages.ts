@@ -68,14 +68,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.flow": "Flöde",
     "sidebar.flowHint":
       "Maskinerna står där du ställer dem. Pilarna i ritningen visar åt vilket håll varje maskin tar emot och lämnar paket — de kopplar ingenting, de berättar bara vad maskinen klarar.",
-    "sidebar.truckPickup": "Trucken hämtar från",
-    "sidebar.newMachinesAt": "Var nya maskiner läggs",
-    "sidebar.startPointHint":
-      "Startpunkten. Dra markören i ritningen, eller skriv måtten här.",
-    "sidebar.startX": "Start X",
-    "sidebar.startY": "Start Y",
-    "side.right": "Höger",
-    "side.left": "Vänster",
 
     /* Ritningen */
     "cad.plan": "Planvy",
@@ -283,9 +275,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Utgången på {a} möter utgången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget så att paketen går in i nästa maskin.",
     "rule.reversedIn.d":
       "Ingången på {a} möter ingången på {b}. En av dem är vriden ett halvt varv — vrid den med R eller handtaget.",
-    "rule.loose.t": "Maskinen är inte kopplad till linjen",
-    "rule.loose.d":
-      "Ingen annan maskin tar emot eller lämnar paket till {machine}. Ställ den så att portarna möts, högst {reach} m isär, eller ta bort den om den inte ska vara med.",
     "model.dragHint": "Dra för att flytta",
     "model.turnLeft": "Vrid moturs",
     "model.turnRight": "Vrid medurs",
@@ -312,7 +301,7 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Hallens mått, väggarna och ytorna i den. Allt som står på plats innan en enda maskin dras in.",
     "area.plant.title": "Anläggningen",
     "area.plant.why":
-      "Maskinerna du vill ha, var de står, och var paketen kommer in i linjen.",
+      "Maskinerna du vill ha och var de står i hallen.",
     "area.optional": "Valfritt",
     "area.optionalStep": "Valfritt steg",
     "area.stepOf": "Steg {n} av {total}",
@@ -340,9 +329,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "area.line.title": "Maskinerna i linjen",
     "area.line.why":
       "Det du har valt, i flödesordning, och vad regelverket säger om det. Fel behöver rättas innan offerten är rimlig.",
-    "area.points.title": "Start och slut",
-    "area.points.why":
-      "Var paketen kommer in och var de ska ut, med en rad om varför. Det står i offerten så att den som läser förstår flödet.",
     "area.product.title": "Paketet",
     "area.product.why":
       "Virkesbredd, paketets mått och vikt och hur många paket i timmen. Maskinerna väljs och kontrolleras mot de här siffrorna.",
@@ -392,7 +378,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "nav.status.machines": "{count} maskiner",
     "nav.status.lineOk": "Inga anmärkningar",
     "nav.status.lineIssues": "{errors} fel · {warnings} varningar",
-    "nav.status.points": "{count} punkter",
     "nav.status.quote": "Pris, ritning, delning",
     "onboarding.loadingCatalogue":
       "Hämtar maskinkatalogen — mallen öppnas så fort den är här.",
@@ -489,7 +474,7 @@ export const MESSAGES: Record<Locale, Messages> = {
     "quote.assembly": "Montage på plats",
     "quote.bottleneck": "Flaskhals",
     "quote.noBottleneck": "Ingen identifierad",
-    "quote.flowConfig": "Flöde och konfiguration",
+    "quote.basis": "Mått och virke",
     "quote.assumptions": "Antaganden och avgränsningar",
     "quote.draft": "Utkast",
     "quote.assume.floor":
@@ -659,31 +644,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Truckens yta. Maskiner hålls borta härifrån. Dra för att flytta.",
     "cad.drawn.nogo":
       "Här får inget stå. Regelverket varnar om en maskin hamnar här. Dra för att flytta.",
-    "points.title": "Start och slut",
-    "points.why":
-      "Startpunkten är där paketen kommer in och där nya maskiner läggs. Slutpunkter visar var färdiga paket ska ut. Skriv varför punkten ligger där — det följer med i ritningen och offerten. Finns flera tänkbara lägen, lägg till fler och jämför.",
-    "points.start": "Start",
-    "points.end": "Slut",
-    "points.startHelp":
-      "Var paketen kommer in — från sågen, en annan linje eller en truckport. Nya maskiner läggs vid den aktiva startpunkten.",
-    "points.endHelp":
-      "Var de färdiga paketen ska ut — vid en port, en hämtzon eller ett lager.",
-    "points.altHelp":
-      "Alternativ startpunkt. Gör den aktiv i sidopanelen för att lägga nya maskiner här.",
-    "points.drag": "Dra för att flytta.",
-    "points.why.label": "Varför här?",
-    "points.startPlaceholder": "T.ex. paketen kommer från sågen via port A",
-    "points.placeholder": "Varför? T.ex. trucken hämtar vid port B",
-    "points.addStart": "+ Start",
-    "points.addEnd": "+ Slut",
-    "points.addStartTip": "Lägg till en startpunkt",
-    "points.addEndTip": "Lägg till en slutpunkt",
-    "points.more": "Fler punkter",
-    "points.moreTip":
-      "Fler tänkbara lägen, t.ex. från hyvleriet i stället för sågen, eller en annan port. Var och en med sin motivering.",
-    "points.activate": "Aktivera",
-    "points.activateTip":
-      "Nya maskiner läggs vid den här punkten. Den som var aktiv blir kvar som alternativ.",
     "guide.kicker": "Kom igång",
     "guide.progress": "{done} av {total} steg klara",
     "guide.close": "Stäng",
@@ -774,14 +734,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.flow": "Flow",
     "sidebar.flowHint":
       "Machines stand where you put them. The arrows in the drawing show which way each machine takes packages in and hands them on — they connect nothing, they only tell you what the machine can do.",
-    "sidebar.truckPickup": "Forklift collects from",
-    "sidebar.newMachinesAt": "Where new machines land",
-    "sidebar.startPointHint":
-      "The start point. Drag the marker in the drawing, or type the values here.",
-    "sidebar.startX": "Start X",
-    "sidebar.startY": "Start Y",
-    "side.right": "Right",
-    "side.left": "Left",
 
     "cad.plan": "Plan view",
     "cad.zones": "Show zones",
@@ -988,9 +940,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "The outlet of {a} meets the outlet of {b}. One of them is turned half a turn — turn it with R or the handle so packages enter the next machine.",
     "rule.reversedIn.d":
       "The inlet of {a} meets the inlet of {b}. One of them is turned half a turn — turn it with R or the handle.",
-    "rule.loose.t": "The machine is not connected to the line",
-    "rule.loose.d":
-      "No other machine passes packages to or from {machine}. Place it so the ports meet, at most {reach} m apart, or remove it if it should not be included.",
     "model.dragHint": "Drag to move",
     "model.turnLeft": "Turn anticlockwise",
     "model.turnRight": "Turn clockwise",
@@ -1018,7 +967,7 @@ export const MESSAGES: Record<Locale, Messages> = {
       "The hall’s dimensions, its walls and the areas inside it. Everything that is in place before a single machine is dragged in.",
     "area.plant.title": "The plant",
     "area.plant.why":
-      "The machines you want, where they stand, and where packages enter the line.",
+      "The machines you want and where they stand in the hall.",
     "area.optional": "Optional",
     "area.optionalStep": "Optional step",
     "area.stepOf": "Step {n} of {total}",
@@ -1046,9 +995,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "area.line.title": "Machines in the line",
     "area.line.why":
       "What you have chosen, in flow order, and what the rules say about it. Errors need fixing before the quote makes sense.",
-    "area.points.title": "Start and end",
-    "area.points.why":
-      "Where packages come in and where they leave, with a line on why. It goes into the quote so the reader understands the flow.",
     "area.product.title": "The package",
     "area.product.why":
       "Timber width, package size and weight, and packages per hour. The machines are chosen and checked against these figures.",
@@ -1098,7 +1044,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "nav.status.machines": "{count} machines",
     "nav.status.lineOk": "No issues",
     "nav.status.lineIssues": "{errors} errors · {warnings} warnings",
-    "nav.status.points": "{count} points",
     "nav.status.quote": "Price, drawing, sharing",
     "onboarding.loadingCatalogue":
       "Loading the machine catalogue — the template opens as soon as it arrives.",
@@ -1197,7 +1142,7 @@ export const MESSAGES: Record<Locale, Messages> = {
     "quote.assembly": "On-site assembly",
     "quote.bottleneck": "Bottleneck",
     "quote.noBottleneck": "None identified",
-    "quote.flowConfig": "Flow and configuration",
+    "quote.basis": "Dimensions and timber",
     "quote.assumptions": "Assumptions and exclusions",
     "quote.draft": "Draft",
     "quote.assume.floor":
@@ -1369,31 +1314,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "The forklift's area. Machines are kept out of it. Drag to move.",
     "cad.drawn.nogo":
       "Nothing may stand here. The rules warn if a machine ends up here. Drag to move.",
-    "points.title": "Start and end",
-    "points.why":
-      "The start point is where packages come in and where new machines are placed. End points show where finished packages leave. Write why the point is there — it goes into the drawing and the quote. If there are several possible locations, add more and compare.",
-    "points.start": "Start",
-    "points.end": "End",
-    "points.startHelp":
-      "Where packages come in — from the saw, another line or a forklift door. New machines are placed at the active start point.",
-    "points.endHelp":
-      "Where finished packages leave — at a door, a pickup bay or a store.",
-    "points.altHelp":
-      "Alternative start point. Make it active in the side panel to place new machines here.",
-    "points.drag": "Drag to move.",
-    "points.why.label": "Why here?",
-    "points.startPlaceholder": "E.g. packages come from the saw through door A",
-    "points.placeholder": "Why? E.g. the forklift collects at door B",
-    "points.addStart": "+ Start",
-    "points.addEnd": "+ End",
-    "points.addStartTip": "Add a start point",
-    "points.addEndTip": "Add an end point",
-    "points.more": "More points",
-    "points.moreTip":
-      "More possible locations, e.g. from the planer instead of the saw, or another door. Each with its own reason.",
-    "points.activate": "Activate",
-    "points.activateTip":
-      "New machines are placed at this point. The previous one is kept as an alternative.",
     "guide.kicker": "Get started",
     "guide.progress": "{done} of {total} steps done",
     "guide.close": "Close",
@@ -1485,14 +1405,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "sidebar.flow": "Fluss",
     "sidebar.flowHint":
       "Die Maschinen stehen dort, wo Sie sie hinstellen. Die Pfeile in der Zeichnung zeigen, auf welcher Seite jede Maschine Pakete aufnimmt und weitergibt — sie verbinden nichts, sie sagen nur, was die Maschine kann.",
-    "sidebar.truckPickup": "Stapler holt von",
-    "sidebar.newMachinesAt": "Wo neue Maschinen landen",
-    "sidebar.startPointHint":
-      "Der Startpunkt. Ziehen Sie die Marke in der Zeichnung oder geben Sie die Maße hier ein.",
-    "sidebar.startX": "Start X",
-    "sidebar.startY": "Start Y",
-    "side.right": "Rechts",
-    "side.left": "Links",
 
     "cad.plan": "Grundriss",
     "cad.zones": "Zonen anzeigen",
@@ -1702,9 +1614,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Der Ausgang von {a} trifft auf den Ausgang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff, damit die Pakete in die nächste Maschine laufen.",
     "rule.reversedIn.d":
       "Der Eingang von {a} trifft auf den Eingang von {b}. Eine der Maschinen ist um eine halbe Drehung verdreht — drehen Sie sie mit R oder dem Griff.",
-    "rule.loose.t": "Die Maschine ist nicht mit der Linie verbunden",
-    "rule.loose.d":
-      "Keine andere Maschine übergibt Pakete an {machine} oder übernimmt sie. Stellen Sie sie so, dass die Ports aufeinandertreffen, höchstens {reach} m auseinander, oder entfernen Sie sie, falls sie nicht dazugehört.",
     "model.dragHint": "Zum Verschieben ziehen",
     "model.turnLeft": "Gegen den Uhrzeigersinn drehen",
     "model.turnRight": "Im Uhrzeigersinn drehen",
@@ -1732,7 +1641,7 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Die Maße der Halle, ihre Wände und die Flächen darin. Alles, was steht, bevor eine einzige Maschine hineingezogen wird.",
     "area.plant.title": "Die Anlage",
     "area.plant.why":
-      "Die Maschinen, die Sie wollen, wo sie stehen, und wo die Pakete in die Linie kommen.",
+      "Die Maschinen, die Sie wollen, und wo sie in der Halle stehen.",
     "area.optional": "Optional",
     "area.optionalStep": "Optionaler Schritt",
     "area.stepOf": "Schritt {n} von {total}",
@@ -1760,9 +1669,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "area.line.title": "Maschinen in der Linie",
     "area.line.why":
       "Ihre Auswahl in Flussreihenfolge und was das Regelwerk dazu sagt. Fehler müssen behoben werden, bevor das Angebot sinnvoll ist.",
-    "area.points.title": "Start und Ende",
-    "area.points.why":
-      "Wo die Pakete hereinkommen und wo sie hinausgehen, mit einer Begründung. Das steht im Angebot, damit der Leser den Fluss versteht.",
     "area.product.title": "Das Paket",
     "area.product.why":
       "Holzbreite, Paketmaße und -gewicht sowie Pakete pro Stunde. Die Maschinen werden anhand dieser Werte ausgewählt und geprüft.",
@@ -1813,7 +1719,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     "nav.status.machines": "{count} Maschinen",
     "nav.status.lineOk": "Keine Hinweise",
     "nav.status.lineIssues": "{errors} Fehler · {warnings} Warnungen",
-    "nav.status.points": "{count} Punkte",
     "nav.status.quote": "Preis, Zeichnung, Teilen",
     "onboarding.loadingCatalogue":
       "Maschinenkatalog wird geladen — die Vorlage öffnet sich, sobald er da ist.",
@@ -1912,7 +1817,7 @@ export const MESSAGES: Record<Locale, Messages> = {
     "quote.assembly": "Montage vor Ort",
     "quote.bottleneck": "Engpass",
     "quote.noBottleneck": "Keiner erkannt",
-    "quote.flowConfig": "Fluss und Konfiguration",
+    "quote.basis": "Maße und Holz",
     "quote.assumptions": "Annahmen und Abgrenzungen",
     "quote.draft": "Entwurf",
     "quote.assume.floor":
@@ -2089,31 +1994,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Die Fläche des Staplers. Maschinen bleiben fern. Zum Verschieben ziehen.",
     "cad.drawn.nogo":
       "Hier darf nichts stehen. Das Regelwerk warnt, wenn eine Maschine hier landet. Zum Verschieben ziehen.",
-    "points.title": "Start und Ende",
-    "points.why":
-      "Der Startpunkt ist, wo die Pakete hereinkommen und neue Maschinen platziert werden. Endpunkte zeigen, wo fertige Pakete hinausgehen. Schreiben Sie, warum der Punkt dort liegt — das erscheint in Zeichnung und Angebot. Gibt es mehrere mögliche Lagen, fügen Sie weitere hinzu und vergleichen Sie.",
-    "points.start": "Start",
-    "points.end": "Ende",
-    "points.startHelp":
-      "Wo die Pakete hereinkommen — von der Säge, einer anderen Linie oder einem Staplertor. Neue Maschinen werden am aktiven Startpunkt platziert.",
-    "points.endHelp":
-      "Wo die fertigen Pakete hinausgehen — an einem Tor, einer Abholzone oder einem Lager.",
-    "points.altHelp":
-      "Alternativer Startpunkt. Aktivieren Sie ihn in der Seitenleiste, um neue Maschinen hier zu platzieren.",
-    "points.drag": "Zum Verschieben ziehen.",
-    "points.why.label": "Warum hier?",
-    "points.startPlaceholder": "Z. B. Pakete kommen von der Säge durch Tor A",
-    "points.placeholder": "Warum? Z. B. der Stapler holt an Tor B ab",
-    "points.addStart": "+ Start",
-    "points.addEnd": "+ Ende",
-    "points.addStartTip": "Startpunkt hinzufügen",
-    "points.addEndTip": "Endpunkt hinzufügen",
-    "points.more": "Weitere Punkte",
-    "points.moreTip":
-      "Weitere mögliche Lagen, z. B. vom Hobelwerk statt von der Säge oder ein anderes Tor. Jede mit eigener Begründung.",
-    "points.activate": "Aktivieren",
-    "points.activateTip":
-      "Neue Maschinen werden an diesem Punkt platziert. Der bisherige bleibt als Alternative erhalten.",
     "guide.kicker": "Erste Schritte",
     "guide.progress": "{done} von {total} Schritten erledigt",
     "guide.close": "Schließen",

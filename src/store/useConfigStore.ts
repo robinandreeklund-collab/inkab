@@ -11,7 +11,7 @@ import {
 import { defaultConfig, lineItem } from "@/lib/templates";
 import { isLocale, preferredLocale, type Locale } from "@/lib/i18n/locale";
 import { translate } from "@/lib/i18n/translate";
-import { claimedBox, freeSpot } from "@/lib/solver";
+import { claimedBox, defaultStartPoint, freeSpot } from "@/lib/solver";
 import { AREA_ORDER, migrateArea, type Area } from "@/lib/areas";
 
 /**
@@ -23,10 +23,8 @@ export type SectionId =
   | "walls"
   | "zones"
   | "machines"
-  | "line"
-  | "points";
+  | "line";
 import { localizeMachines } from "@/lib/machineText";
-import { activateMarker, addMarker, removeMarker } from "@/lib/flowMarkers";
 import {
   describeChange,
   logEntry,
@@ -41,8 +39,6 @@ import type {
   Configuration,
   Dimension,
   DrawnObject,
-  Flow,
-  FlowMarker,
   LayoutResult,
   Machine,
   ParameterValue,
@@ -180,18 +176,6 @@ type Actions = {
     },
   ) => void;
   update: (recipe: (draft: Configuration) => void) => void;
-  setFlow: (patch: Partial<Flow>) => void;
-  /** Flyttar startpunkten — den enda punkt flödet har. */
-  setStartPoint: (point: Vec2) => void;
-  setStartComment: (comment: string) => void;
-  addFlowMarker: (role: FlowMarker["role"]) => void;
-  updateFlowMarker: (
-    id: string,
-    patch: Partial<Omit<FlowMarker, "id">>,
-  ) => void;
-  removeFlowMarker: (id: string) => void;
-  /** Gör en alternativ start till den punkt nya maskiner läggs vid. */
-  activateFlowMarker: (id: string) => void;
   /**
    * Lägger till en maskin.
    *
@@ -496,29 +480,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
       commit(next);
     },
 
-    setFlow: (patch) => get().update((d) => Object.assign(d.flow, patch)),
-
-    setStartPoint: (point) =>
-      get().update((d) => void (d.flow.startPoint = point)),
-
-    setStartComment: (comment) =>
-      get().update(
-        (d) => void (d.flow.startComment = comment.trim() || undefined),
-      ),
-
-    addFlowMarker: (role) =>
-      get().update((d) => void addMarker(d.flow, role, d.hall)),
-
-    updateFlowMarker: (id, patch) =>
-      get().update((d) => {
-        const marker = d.flow.markers?.find((m) => m.id === id);
-        if (marker) Object.assign(marker, patch);
-      }),
-
-    removeFlowMarker: (id) => get().update((d) => removeMarker(d.flow, id)),
-
-    activateFlowMarker: (id) => get().update((d) => activateMarker(d.flow, id)),
-
     addMachine: (machineId, options) => {
       const machine = getMachine(machineId, get().library);
       if (!machine) return;
@@ -558,7 +519,7 @@ export const useConfigStore = create<State & Actions>((set, get) => {
         : freeSpot(
             layout.placements.map(claimedBox),
             storlek,
-            config.flow.startPoint,
+            defaultStartPoint(config),
             config.hall,
           );
 
@@ -748,9 +709,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
 
     applyPatch: (patch) => {
       switch (patch.kind) {
-        case "flow":
-          get().setFlow(patch.patch);
-          break;
         case "addMachine":
           get().addMachine(patch.machineId);
           break;

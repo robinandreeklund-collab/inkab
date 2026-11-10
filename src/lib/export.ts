@@ -267,13 +267,10 @@ export function planDxf(config: Configuration, layout: LayoutResult): string {
   }
 
   const chain = layout.placements.filter((p) => !p.aux);
-  const points = [
-    config.flow.startPoint,
-    ...chain.map((p) => ({
-      x: p.bbox.x + p.bbox.l / 2,
-      y: p.bbox.y + p.bbox.w / 2,
-    })),
-  ];
+  const points = chain.map((p) => ({
+    x: p.bbox.x + p.bbox.l / 2,
+    y: p.bbox.y + p.bbox.w / 2,
+  }));
   for (let i = 1; i < points.length; i++) {
     out.push(
       ...line(

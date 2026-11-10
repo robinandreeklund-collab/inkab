@@ -420,31 +420,8 @@ export function QuoteView({
                     </dl>
                   </Section>
 
-                  <Section title={t("quote.flowConfig")}>
+                  <Section title={t("quote.basis")}>
                     <dl className="text-sm">
-                      <Line
-                        label={t("sidebar.truckPickup")}
-                        value={t(`side.${config.flow.truckPickupSide}`)}
-                      />
-                      {config.flow.startComment ? (
-                        <Line
-                          label={t("points.start")}
-                          value={config.flow.startComment}
-                        />
-                      ) : null}
-                      {(config.flow.markers ?? [])
-                        .filter((m) => m.comment)
-                        .map((m) => (
-                          <Line
-                            key={m.id}
-                            label={t(
-                              m.role === "start"
-                                ? "points.start"
-                                : "points.end",
-                            )}
-                            value={m.comment}
-                          />
-                        ))}
                       {(config.dimensions ?? []).map((d) => (
                         <Line
                           key={d.id}

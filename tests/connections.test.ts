@@ -29,14 +29,21 @@ describe("kopplingar ur portarna", () => {
     expect(mismatches).toHaveLength(0);
   });
 
-  it("mallarna ger varken R-601 eller R-602, med båda katalogerna", () => {
+  it("mallarna ger inget R-602, med båda katalogerna", () => {
     for (const lib of [BUILTIN_LIBRARY, REAL]) {
       for (const id of ["strolinje", "multilinje", "underslag", "komplett"]) {
-        const found = codes(templateConfig(id, lib), lib);
-        expect(found, id).not.toContain("R-601");
-        expect(found, id).not.toContain("R-602");
+        expect(codes(templateConfig(id, lib), lib), id).not.toContain("R-602");
       }
     }
+  });
+
+  it("en maskin som står för sig själv anmärks inte längre", () => {
+    // R-601 varnade för varje maskin som ingen annans port nådde. I en
+    // verklig hall står hälften så — lyftbord, press, emballering — och
+    // regeln gav nio varningar om en layout som var riktig.
+    const config = templateConfig("strolinje");
+    config.line[4].pos = { x: 30000, y: 2000 };
+    expect(codes(config)).not.toContain("R-601");
   });
 });
 
@@ -50,21 +57,6 @@ describe("R-602 maskin åt fel håll", () => {
     const layout = layoutOf(config);
     expect(layout.placements[2].bbox).toEqual(press.bbox);
     expect(layout.diagnostics.map((d) => d.code)).toContain("R-602");
-  });
-});
-
-describe("R-601 lös maskin", () => {
-  it("varnar när en maskin ställs långt från resten", () => {
-    const config = templateConfig("strolinje");
-    config.line[4].pos = { x: 30000, y: 2000 };
-    const loose = layoutOf(config).diagnostics.filter((d) => d.code === "R-601");
-    expect(loose.map((d) => d.instanceIds[0])).toContain(config.line[4].instanceId);
-  });
-
-  it("tiger när det bara finns en maskin", () => {
-    const config = defaultConfig();
-    config.line = [lineItem("rullbana")];
-    expect(codes(config)).not.toContain("R-601");
   });
 });
 

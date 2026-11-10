@@ -5,7 +5,7 @@ import { computeLayout } from "@/lib/layout";
 import { makeLibrary } from "@/lib/library";
 import { readDocument } from "@/lib/server/store";
 import { currentRole } from "@/lib/server/session";
-import { DEFAULT_FLOW, DEFAULT_HALL, DEFAULT_PRODUCT } from "@/lib/templates";
+import { DEFAULT_PRODUCT } from "@/lib/templates";
 import type { Configuration, Machine } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -54,7 +54,6 @@ export async function POST(request: Request) {
     version: 1,
     projectName: "Provkoppling",
     hall: { lengthMm: 200_000, widthMm: 120_000, clearHeightMm: 40_000 },
-    flow: { ...DEFAULT_FLOW },
     product: { ...DEFAULT_PRODUCT },
     line: [
       ...(feeder

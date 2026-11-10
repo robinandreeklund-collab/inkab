@@ -273,39 +273,6 @@ export function runRules(
     });
   }
 
-  /* ── R-601 Maskinen är inte kopplad till linjen ─────────────────────── */
-  /*
-   * Med fri placering kan en maskin stå var som helst. Står den så långt från
-   * alla andra att ingen port når fram, går inga paket genom den — oftast en
-   * maskin som dragits in och glömts, eller ett mellanrum som blivit för stort.
-   */
-  if (line.length >= 2) {
-    for (const p of line) {
-      if (p.ports.length === 0) continue;
-      if (
-        connections.some(
-          (c) => c.from === p.instanceId || c.to === p.instanceId,
-        )
-      )
-        continue;
-      if (
-        mismatches.some((mm) => mm.a === p.instanceId || mm.b === p.instanceId)
-      )
-        continue;
-      out.push({
-        code: "R-601",
-        severity: "warning",
-        title: t("rule.loose.t"),
-        detail: t("rule.loose.d", {
-          machine: p.machine.name,
-          reach: m(CONNECT_REACH_MM),
-        }),
-        instanceIds: [p.instanceId],
-        anchor: boxCenter(p.bbox),
-      });
-    }
-  }
-
   /* ── R-105 Skyddszon skär truckgatan ────────────────────────────────── */
   for (const aisle of layout.aisles) {
     for (const p of all) {

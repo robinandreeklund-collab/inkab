@@ -21,7 +21,6 @@ import {
 } from "@/lib/draft";
 import { zoneDef } from "@/lib/zones";
 import { HALL_LIMITS } from "@/lib/limits";
-import { markerNumber } from "@/lib/flowMarkers";
 import {
   dimensionLength,
   makeDimension,
@@ -37,7 +36,6 @@ import type {
   Dimension,
   DrawnObject,
   DrawnKind,
-  Flow,
   Machine,
   PlacedPort,
   Placement,
@@ -107,8 +105,6 @@ export function CadView() {
     setTool,
     zoneKind,
     mirrorMachine,
-    setStartPoint,
-    updateFlowMarker,
     update,
     addDimension,
     updateDimension,
@@ -349,29 +345,6 @@ export function CadView() {
     };
     const up = () => {
       setFrozen(null);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  /* ── Dra startpunkten ────────────────────────────────────────────────── */
-  const dragStartPoint = (
-    which: "start" | { marker: string },
-    event: React.PointerEvent,
-  ) => {
-    event.stopPropagation();
-    if (tool !== "select") return;
-    setHover(null);
-    const move = (e: PointerEvent) => {
-      const p = toWorld(e);
-      if (!p) return;
-      const point = { x: snap(p.x), y: snap(p.y) };
-      if (which === "start") setStartPoint(point);
-      else updateFlowMarker(which.marker, { pos: point });
-    };
-    const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -799,13 +772,6 @@ export function CadView() {
         {clearance ? (
           <DoorDimensions clearance={clearance} strokeUnit={strokeUnit} />
         ) : null}
-
-        <FlowMarkers
-          flow={config.flow}
-          strokeUnit={strokeUnit}
-          onDrag={dragStartPoint}
-          tip={tip}
-        />
 
         {dropAt && dragged ? (
           <g pointerEvents="none">
@@ -1486,135 +1452,6 @@ function DraftShape({
       >
         {label}
       </text>
-    </g>
-  );
-}
-
-/**
- * Start- och slutpunkter som dragbara markörer i ritningen.
- *
- * Den aktiva startpunkten — där nya maskiner läggs — är fylld. Alternativa
- * starter är ihåliga, och slutpunkterna har ett kryss. Kommentaren, varför
- * punkten ligger där, står under markören och i sin helhet när man håller
- * musen över den. Ingen av dem mäts mot något: med fri placering slutar
- * anläggningen där sista maskinen står, och punkterna är upplysningar till
- * den som läser ritningen.
- */
-function FlowMarkers({
-  flow,
-  strokeUnit,
-  onDrag,
-  tip,
-}: {
-  flow: Flow;
-  strokeUnit: number;
-  onDrag: (
-    which: "start" | { marker: string },
-    event: React.PointerEvent,
-  ) => void;
-  tip: TipHandlers;
-}) {
-  const t = useT();
-  const r = strokeUnit * 9;
-
-  const marker = (
-    key: string,
-    role: "start" | "end",
-    pos: Vec2,
-    label: string,
-    comment: string | undefined,
-    active: boolean,
-    which: "start" | { marker: string },
-  ) => {
-    const colour = role === "start" ? "#5980a6" : "#1d2d3d";
-    const help =
-      role === "end"
-        ? t("points.endHelp")
-        : active
-          ? t("points.startHelp")
-          : t("points.altHelp");
-    const body =
-      (comment ? `“${comment}”\n\n` : "") + help + " " + t("points.drag");
-    return (
-      <g
-        key={key}
-        style={{ cursor: "grab" }}
-        onPointerDown={(e) => onDrag(which, e)}
-        {...tip(label, body)}
-      >
-        <circle
-          cx={pos.x}
-          cy={pos.y}
-          r={r}
-          fill={active ? colour : "#ffffff"}
-          fillOpacity={active ? 0.18 : 0.9}
-          stroke={colour}
-          strokeWidth={strokeUnit * 1.6}
-          strokeDasharray={
-            active || role === "end"
-              ? undefined
-              : `${strokeUnit * 3} ${strokeUnit * 2}`
-          }
-        />
-        {role === "start" ? (
-          <circle cx={pos.x} cy={pos.y} r={strokeUnit * 2.4} fill={colour} />
-        ) : (
-          <path
-            d={`M${pos.x - r} ${pos.y}h${r * 2}M${pos.x} ${pos.y - r}v${r * 2}`}
-            stroke={colour}
-            strokeWidth={strokeUnit * 1.4}
-          />
-        )}
-        <text
-          x={pos.x}
-          y={pos.y - r - strokeUnit * 4}
-          textAnchor="middle"
-          fontSize={strokeUnit * 12}
-          fill={colour}
-          className="num"
-          pointerEvents="none"
-        >
-          {label.toUpperCase()}
-        </text>
-        {comment ? (
-          <text
-            x={pos.x}
-            y={pos.y + r + strokeUnit * 13}
-            textAnchor="middle"
-            fontSize={strokeUnit * 10}
-            fill={colour}
-            fillOpacity="0.8"
-            pointerEvents="none"
-          >
-            {comment.length > 28 ? `${comment.slice(0, 27)}…` : comment}
-          </text>
-        ) : null}
-      </g>
-    );
-  };
-
-  return (
-    <g>
-      {(flow.markers ?? []).map((m) =>
-        marker(
-          m.id,
-          m.role,
-          m.pos,
-          `${t(m.role === "start" ? "points.start" : "points.end")} ${markerNumber(flow, m)}`,
-          m.comment,
-          false,
-          { marker: m.id },
-        ),
-      )}
-      {marker(
-        "start",
-        "start",
-        flow.startPoint,
-        t("points.start"),
-        flow.startComment,
-        true,
-        "start",
-      )}
     </g>
   );
 }

@@ -7,7 +7,6 @@ import { meters, parseMeters } from "@/lib/format";
 import { suggestTruckZone } from "@/lib/solver";
 import { nextName } from "@/lib/drawing";
 import { ZONES, zoneDef } from "@/lib/zones";
-import { markerNumber, MAX_MARKERS } from "@/lib/flowMarkers";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { dimensionLength } from "@/lib/dimensions";
 import { clampTo, HALL_LIMITS, setProductValue } from "@/lib/limits";
@@ -26,13 +25,7 @@ import { MachineThumb } from "./MachineThumb";
 import { toolHelp } from "./toolHelp";
 import type { Area } from "@/lib/areas";
 import type { SectionId } from "@/store/useConfigStore";
-import type {
-  DrawnKind,
-  FlowMarker,
-  Machine,
-  MachineCategory,
-  Side,
-} from "@/lib/types";
+import type { DrawnKind, Machine, MachineCategory } from "@/lib/types";
 import type { Tool } from "@/store/useConfigStore";
 
 /**
@@ -156,15 +149,6 @@ function PlantArea() {
         meta={t("nav.status.machines", { count: config.line.length })}
       >
         <LineArea />
-      </Section>
-      <Section
-        id="points"
-        title={t("area.points.title")}
-        meta={t("nav.status.points", {
-          count: 1 + (config.flow.markers?.length ?? 0),
-        })}
-      >
-        <PointsArea />
       </Section>
     </>
   );
@@ -388,18 +372,12 @@ function WallsArea() {
  * namn, och därmed ett fel i regelverket. Nu väljer man sorts zon och ritar.
  * Sorterna står i lib/zones; en ny sort är en rad där, inte en yta här.
  *
- * Truckens hämtsida hör hit av samma skäl: den styr var förslaget på
- * truckzon hamnar, och den frågan ställs där truckzonen ritas.
  */
 function ZonesArea() {
   const t = useT();
-  const { config, layout, zoneKind, setZoneKind, tool, setFlow, addDrawn } =
+  const { config, layout, zoneKind, setZoneKind, tool, addDrawn } =
     useConfigStore();
   const active = zoneDef(zoneKind);
-  const sides: { value: Side; label: string }[] = [
-    { value: "right", label: t("side.right") },
-    { value: "left", label: t("side.left") },
-  ];
 
   /*
    * Lägger zonen på en rimlig plats i stället för att låta kunden rita den.
@@ -407,11 +385,7 @@ function ZonesArea() {
    * bredvid anläggningen, synlig direkt och lätt att dra dit den ska.
    */
   const place = () => {
-    const box = suggestTruckZone(
-      layout.bounds,
-      "x+",
-      config.flow.truckPickupSide,
-    );
+    const box = suggestTruckZone(layout.bounds, "x+");
     const square = Math.min(4000, Math.max(2000, Math.min(box.l, box.w)));
     addDrawn({
       id: `${zoneKind}-${Date.now().toString(36)}`,
@@ -461,16 +435,6 @@ function ZonesArea() {
         <Button size="sm" className="mt-1.5 w-full" onClick={place}>
           + {t("sidebar.addZone", { zone: t(active.labelKey) })}
         </Button>
-      </Block>
-
-      {/* Hämtsidan styr var förslaget på truckzon hamnar. */}
-      <Block title={t("sidebar.truckPickup")}>
-        <Segmented
-          ariaLabel={t("sidebar.truckPickup")}
-          value={config.flow.truckPickupSide}
-          options={sides}
-          onChange={(v) => setFlow({ truckPickupSide: v })}
-        />
       </Block>
 
       <Block title={t("area.tools")}>
@@ -668,100 +632,6 @@ function LineArea() {
   );
 }
 
-/* ── Flödet ────────────────────────────────────────────────────────────── */
-
-function PointsArea() {
-  const t = useT();
-  const {
-    config,
-    setStartPoint,
-    setStartComment,
-    addFlowMarker,
-    updateFlowMarker,
-    removeFlowMarker,
-    activateFlowMarker,
-  } = useConfigStore();
-  const full = (config.flow.markers?.length ?? 0) >= MAX_MARKERS;
-
-  return (
-    <>
-      <Block title={t("sidebar.newMachinesAt")} help={t("points.why")}>
-        <p className="mb-2 text-[11px] text-muted">
-          {t("sidebar.startPointHint")}
-        </p>
-        <div className="mb-2 grid grid-cols-2 gap-2">
-          <Field label={t("sidebar.startX")}>
-            <NumberInput
-              value={meters(config.flow.startPoint.x)}
-              onCommit={(raw) => {
-                const mm = parseMeters(raw);
-                if (mm !== null)
-                  setStartPoint({ ...config.flow.startPoint, x: mm });
-              }}
-            />
-          </Field>
-          <Field label={t("sidebar.startY")}>
-            <NumberInput
-              value={meters(config.flow.startPoint.y)}
-              onCommit={(raw) => {
-                const mm = parseMeters(raw);
-                if (mm !== null)
-                  setStartPoint({ ...config.flow.startPoint, y: mm });
-              }}
-            />
-          </Field>
-        </div>
-        <CommentInput
-          label={t("points.why.label")}
-          placeholder={t("points.startPlaceholder")}
-          value={config.flow.startComment ?? ""}
-          help={t("points.startHelp")}
-          onCommit={setStartComment}
-        />
-      </Block>
-
-      <Block title={t("points.more")} help={t("points.moreTip")}>
-        {(config.flow.markers ?? []).map((marker) => (
-          <MarkerRow
-            key={marker.id}
-            label={`${t(marker.role === "start" ? "points.start" : "points.end")} ${markerNumber(config.flow, marker)}`}
-            marker={marker}
-            onComment={(comment) => updateFlowMarker(marker.id, { comment })}
-            onActivate={() => activateFlowMarker(marker.id)}
-            onRemove={() => removeFlowMarker(marker.id)}
-          />
-        ))}
-        <div className="grid grid-cols-2 gap-1">
-          <Tip
-            block
-            title={t("points.addStartTip")}
-            body={t("points.startHelp")}
-          >
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={full}
-              onClick={() => addFlowMarker("start")}
-            >
-              {t("points.addStart")}
-            </Button>
-          </Tip>
-          <Tip block title={t("points.addEndTip")} body={t("points.endHelp")}>
-            <Button
-              size="sm"
-              className="w-full"
-              disabled={full}
-              onClick={() => addFlowMarker("end")}
-            >
-              {t("points.addEnd")}
-            </Button>
-          </Tip>
-        </div>
-      </Block>
-    </>
-  );
-}
-
 function ProductArea() {
   const t = useT();
   const { config, update } = useConfigStore();
@@ -942,110 +812,6 @@ function ShareButton() {
           mottagaren behöver inget konto.
         </p>
       )}
-    </div>
-  );
-}
-
-/** Kommentarfält som sparar när man lämnar det, så att varje tecken inte blir ett ångra-steg. */
-function CommentInput({
-  label,
-  placeholder,
-  value,
-  help,
-  onCommit,
-}: {
-  label: string;
-  placeholder: string;
-  value: string;
-  help: string;
-  onCommit: (text: string) => void;
-}) {
-  return (
-    <label className="mb-2 block">
-      <Tip block side="right" title={label} body={help}>
-        <span className="kicker mb-1 block">{label}</span>
-      </Tip>
-      <input
-        key={value}
-        defaultValue={value}
-        placeholder={placeholder}
-        maxLength={300}
-        onBlur={(e) => {
-          if (e.currentTarget.value.trim() !== value)
-            onCommit(e.currentTarget.value);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-        className="w-full border border-divider bg-white px-2 py-1 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
-      />
-    </label>
-  );
-}
-
-function MarkerRow({
-  label,
-  marker,
-  onComment,
-  onActivate,
-  onRemove,
-}: {
-  label: string;
-  marker: FlowMarker;
-  onComment: (comment: string) => void;
-  onActivate: () => void;
-  onRemove: () => void;
-}) {
-  const t = useT();
-  return (
-    <div className="mb-1.5 border border-dashed border-divider p-1.5">
-      <div className="mb-1 flex items-center gap-2">
-        <span
-          className={`kicker ${marker.role === "start" ? "text-accent" : "text-steel"}`}
-        >
-          {label}
-        </span>
-        <span className="num text-[11px] text-muted">
-          {meters(marker.pos.x)} × {meters(marker.pos.y)} m
-        </span>
-        <span className="ml-auto flex items-center gap-1">
-          {marker.role === "start" ? (
-            <Tip
-              side="right"
-              title={t("points.activate")}
-              body={t("points.activateTip")}
-            >
-              <button
-                onClick={onActivate}
-                className="kicker border border-divider px-1 hover:border-accent hover:text-accent"
-              >
-                {t("points.activate")}
-              </button>
-            </Tip>
-          ) : null}
-          <button
-            onClick={onRemove}
-            className="text-muted hover:text-danger"
-            aria-label="Ta bort"
-          >
-            ×
-          </button>
-        </span>
-      </div>
-      <input
-        key={marker.comment}
-        defaultValue={marker.comment}
-        placeholder={t("points.placeholder")}
-        maxLength={300}
-        onBlur={(e) => {
-          if (e.currentTarget.value.trim() !== marker.comment)
-            onComment(e.currentTarget.value.trim());
-        }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") e.currentTarget.blur();
-        }}
-        className="w-full border border-divider bg-white px-2 py-0.5 text-[12px] outline-none placeholder:text-muted/70 focus:border-accent"
-      />
     </div>
   );
 }

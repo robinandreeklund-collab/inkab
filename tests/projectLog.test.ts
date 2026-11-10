@@ -47,20 +47,16 @@ describe("describeChange", () => {
     expect(change(before, after)?.text).toContain("52,0");
   });
 
-  it("skriver flödesvalet på svenska i stället för dess kod", () => {
+  it("ett gammalt flödesfält i underlaget ger ingen rad", () => {
+    // Flödespanelen är borta. En autosparad konfiguration kan fortfarande
+    // bära nyckeln, och den ska passera obemärkt — inte bli en logg­rad om
+    // en inställning som inte finns.
     const before = defaultConfig();
     const after = JSON.parse(JSON.stringify(before)) as Configuration;
-    after.flow.truckPickupSide = after.flow.truckPickupSide === "left" ? "right" : "left";
-    const entry = change(before, after);
-    expect(entry?.kind).toBe("flow");
-    expect(entry?.text).toMatch(/höger|vänster/);
-  });
-
-  it("bryr sig inte om att linjens startpunkt dras", () => {
-    // Att dra linjen i vyn är inget som hörs hemma i ett underlag.
-    const before = defaultConfig();
-    const after = JSON.parse(JSON.stringify(before)) as Configuration;
-    after.flow.startPoint = { x: 5000, y: 9000 };
+    (after as unknown as { flow: unknown }).flow = {
+      truckPickupSide: "right",
+      startPoint: { x: 5000, y: 9000 },
+    };
     expect(change(before, after)).toBeNull();
   });
 

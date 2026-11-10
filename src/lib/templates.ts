@@ -1,6 +1,13 @@
 import { translate } from "./i18n/translate";
 import { solveLayout, suggestTruckZone } from "./solver";
 import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
+import {
+  DEMO_DIMENSIONS,
+  DEMO_DRAWN,
+  DEMO_HALL,
+  DEMO_LINE,
+  DEMO_PRODUCT,
+} from "./demoLayout";
 import type { Configuration, Hall, LineItem, Product } from "./types";
 
 let counter = 0;
@@ -53,6 +60,15 @@ export type Template = {
   machineIds: string[];
   /** Avvikelser från standardhallen för just denna mall. */
   hall?: Partial<Hall>;
+  /**
+   * Sant för en färdigritad anläggning i stället för en maskinlista.
+   *
+   * En vanlig mall läggs ut på rad av solvern och får en hämtzon och en port
+   * på köpet. En demo är tvärtom redan ritad — maskinerna står där någon
+   * ställt dem, och varken positionerna eller de ritade objekten får räknas
+   * om. Den öppnar därför med de anmärkningar ritningen faktiskt ger.
+   */
+  demo?: true;
 };
 
 export const TEMPLATES: Template[] = [
@@ -121,6 +137,15 @@ export const TEMPLATES: Template[] = [
     ],
     hall: { lengthMm: 72000, widthMm: 30000 },
   },
+  {
+    id: "demo",
+    name: "Demoanläggning",
+    description:
+      "En färdigritad anläggning i en hall på 60 × 30 m, med portar, zoner och måttlinjer.",
+    machineIds: DEMO_LINE.map((item) => item.machineId),
+    hall: DEMO_HALL,
+    demo: true,
+  },
 ];
 
 /**
@@ -150,10 +175,34 @@ export function templateConfig(
 ): Configuration {
   const template =
     TEMPLATES.find((tpl) => tpl.id === templateId) ?? TEMPLATES[0];
-  const config = base(
-    t("template.projectName", { name: t(`template.${template.id}.name`) }),
-    template.machineIds,
-  );
+  const projektnamn = t("template.projectName", {
+    name: t(`template.${template.id}.name`),
+  });
+
+  /*
+   * En färdigritad anläggning öppnas som den ritades.
+   *
+   * Inget räknas om: inga positioner läggs ut på rad, ingen hämtzon föreslås
+   * och ingen port sätts i gaveln. Instans-id är det enda som sätts nytt, så
+   * att två öppningar inte delar samma.
+   */
+  if (template.demo) {
+    return {
+      version: 1,
+      projectName: projektnamn,
+      hall: { ...DEMO_HALL },
+      product: { ...DEMO_PRODUCT },
+      line: DEMO_LINE.map((item) => ({
+        ...item,
+        instanceId: newInstanceId(item.machineId),
+        selectedOptions: [...item.selectedOptions],
+      })),
+      drawn: DEMO_DRAWN.map((o) => ({ ...o })),
+      dimensions: DEMO_DIMENSIONS.map((d) => ({ ...d })),
+    };
+  }
+
+  const config = base(projektnamn, template.machineIds);
   Object.assign(config.hall, template.hall ?? {});
 
   /*

@@ -522,6 +522,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "template.multilinje.name": "Truckströläggning – multi",
     "template.multilinje.desc":
       "Multiströläggare med vakuumlyft, hydraulisk press och automatisk bandomföring.",
+    "template.demo.name": "Demoanläggning",
+    "template.demo.desc":
+      "En hall på 60 × 30 m som någon redan ritat: femton maskiner där de står, tre portar, fem zoner och två mått. Öppnas precis som den ritades.",
     "template.underslag.name": "Underslagsläggning",
     "template.underslag.desc":
       "Underslagsläggare med höj- och sänkbar transportör, sidoskydd och bandning.",
@@ -1188,6 +1191,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "template.multilinje.name": "Forklift sticker stacking – multi",
     "template.multilinje.desc":
       "Multi sticker stacker with vacuum lift, hydraulic press and automatic strapping.",
+    "template.demo.name": "Demo plant",
+    "template.demo.desc":
+      "A 60 × 30 m hall someone has already drawn: fifteen machines where they stand, three doors, five zones and two dimensions. Opens exactly as it was drawn.",
     "template.underslag.name": "Bearer placement",
     "template.underslag.desc":
       "Bearer placer with height-adjustable conveyor, side protection and strapping.",
@@ -1862,6 +1868,9 @@ export const MESSAGES: Record<Locale, Messages> = {
     "template.multilinje.name": "Stapelleistenleger – Multi",
     "template.multilinje.desc":
       "Multi-Stapelleistenleger mit Vakuumheber, hydraulischer Presse und automatischer Umreifung.",
+    "template.demo.name": "Demoanlage",
+    "template.demo.desc":
+      "Eine Halle von 60 × 30 m, die jemand bereits gezeichnet hat: fünfzehn Maschinen an ihrem Platz, drei Tore, fünf Zonen und zwei Maße. Öffnet genau so, wie sie gezeichnet wurde.",
     "template.underslag.name": "Unterlagenlegung",
     "template.underslag.desc":
       "Unterlagenleger mit höhenverstellbarem Förderer, Kantenschutz und Umreifung.",

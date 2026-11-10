@@ -367,7 +367,10 @@ describe("maskiner som byggs in i en transportör", () => {
 
 describe("mallarna öppnar utan anmärkning", () => {
   it("varje mall är ren från start", () => {
-    for (const template of TEMPLATES) {
+    // Demoanläggningen räknas inte hit: den är en ritad hall, inte en
+    // maskinlista, och öppnar med avsikt med de anmärkningar ritningen ger.
+    // Vilka de är låses i tests/demoLayout.test.ts.
+    for (const template of TEMPLATES.filter((tpl) => !tpl.demo)) {
       const layout = computeLayout(
         templateConfig(template.id),
         BUILTIN_LIBRARY,

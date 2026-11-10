@@ -1377,6 +1377,230 @@ export const BUILTIN_MACHINES: Machine[] = [
     options: [
     ],
   },
+
+  /*
+   * Kopierade ur data/library.json, ordagrant.
+   *
+   * Demoanläggningen på startsidan använder dem, och den ska kunna öppnas
+   * också när serverkatalogen inte svarar. Saknades de blev det tre gånger
+   * R-107 — "maskinen finns inte i biblioteket" — i en demo.
+   */
+  {
+    id: "maskin-18",
+    sku: "NY-18",
+    name: "Paketläggare",
+    category: "transport",
+    summary: "",
+    footprint: {
+      lengthMm: 5282,
+      widthMm: 3618,
+      heightMm: 1920,
+    },
+    ports: [
+      {
+        id: "in",
+        role: "in",
+        pos: {
+          x: 0,
+          y: 1809,
+        },
+        dir: "x+",
+        levelMm: 900,
+        widthMm: [
+          600,
+          2400,
+        ],
+        allowsDirectionChange: false,
+      },
+      {
+        id: "out",
+        role: "out",
+        pos: {
+          x: 5282,
+          y: 1809,
+        },
+        dir: "x+",
+        levelMm: 900,
+        widthMm: [
+          600,
+          2400,
+        ],
+        allowsDirectionChange: false,
+      },
+    ],
+    mirrorable: false,
+    zones: [],
+    capacity: {
+      packagesPerHour: 20,
+      packageLengthMm: [
+        2400,
+        6000,
+      ],
+      packageWidthMm: [
+        800,
+        1300,
+      ],
+      packageHeightMm: [
+        500,
+        1400,
+      ],
+      maxWeightKg: 3000,
+    },
+    utilities: {
+      powerKw: 4,
+      airNlPerMin: 0,
+    },
+    foundation: {
+      pitDepthMm: 0,
+      pointLoadKn: 20,
+    },
+    leadTimeWeeks: 14,
+    dimensionsVerified: false,
+    options: [],
+    model: {
+      glb: "/models/maskin-18.glb",
+      upAxis: "y",
+      yawDeg: 270,
+    },
+    mountsInside: true,
+  },
+  {
+    id: "kedjekanal-hojsank-sidvis",
+    sku: "KT-HS2",
+    name: "Kedjekanaler, mittdrift, höj- och sänkbar per sida",
+    category: "transport",
+    summary: "Kedjetransport med mittdrift. Höj- och sänkbar med lyftenheter på var sida.",
+    aiDescription: "Kedjetransport med mittdrift, där kanalerna kan höjas och sänkas. Till skillnad från den mindre höj- och sänkbara kedjekanalen, som lyfter med ett centralt lyftstativ, sitter lyftenheterna här på var sida om transportören.\nVälj den här när paketet måste byta nivå i linjen och lyftet behöver tas upp på båda sidor. Räcker ett centralt lyft är Kedjekanaler, mittdrift, höj- och sänkbar enklare.\nMåtten kommer ur sammanställningen xxxx-KLB-01-ASM och är mätta, inte uppskattade. Höjden 0,74 m är konstruktionen i nedsänkt läge — slaglängden kommer ovanpå den.",
+    footprint: {
+      lengthMm: 5136,
+      widthMm: 5100,
+      heightMm: 737,
+    },
+    ports: [
+      {
+        id: "in",
+        role: "in",
+        pos: {
+          x: 0,
+          y: 2550,
+        },
+        dir: "x+",
+        levelMm: 900,
+        widthMm: [
+          600,
+          1600,
+        ],
+        allowsDirectionChange: false,
+      },
+      {
+        id: "out",
+        role: "out",
+        pos: {
+          x: 5136,
+          y: 2550,
+        },
+        dir: "x+",
+        levelMm: 900,
+        widthMm: [
+          600,
+          1600,
+        ],
+        allowsDirectionChange: false,
+      },
+    ],
+    mirrorable: true,
+    operatorPriority: 1,
+    zones: [
+      {
+        type: "service",
+        box: {
+          x: 0,
+          y: -1000,
+          l: 5136,
+          w: 1000,
+        },
+        label: "Service och lyftenhet, ena sidan",
+      },
+      {
+        type: "service",
+        box: {
+          x: 0,
+          y: 5100,
+          l: 5136,
+          w: 1000,
+        },
+        label: "Service och lyftenhet, andra sidan",
+      },
+    ],
+    clearance: {
+      frontMm: 500,
+      backMm: 500,
+      leftMm: 1000,
+      rightMm: 1000,
+    },
+    capacity: {
+      packagesPerHour: 26,
+      packageLengthMm: [
+        2400,
+        6000,
+      ],
+      packageWidthMm: [
+        800,
+        1150,
+      ],
+      packageHeightMm: [
+        300,
+        1200,
+      ],
+      maxWeightKg: 3500,
+    },
+    utilities: {
+      powerKw: 4,
+      airNlPerMin: 320,
+    },
+    foundation: {
+      pitDepthMm: 300,
+      pointLoadKn: 28,
+    },
+    leadTimeWeeks: 20,
+    stepFile: "xxxx-KLB-01-ASM.STEP",
+    dimensionsVerified: true,
+    options: [],
+    parameters: [
+      {
+        id: "axel",
+        label: "Mittdriftens axel",
+        type: "select",
+        choices: [
+          {
+            value: "40",
+            label: "40 mm",
+          },
+          {
+            value: "50",
+            label: "50 mm",
+          },
+        ],
+        defaultText: "40",
+      },
+      {
+        id: "slaglangd",
+        label: "Höj/sänk-slaglängd",
+        type: "number",
+        unit: "mm",
+        min: 100,
+        max: 800,
+        step: 50,
+        defaultNumber: 300,
+      },
+    ],
+    model: {
+      glb: "/models/kedjekanal-hojsank-sidvis.glb",
+      upAxis: "y",
+      yawDeg: 270,
+    },
+    mountsInside: true,
+  },
 ];
 
 /**

@@ -8,12 +8,14 @@ import type { Configuration, DrawnObject, Dimension } from "./types";
  * står, tre portar, fem zoner och två måttlinjer. Mallarna visar vad man
  * kan beställa; den här visar vad verktyget är till för.
  *
- * Den öppnar med anmärkningar, och det är meningen. Kunden har ritat en
- * spärrad yta tvärs över två maskiner, och målkapaciteten nås inte med den
- * flaskhals linjen har. Båda stämmer, och en demo som visar ett regelverk
- * som faktiskt säger ifrån är ärligare än en som är konstruerad för att
- * vara tyst. Vilka koder det gäller står i tests/demoLayout.test.ts, så att
- * de inte kan ändras obemärkt.
+ * Den öppnar med anmärkningar, och det är meningen: en demo som visar ett
+ * regelverk som faktiskt säger ifrån är ärligare än en som är konstruerad
+ * för att vara tyst. Kunden har ritat en spärrad yta tvärs över maskiner,
+ * målkapaciteten nås inte med den flaskhals linjen har, och den höj- och
+ * sänkbara kedjekanalen går in i paketlyften — den ritades när posten bar
+ * en uppskattning på 4,0 × 2,2 m i stället för de uppmätta 7,2 × 5,1 m.
+ * Vilka koder det gäller står i tests/demoLayout.test.ts, så att de inte
+ * kan ändras obemärkt.
  *
  * Positionerna är millimeter i hallens koordinater och får inte räknas om:
  * det är just de som är ritningen. Instans-id sätts när den öppnas, så att

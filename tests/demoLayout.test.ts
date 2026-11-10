@@ -81,11 +81,23 @@ describe("demoanläggningen", () => {
     }, {});
     expect(antal, JSON.stringify(diagnostik.map((d) => d.detail), null, 2))
       .toEqual({
-        // Kunden har ritat en spärrad yta tvärs över maskiner. Den varnar en
-        // gång för ytan själv och en gång per maskinzon den går in i.
+        /*
+         * Två fel och åtta varningar, och alla stämmer.
+         *
+         * R-103: den höj- och sänkbara kedjekanalen är 7,2 × 5,1 m i den
+         * uppmätta katalogen och går 5,4 m² in i paketlyften. Den ritades när
+         * posten fortfarande bar en uppskattning på 4,0 × 2,2 m, så överlappet
+         * syntes inte då. Det är en riktig krock i en riktig ritning.
+         *
+         * R-403 och sex av R-106: kunden har ritat en spärrad yta tvärs över
+         * maskiner. Den sjunde R-106:an är kedjekanalen som står inne i
+         * maskinzonen kring per sida-varianten.
+         *
+         * R-301: paketlyften klarar 16 paket/h, linjen är satt till 18.
+         */
+        "R-103": 1,
         "R-403": 1,
-        "R-106": 5,
-        // Paketlyften klarar 16 paket/h, linjen är satt till 18.
+        "R-106": 7,
         "R-301": 1,
       });
   });

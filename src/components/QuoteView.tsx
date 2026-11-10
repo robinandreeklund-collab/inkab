@@ -459,6 +459,26 @@ export function QuoteView({
                           })
                         : t("quote.assume.verified")}
                     </li>
+                    {/*
+                      Oprissatta maskiner räknas inte in i summan. Det måste
+                      stå i klartext — annars ser underlaget billigare ut än
+                      anläggningen är.
+                    */}
+                    {(() => {
+                      const utan = (price?.lines ?? []).filter((l) => l.unpriced);
+                      if (utan.length === 0) return null;
+                      const names = utan.map((l) => l.name).join(", ");
+                      return (
+                        <li>
+                          {utan.length === 1
+                            ? t("quote.assume.unpricedOne", { names })
+                            : t("quote.assume.unpriced", {
+                                count: utan.length,
+                                names,
+                              })}
+                        </li>
+                      );
+                    })()}
                     <li>{t("quote.assume.excluded")}</li>
                     <li>{t("quote.assume.vat")}</li>
                   </ul>

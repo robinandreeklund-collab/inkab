@@ -491,6 +491,10 @@ export const MESSAGES: Record<Locale, Messages> = {
       "{count} av {total} maskiner har uppskattade mått som inte är kontrollerade mot ritning.",
     "quote.assume.verified":
       "Samtliga ingående maskiner har kontrollerade mått.",
+    "quote.assume.unpriced":
+      "{count} maskiner saknar pris i katalogen och ingår inte i summan: {names}. Priset lämnas av INKAB.",
+    "quote.assume.unpricedOne":
+      "{names} saknar pris i katalogen och ingår inte i summan. Priset lämnas av INKAB.",
     "quote.assume.excluded":
       "Elprojektering, riskanalys, hallmätning, fundamentritningar och byggnadsarbeten ingår inte.",
     "quote.assume.vat":
@@ -1159,6 +1163,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     "quote.assume.unverified":
       "{count} of {total} machines have estimated dimensions not checked against drawings.",
     "quote.assume.verified": "All included machines have verified dimensions.",
+    "quote.assume.unpriced":
+      "{count} machines have no catalogue price and are not included in the total: {names}. INKAB quotes these separately.",
+    "quote.assume.unpricedOne":
+      "{names} has no catalogue price and is not included in the total. INKAB quotes it separately.",
     "quote.assume.excluded":
       "Electrical design, risk assessment, hall survey, foundation drawings and building works are not included.",
     "quote.assume.vat":
@@ -1835,6 +1843,10 @@ export const MESSAGES: Record<Locale, Messages> = {
     "quote.assume.unverified":
       "{count} von {total} Maschinen haben geschätzte Maße, die nicht anhand von Zeichnungen geprüft wurden.",
     "quote.assume.verified": "Alle enthaltenen Maschinen haben geprüfte Maße.",
+    "quote.assume.unpriced":
+      "{count} Maschinen haben keinen Katalogpreis und sind nicht in der Summe enthalten: {names}. Der Preis wird von INKAB genannt.",
+    "quote.assume.unpricedOne":
+      "{names} hat keinen Katalogpreis und ist nicht in der Summe enthalten. Der Preis wird von INKAB genannt.",
     "quote.assume.excluded":
       "Elektroplanung, Risikobeurteilung, Hallenaufmaß, Fundamentzeichnungen und Bauarbeiten sind nicht enthalten.",
     "quote.assume.vat":

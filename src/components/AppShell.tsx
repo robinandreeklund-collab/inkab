@@ -33,7 +33,6 @@ export function AppShell() {
     redo,
     toggleInspector,
     toggleZones,
-    togglePorts,
     selectedId,
     removeItem,
     removeDrawn,
@@ -158,9 +157,6 @@ export function AppShell() {
           // Maskinernas egna zoner — service, skydd, fri yta.
           toggleZones();
           break;
-        case "p":
-          togglePorts();
-          break;
         case "f":
           toggleInspector();
           break;
@@ -220,8 +216,7 @@ export function AppShell() {
       toggleInspector,
       turnDrawn,
       turnMachine,
-      togglePorts,
-      toggleZones,
+        toggleZones,
       undo,
       view,
     ],

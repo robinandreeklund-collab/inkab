@@ -72,7 +72,6 @@ export const MESSAGES: Record<Locale, Messages> = {
     /* Ritningen */
     "cad.plan": "Planvy",
     "cad.zones": "Visa zoner",
-    "cad.arrows": "Visa flödespilar",
     "cad.snap": "snapp {mm} mm",
     "cad.turn": "Vrid 90° (skift för andra hållet, eller tangent R)",
     "cad.fit": "Passa in",
@@ -632,7 +631,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Dra mellan två punkter. När du släpper kan du skriva en kommentar och välja Spara mått eller Ta bort.",
     "tip.zones.body":
       "Maskinernas service- och säkerhetszoner — ytor som måste hållas fria runt varje maskin.",
-    "tip.arrows.body": "Visar hur paketen går in i och ut ur varje maskin.",
     "cad.hallResize.title": "Ändra hallens yta",
     "cad.hallResize.body":
       "Dra i kanten eller hörnet. Måttet visas medan du drar, och allt kan också skrivas in exakt under Hall och zoner.",
@@ -737,7 +735,6 @@ export const MESSAGES: Record<Locale, Messages> = {
 
     "cad.plan": "Plan view",
     "cad.zones": "Show zones",
-    "cad.arrows": "Show flow arrows",
     "cad.snap": "snap {mm} mm",
     "cad.turn": "Turn 90° (hold shift for the other way, or press R)",
     "cad.fit": "Fit to view",
@@ -1302,7 +1299,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Drag between two points. When you release you can add a comment and choose Save dimension or Remove.",
     "tip.zones.body":
       "The machines' service and safety zones — areas that must be kept clear around each machine.",
-    "tip.arrows.body": "Shows how packages enter and leave each machine.",
     "cad.hallResize.title": "Resize the hall",
     "cad.hallResize.body":
       "Drag the edge or corner. The size is shown while you drag, and everything can also be typed in exactly under Hall and zones.",
@@ -1408,7 +1404,6 @@ export const MESSAGES: Record<Locale, Messages> = {
 
     "cad.plan": "Grundriss",
     "cad.zones": "Zonen anzeigen",
-    "cad.arrows": "Flusspfeile anzeigen",
     "cad.snap": "Raster {mm} mm",
     "cad.turn": "Um 90° drehen (Umschalt für die Gegenrichtung, oder Taste R)",
     "cad.fit": "Einpassen",
@@ -1981,8 +1976,6 @@ export const MESSAGES: Record<Locale, Messages> = {
       "Zwischen zwei Punkten ziehen. Nach dem Loslassen können Sie einen Kommentar eingeben und Maß speichern oder Entfernen wählen.",
     "tip.zones.body":
       "Service- und Sicherheitszonen der Maschinen — Flächen, die um jede Maschine frei bleiben müssen.",
-    "tip.arrows.body":
-      "Zeigt, wie Pakete in jede Maschine hinein- und herauslaufen.",
     "cad.hallResize.title": "Hallenfläche ändern",
     "cad.hallResize.body":
       "Ziehen Sie an Kante oder Ecke. Das Maß wird beim Ziehen angezeigt und kann unter Halle und Zonen auch exakt eingegeben werden.",

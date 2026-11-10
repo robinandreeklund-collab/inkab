@@ -37,12 +37,10 @@ import type {
   DrawnObject,
   DrawnKind,
   Machine,
-  PlacedPort,
   Placement,
   Vec2,
 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
-import { DIR_VEC } from "@/lib/geometry";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { useT } from "@/lib/i18n";
 
@@ -92,7 +90,6 @@ export function CadView() {
     tool,
     selectedId,
     showZones,
-    showPorts,
     select,
     moveMachine,
     turnMachine,
@@ -756,7 +753,6 @@ export function CadView() {
           onMirror={mirrorMachine}
           mirrorTitle={t("cad.mirror")}
           showZones={showZones}
-          showPorts={showPorts}
           strokeUnit={strokeUnit}
           fillFor={fillFor}
           strokeFor={strokeFor}
@@ -878,7 +874,6 @@ function Plan2D({
   config,
   layout,
   showZones,
-  showPorts,
   strokeUnit,
   fillFor,
   strokeFor,
@@ -907,7 +902,6 @@ function Plan2D({
   tool: Tool;
   layout: ReturnType<typeof useConfigStore.getState>["layout"];
   showZones: boolean;
-  showPorts: boolean;
   strokeUnit: number;
   fillFor: (p: Placement) => string;
   strokeFor: (p: Placement) => string;
@@ -1142,18 +1136,6 @@ function Plan2D({
           />
         ) : null;
       })()}
-
-      {showPorts
-        ? layout.placements.flatMap((p) =>
-            p.ports.map((port) => (
-              <FlowArrow
-                key={`${p.instanceId}-${port.id}`}
-                port={port}
-                strokeUnit={strokeUnit}
-              />
-            )),
-          )
-        : null}
 
       {bounds.l > 0 ? (
         <g pointerEvents="none">
@@ -1785,65 +1767,6 @@ function DimensionLine({
   );
 }
 
-/**
- * Flödespil vid en port: åt vilket håll maskinen tar emot eller lämnar paket.
- *
- * Pilen kopplar ingenting. Portarna var förut anslutningspunkter som en
- * solver matchade mot varandra, och positionen räknades fram ur kedjan; nu
- * står maskinerna där kunden ställt dem och pilen är en upplysning om vad
- * maskinen klarar — in på den här sidan, ut på den där.
- *
- * Ingång och utgång ritas åt samma håll som flödet går. Pilspetsen pekar
- * därför in i maskinen på en ingång och bort från den på en utgång, vilket
- * är precis skillnaden man vill se när man vänder en maskin.
- */
-function FlowArrow({
-  port,
-  strokeUnit,
-}: {
-  port: PlacedPort;
-  strokeUnit: number;
-}) {
-  const v = DIR_VEC[port.dir];
-  const len = strokeUnit * 26;
-  const head = strokeUnit * 9;
-  const inPort = port.role === "in";
-  const color = inPort ? "#5980a6" : "#1d2d3d";
-
-  // Ingången ritas utanför maskinen och pekar in; utgången börjar i porten
-  // och pekar ut. Bägge slutar alltså där paketen är på väg.
-  const tip = inPort
-    ? port.pos
-    : { x: port.pos.x + v.x * len, y: port.pos.y + v.y * len };
-  const tail = inPort
-    ? { x: port.pos.x - v.x * len, y: port.pos.y - v.y * len }
-    : port.pos;
-
-  // Vinkelrätt mot flödet, för pilspetsens vingar.
-  const n = { x: -v.y, y: v.x };
-
-  return (
-    <g pointerEvents="none">
-      <line
-        x1={tail.x}
-        y1={tail.y}
-        x2={tip.x}
-        y2={tip.y}
-        stroke={color}
-        strokeWidth={strokeUnit * 2.5}
-        strokeLinecap="round"
-      />
-      <path
-        d={
-          `M${tip.x} ${tip.y}` +
-          `L${tip.x - v.x * head + n.x * head * 0.6} ${tip.y - v.y * head + n.y * head * 0.6}` +
-          `L${tip.x - v.x * head - n.x * head * 0.6} ${tip.y - v.y * head - n.y * head * 0.6}Z`
-        }
-        fill={color}
-      />
-    </g>
-  );
-}
 
 /**
  * Vridhandtaget på den markerade maskinen.

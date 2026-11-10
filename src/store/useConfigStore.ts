@@ -109,7 +109,6 @@ type State = {
   aiOpen: boolean;
   diagnosticsOpen: boolean;
   showZones: boolean;
-  showPorts: boolean;
   hydrated: boolean;
   /** Språket gränssnittet visas på. Se lib/i18n. */
   locale: Locale;
@@ -152,7 +151,6 @@ type Actions = {
   toggleAi: (open?: boolean) => void;
   toggleDiagnostics: (open?: boolean) => void;
   toggleZones: () => void;
-  togglePorts: () => void;
   /** Öppnar en yta i högerpanelen och släpper markeringen, så att ytan syns. */
   setArea: (area: Area) => void;
   toggleSection: (id: SectionId) => void;
@@ -351,7 +349,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     aiOpen: false,
     diagnosticsOpen: false,
     showZones: true,
-    showPorts: true,
     hydrated: false,
     draggingMachineId: null,
     locale: "sv",
@@ -379,7 +376,6 @@ export const useConfigStore = create<State & Actions>((set, get) => {
     toggleDiagnostics: (open) =>
       set((s) => ({ diagnosticsOpen: open ?? !s.diagnosticsOpen })),
     toggleZones: () => set((s) => ({ showZones: !s.showZones })),
-    togglePorts: () => set((s) => ({ showPorts: !s.showPorts })),
     setArea: (area) => set({ area, selectedId: null, inspectorOpen: true }),
     toggleSection: (id) =>
       set((state) => ({

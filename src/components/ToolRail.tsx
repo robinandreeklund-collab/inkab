@@ -50,9 +50,7 @@ export function ToolRail({
     zoneKind,
     setZoneKind,
     showZones,
-    showPorts,
     toggleZones,
-    togglePorts,
   } = useConfigStore();
   const t = useT();
   const tipSide = side === "left" ? "right" : "left";
@@ -153,32 +151,6 @@ export function ToolRail({
                 strokeWidth="1.5"
               >
                 <path d="M3 3h18v18H3z" strokeDasharray="3 2" />
-              </svg>
-            </Button>
-          </Tip>
-          <Tip
-            side={tipSide}
-            title={t("cad.arrows")}
-            body={t("tip.arrows.body")}
-            shortcut="P"
-          >
-            <Button
-              size="sm"
-              active={showPorts}
-              onClick={togglePorts}
-              className="h-8 w-8 p-0"
-            >
-              <svg
-                width="16"
-                height="16"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-              >
-                <circle cx="7" cy="12" r="2.5" />
-                <circle cx="17" cy="12" r="2.5" />
-                <path d="M9.5 12h5" />
               </svg>
             </Button>
           </Tip>

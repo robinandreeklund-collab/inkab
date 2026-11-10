@@ -124,6 +124,19 @@ export type Machine = {
   ports: Port[];
   /** Kan speglas över sin längdaxel för att byta manöversida. */
   mirrorable: boolean;
+  /**
+   * Maskinen byggs in i en transportör i stället för att stå bredvid den.
+   *
+   * En höj- och sänkbar kedjekanal sitter mellan rullarna i rullbanan och
+   * lyfter paketet rakt upp ur den; en paketläggare och ett paketlyft med
+   * fast stativ grenslar banan. I planen ser det ut som att två maskiner
+   * står i varandra, och mätt på fotavtryck är det också precis vad det är —
+   * men det är så de monteras, och R-103 ska inte kalla det en krock.
+   *
+   * Gäller bara mot en vanlig transportör. Två inbyggnadsmaskiner i
+   * varandra är fortfarande ett fel.
+   */
+  mountsInside?: boolean;
   /** Längden styrs av konfigurationen (sista kedjetransportören). */
   parametricLength?: { minMm: number; maxMm: number; pricePerMeter: number };
   /** Högre värde = mer manuellt arbete; styr var pulpeten hamnar. */

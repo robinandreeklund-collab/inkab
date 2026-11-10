@@ -439,6 +439,7 @@ export const BUILTIN_MACHINES: Machine[] = [
       },
     ],
     mirrorable: true,
+    mountsInside: true,
     operatorPriority: 3,
 
     zones: [
@@ -874,6 +875,7 @@ export const BUILTIN_MACHINES: Machine[] = [
       },
     ],
     mirrorable: true,
+    mountsInside: true,
     operatorPriority: 3,
 
     zones: [
@@ -1085,6 +1087,7 @@ export const BUILTIN_MACHINES: Machine[] = [
       },
     ],
     mirrorable: true,
+    mountsInside: true,
     operatorPriority: 1,
 
     zones: [

@@ -67,8 +67,18 @@ describe("zonerna i reglerna", () => {
     expect(over("nogo")).toContain("R-403");
   });
 
-  it("en lageryta över en maskin ger R-403", () => {
-    expect(over("storage")).toContain("R-403");
+  it("ett elskåpsutrymme över en maskin ger R-403", () => {
+    expect(over("electrical")).toContain("R-403");
+  });
+
+  it("lager, operatörs- och serviceytor får ligga över maskiner", () => {
+    // De beskriver hur maskinen används, inte att ytan ska vara tom. Att
+    // varna för dem gav bara brus i verkliga layouter.
+    for (const zone of ["storage", "operator", "service"] as const) {
+      const diagnostics = over(zone);
+      expect(diagnostics, zone).not.toContain("R-403");
+      expect(diagnostics, zone).not.toContain("R-106");
+    }
   });
 
   it("ett fundament under en maskin ger inget fel — maskinen ska stå där", () => {

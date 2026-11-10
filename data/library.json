@@ -699,7 +699,8 @@
         "glb": "/models/paketlyft-fast.glb",
         "upAxis": "y",
         "yawDeg": 270
-      }
+      },
+      "mountsInside": true
     },
     {
       "id": "paketlyft-vagn",
@@ -1363,7 +1364,8 @@
         "glb": "/models/emballageutlaggare.glb",
         "upAxis": "y",
         "yawDeg": 180
-      }
+      },
+      "mountsInside": true
     },
     {
       "id": "rullbana",
@@ -1779,7 +1781,8 @@
       ],
       "images": [
         "/bilder/kedjekanal-hojsank-1.webp"
-      ]
+      ],
+      "mountsInside": true
     },
     {
       "id": "kedjekanal-hojsank-sidvis",
@@ -1915,7 +1918,8 @@
         "glb": "/models/kedjekanal-hojsank-sidvis.glb",
         "upAxis": "y",
         "yawDeg": 270
-      }
+      },
+      "mountsInside": true
     },
     {
       "id": "bandomforing",
@@ -2373,7 +2377,8 @@
         "glb": "/models/maskin-18.glb",
         "upAxis": "y",
         "yawDeg": 270
-      }
+      },
+      "mountsInside": true
     }
   ],
   "priceBook": {

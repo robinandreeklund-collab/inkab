@@ -300,6 +300,71 @@ describe("maskinzonen skiljer ändar från sidor", () => {
   });
 });
 
+/**
+ * Inbyggnadsmaskiner.
+ *
+ * En paketlyft med fast stativ står inte bredvid rullbanan, den står i den:
+ * gafflarna går upp mellan rullarna. Mätt på fotavtryck överlappar lådorna,
+ * och reglerna såg det som tre fel på en enda korrekt monterad maskin. Nu
+ * bär maskinen flaggan mountsInside och undantaget gäller bara mot en vanlig
+ * transportör.
+ */
+describe("maskiner som byggs in i en transportör", () => {
+  /** Lägger maskinen `id` ovanpå en rullbana och returnerar koderna. */
+  function iRullbanan(id: string) {
+    const config = defaultConfig();
+    const bana = lineItem("rullbana");
+    const inbyggd = lineItem(id);
+    bana.pos = { x: 6000, y: 10000 };
+    config.line = [bana, inbyggd];
+
+    const placerad = computeLayout(config, BUILTIN_LIBRARY).placements.find(
+      (p) => p.instanceId === bana.instanceId,
+    )!;
+    inbyggd.pos = { x: placerad.bbox.x, y: placerad.bbox.y };
+    return computeLayout(config, BUILTIN_LIBRARY).diagnostics.map(
+      (d) => d.code,
+    );
+  }
+
+  it("en paketlyft i rullbanan är ingen krock", () => {
+    const koder = iRullbanan("paketlyft-fast");
+    expect(koder).not.toContain("R-103");
+    expect(koder).not.toContain("R-104");
+    expect(koder).not.toContain("R-106");
+  });
+
+  it("en maskin utan flaggan anmärks fortfarande", () => {
+    expect(iRullbanan("paketpress-hydraulisk")).toContain("R-103");
+  });
+
+  it("flaggan finns på de maskiner som faktiskt monteras in", () => {
+    const inbyggda = BUILTIN_LIBRARY.machines
+      .filter((m) => m.mountsInside)
+      .map((m) => m.id);
+    expect(inbyggda).toContain("paketlyft-fast");
+    expect(inbyggda).toContain("kedjekanal-hojsank");
+  });
+
+  it("två inbyggnadsmaskiner i varandra är fortfarande ett fel", () => {
+    // Kedjekanalen är själv en transportör, men bär flaggan. Undantaget får
+    // inte gälla åt båda håll — då skulle vad som helst få stå i den.
+    const config = defaultConfig();
+    const kanal = lineItem("kedjekanal-hojsank");
+    const lyft = lineItem("paketlyft-fast");
+    kanal.pos = { x: 6000, y: 10000 };
+    config.line = [kanal, lyft];
+
+    const placerad = computeLayout(config, BUILTIN_LIBRARY).placements.find(
+      (p) => p.instanceId === kanal.instanceId,
+    )!;
+    lyft.pos = { x: placerad.bbox.x, y: placerad.bbox.y };
+    expect(
+      computeLayout(config, BUILTIN_LIBRARY).diagnostics.map((d) => d.code),
+    ).toContain("R-103");
+  });
+});
+
 describe("mallarna öppnar utan anmärkning", () => {
   it("varje mall är ren från start", () => {
     for (const template of TEMPLATES) {

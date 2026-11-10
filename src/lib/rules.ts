@@ -123,11 +123,26 @@ export function runRules(
    */
   const besideByDesign = (a: Placement, b: Placement) => a.aux || b.aux;
 
+  /*
+   * En inbyggnadsmaskin i en transportör är inte en krock.
+   *
+   * En höj- och sänkbar kedjekanal sitter mellan rullarna i rullbanan, en
+   * paketläggare grenslar den. Mätt på fotavtryck går lådorna i varandra,
+   * och det är rätt: det är så de monteras. Undantaget gäller bara mot en
+   * vanlig transportör — två inbyggnadsmaskiner i varandra är fortfarande
+   * ett fel, och det är därför det inte räcker att titta på den ena.
+   */
+  const nestsInside = (a: Placement, b: Placement) =>
+    a.machine.mountsInside === true &&
+    b.machine.category === "transport" &&
+    b.machine.mountsInside !== true;
+
   /* ── R-103 Maskiner överlappar ──────────────────────────────────────── */
   for (let i = 0; i < all.length; i++) {
     for (let j = i + 1; j < all.length; j++) {
       const a = all[i];
       const b = all[j];
+      if (nestsInside(a, b) || nestsInside(b, a)) continue;
       const tolerance = linked(a, b) ? LINKED_TOUCH_MM : TOUCH_TOLERANCE_MM;
       if (!boxesOverlap(a.bbox, b.bbox, tolerance)) continue;
       const area = overlapAreaMm2(a.bbox, b.bbox) / 1e6;
@@ -154,7 +169,11 @@ export function runRules(
         if (
           other.instanceId === p.instanceId ||
           linked(p, other) ||
-          besideByDesign(p, other)
+          besideByDesign(p, other) ||
+          // Transportören som maskinen är inbyggd i står med nödvändighet i
+          // dess servicezon. Att påpeka det är att påpeka monteringen.
+          nestsInside(p, other) ||
+          nestsInside(other, p)
         )
           continue;
         if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
@@ -185,7 +204,12 @@ export function runRules(
       if (
         other.instanceId === p.instanceId ||
         linked(p, other) ||
-        besideByDesign(p, other)
+        besideByDesign(p, other) ||
+        // Sitter den ena inbyggd i den andra ligger de med nödvändighet i
+        // varandras maskinzoner. R-103 godtar monteringen; då kan inte den
+        // här regeln anmärka på samma sak från andra hållet.
+        nestsInside(p, other) ||
+        nestsInside(other, p)
       )
         continue;
       if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;

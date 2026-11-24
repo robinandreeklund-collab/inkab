@@ -26,7 +26,6 @@ import type {
   Placement,
   PlacedPort,
   Rotation,
-  Side,
   Vec2,
 } from "./types";
 
@@ -233,8 +232,12 @@ function scaledZones(m: EffectiveMachine) {
   return clearance ? [...zones, clearance] : zones;
 }
 
-/** Linjens startpunkt, med ett rimligt utgångsläge om kunden inte flyttat den. */
-/** Var den första maskinen hamnar när hallen är tom. */
+/**
+ * Var den första maskinen hamnar när hallen är tom.
+ *
+ * Inte längre något kunden ställer in: punkten följer hallen. Den är bara
+ * ett utgångsläge — maskinen dras dit den ska stå direkt efteråt.
+ */
 export function defaultStartPoint(config: Configuration): Vec2 {
   return {
     x: HALL_INSET_MM,
@@ -352,14 +355,17 @@ function drawnAisles(config: Configuration): Aisle[] {
 /**
  * Ett rimligt förslag på truckgata bredvid utlastningen, som kunden sedan
  * flyttar och ändrar. Används av knappen i sidopanelen och av mallarna.
+ *
+ * Sidan var förut en inställning i flödespanelen. Den panelen finns inte
+ * längre, och zonen är ändå bara ett utgångsläge: den läggs på vänster sida
+ * om utmatningen och dras sedan dit trucken verkligen kommer.
  */
 export function suggestTruckZone(
   lineBounds: Box,
   outDir: Dir,
-  side: Side,
 ): { x: number; y: number; l: number; w: number } {
   const r = rightOf(outDir);
-  const s: Vec2 = side === "right" ? r : { x: -r.x, y: -r.y };
+  const s: Vec2 = { x: -r.x, y: -r.y };
 
   if (s.y !== 0) {
     const y =
@@ -464,7 +470,7 @@ export function solveLayout(
   config: Configuration,
   library: MachineLibrary = BUILTIN_LIBRARY,
 ): SolveOutput {
-  const start = config.flow.startPoint ?? defaultStartPoint(config);
+  const start = defaultStartPoint(config);
   const placements: Placement[] = [];
   const unplaced: SolveOutput["unplaced"] = [];
 

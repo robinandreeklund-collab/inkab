@@ -9,7 +9,7 @@ import {
   type MachineLibrary,
 } from "@/lib/library";
 import { lineItem } from "@/lib/templates";
-import { claimedBox, freeSpot } from "@/lib/solver";
+import { claimedBox, defaultStartPoint, freeSpot } from "@/lib/solver";
 
 /** Vridningarna en maskin kan ha. */
 const ROTATIONS_DEG = [0, 90, 180, 270];
@@ -173,8 +173,6 @@ export function layoutSummary(
   };
 }
 
-const SIDE = { type: "string", enum: ["right", "left"] } as const;
-
 /**
  * Intervall klipps på servern i stället för i schemat: med strict: true tar
  * API:t inte emot minimum/maximum, minLength/maxLength eller multipleOf.
@@ -214,19 +212,6 @@ export function toolDefinitions(library: MachineLibrary = BUILTIN_LIBRARY) {
         type: "object" as const,
         properties: {},
         required: [],
-        additionalProperties: false,
-      },
-      strict: true,
-    },
-    {
-      name: "set_flow",
-      description:
-        "Sätter från vilken sida trucken hämtar färdiga paket. Styr var förslaget på " +
-        "truckgata hamnar. Returnerar den nya layouten med diagnostik.",
-      input_schema: {
-        type: "object" as const,
-        properties: { truckPickupSide: SIDE },
-        required: ["truckPickupSide"],
         additionalProperties: false,
       },
       strict: true,
@@ -532,12 +517,6 @@ export function executeTool(
     case "get_current_layout":
       return layoutSummary(ctx.draft, ctx.library, { full: true });
 
-    case "set_flow": {
-      const patch = { ...(input as Partial<Configuration["flow"]>) };
-      Object.assign(ctx.draft.flow, patch);
-      return { applied: patch, layout: layoutSummary(ctx.draft, ctx.library) };
-    }
-
     case "add_machine": {
       /*
        * Ett saknat argument och ett felstavat är två olika fel, och modellen
@@ -605,7 +584,7 @@ export function executeTool(
         item.pos = freeSpot(
           computeLayout(ctx.draft, ctx.library).placements.map(claimedBox),
           { l: machine.footprint.lengthMm, w: machine.footprint.widthMm },
-          ctx.draft.flow.startPoint,
+          defaultStartPoint(ctx.draft),
           ctx.draft.hall,
         );
       }

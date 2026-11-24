@@ -521,7 +521,6 @@ function toolLabel(name: string): string {
   const labels: Record<string, string> = {
     get_machine_library: "maskinbiblioteket",
     get_current_layout: "layoutkontroll",
-    set_flow: "flödesändring",
     add_machine: "lägger till maskin",
     remove_machine: "tar bort maskin",
     set_hall: "hallmått",

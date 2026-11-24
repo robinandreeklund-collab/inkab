@@ -11,7 +11,9 @@ const MM = z.number().int().min(-100_000).max(300_000);
 const POSITIVE_MM = z.number().int().min(0).max(300_000);
 const RANGE = z
   .tuple([z.number().int().min(0), z.number().int().min(0)])
-  .refine(([min, max]) => min <= max, { message: "Min får inte vara större än max." });
+  .refine(([min, max]) => min <= max, {
+    message: "Min får inte vara större än max.",
+  });
 
 export const CATEGORIES = [
   "infeed",
@@ -97,7 +99,11 @@ export const parameterSchema = z
         message: "En listparameter behöver minst ett val.",
       });
     }
-    if (parameter.type === "number" && parameter.min != null && parameter.max != null) {
+    if (
+      parameter.type === "number" &&
+      parameter.min != null &&
+      parameter.max != null
+    ) {
       if (parameter.min > parameter.max) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -119,7 +125,9 @@ const modelSchema = z.object({
   glb: z.string().max(400),
   proxy: z.string().max(400).optional(),
   upAxis: z.enum(["z", "y"]).optional(),
-  yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+  yawDeg: z
+    .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+    .optional(),
   flipped: z.boolean().optional(),
 });
 
@@ -174,13 +182,17 @@ export const machineSchema = z
     }),
     ports: z.array(portSchema).max(8),
     mirrorable: z.boolean(),
+    /** Byggs in i en transportör i stället för att stå bredvid den. Se Machine. */
+    mountsInside: z.boolean().optional(),
     parametricLength: z
       .object({
         minMm: z.number().int().min(100).max(200_000),
         maxMm: z.number().int().min(100).max(200_000),
         pricePerMeter: z.number().int().min(0).max(10_000_000),
       })
-      .refine((v) => v.minMm <= v.maxMm, { message: "Minlängd får inte överstiga maxlängd." })
+      .refine((v) => v.minMm <= v.maxMm, {
+        message: "Minlängd får inte överstiga maxlängd.",
+      })
       .optional(),
     operatorPriority: z.number().int().min(0).max(10).optional(),
 
@@ -323,7 +335,10 @@ export const machineSchema = z
 export const priceEntrySchema = z.object({
   list: z.number().int().min(0).max(1_000_000_000),
   cost: z.number().int().min(0).max(1_000_000_000),
-  options: z.record(z.string().max(40), z.number().int().min(0).max(100_000_000)),
+  options: z.record(
+    z.string().max(40),
+    z.number().int().min(0).max(100_000_000),
+  ),
   /**
    * Pris per utförande. Finns posten ersätter den maskinens grundpris — en
    * tolvmetersbana kostar inte samma som en tremeters. Saknas den används
@@ -378,7 +393,9 @@ export const libraryDocumentSchema = z
     modelDefaults: z
       .object({
         upAxis: z.enum(["z", "y"]).optional(),
-        yawDeg: z.union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)]).optional(),
+        yawDeg: z
+          .union([z.literal(0), z.literal(90), z.literal(180), z.literal(270)])
+          .optional(),
         flipped: z.boolean().optional(),
       })
       .optional(),
@@ -419,13 +436,19 @@ export type LibraryDocument = {
   priceBook: z.infer<typeof priceBookSchema>;
   assets: LibraryAsset[];
   /** Riktningen nya CAD-modeller tolkas med. Se DEFAULT_ORIENTATION. */
-  modelDefaults?: { upAxis?: "z" | "y"; yawDeg?: 0 | 90 | 180 | 270; flipped?: boolean };
+  modelDefaults?: {
+    upAxis?: "z" | "y";
+    yawDeg?: 0 | 90 | 180 | 270;
+    flipped?: boolean;
+  };
   updatedAt?: string;
   updatedBy?: string;
 };
 
 /** Samlar zod-fel till en läsbar lista för admin-formuläret. */
-export function collectIssues(error: z.ZodError): { path: string; message: string }[] {
+export function collectIssues(
+  error: z.ZodError,
+): { path: string; message: string }[] {
   return error.issues.map((issue) => ({
     path: issue.path.join("."),
     message: swedish(issue),

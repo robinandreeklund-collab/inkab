@@ -2,13 +2,24 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConfigStore } from "@/store/useConfigStore";
+import {
+  commitDraft,
+  draftHeight,
+  draftPreview,
+  DRAFT_SNAP_MM,
+} from "@/lib/draft";
 import { zoneDef } from "@/lib/zones";
+import type { ZoneId } from "@/lib/zones";
 import { meters } from "@/lib/format";
 import { orientationEuler } from "@/lib/cad/orientation";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { useLocale, useT } from "@/lib/i18n";
 import { Tip, ViewBar } from "./ui";
+import { toolHelp } from "./toolHelp";
 import type {
+  Box,
+  DrawnKind,
+  DrawnObject,
   LayoutResult,
   Configuration,
   Machine,
@@ -24,8 +35,8 @@ const HALL_MARK = 0.3;
 /** Hur långt marken går utanför hallen, meter. */
 const GROUND_PAD = 14;
 
-/** Maskiner snappar till samma raster som i planvyn, mm. */
-const SNAP_MM = 250;
+/** Maskiner snappar till samma raster som det som ritas, mm. */
+const SNAP_MM = DRAFT_SNAP_MM;
 const snap = (v: number) => Math.round(v / SNAP_MM) * SNAP_MM;
 
 /** Fördefinierade kameravinklar. */
@@ -60,6 +71,7 @@ export function ModelView() {
   const config = useConfigStore((s) => s.config);
   const layout = useConfigStore((s) => s.layout);
   const selectedId = useConfigStore((s) => s.selectedId);
+  const tool = useConfigStore((s) => s.tool);
   const library = useConfigStore((s) => s.library);
   const locale = useLocale();
   const t = useT();
@@ -203,10 +215,13 @@ export function ModelView() {
        */
       const groups = new Map<string, import("three").Group>();
       const origins = new Map<string, Vec2>();
+      /** Väggarna, portarna och zonerna i scenen, så att de går att peka på. */
+      const drawnMeshes = new Map<string, import("three").Mesh>();
       const raycaster = new THREE.Raycaster();
       const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
       let selection: import("three").BoxHelper | null = null;
       let ghostMesh: import("three").Mesh | null = null;
+      let draftMesh: import("three").Object3D | null = null;
 
       const ndc = (clientX: number, clientY: number) => {
         const rect = renderer.domElement.getBoundingClientRect();
@@ -223,6 +238,36 @@ export function ModelView() {
         );
         return hit ? { x: hit.x * 1000, y: hit.z * 1000 } : null;
       };
+      /**
+       * Punkten man siktar på när man ritar.
+       *
+       * Inte samma sak som punkten på golvplanet. Siktar man på en vägg
+       * eller en maskin ska det räknas där den står — inte där strålen
+       * fortsätter förbi den och träffar golvet flera meter bakom. Det är
+       * skillnaden mellan att sätta porten i väggen man tittar på och att
+       * sätta den en bit utanför hallen.
+       *
+       * Träffar strålen ingenting används golvplanet, men aldrig längre bort
+       * än marken går: nära horisonten korsar strålen golvet hundratals
+       * meter bort, och en vägg dragen dit blir en kilometerlång låda man
+       * sedan får leta efter.
+       */
+      const drawPoint = (clientX: number, clientY: number): Vec2 | null => {
+        raycaster.setFromCamera(ndc(clientX, clientY), camera);
+        const hit = raycaster.intersectObjects(
+          [...drawnMeshes.values(), ...groups.values()],
+          true,
+        )[0];
+        const point =
+          hit?.point ??
+          raycaster.ray.intersectPlane(floorPlane, new THREE.Vector3());
+        if (!point) return null;
+        const pad = GROUND_PAD * 1000;
+        return {
+          x: Math.min(Math.max(point.x * 1000, -pad), hallSize.l * 1000 + pad),
+          y: Math.min(Math.max(point.z * 1000, -pad), hallSize.w * 1000 + pad),
+        };
+      };
       const machineAt = (clientX: number, clientY: number): string | null => {
         raycaster.setFromCamera(ndc(clientX, clientY), camera);
         const hits = raycaster.intersectObjects([...groups.values()], true);
@@ -233,25 +278,166 @@ export function ModelView() {
         }
         return null;
       };
+      /** Den ritade väggen, porten eller zonen under pekaren. */
+      const drawnAt = (clientX: number, clientY: number): string | null => {
+        raycaster.setFromCamera(ndc(clientX, clientY), camera);
+        const hits = raycaster.intersectObjects(
+          [...drawnMeshes.values()],
+          false,
+        );
+        const id = hits[0]?.object.userData.drawnId;
+        return typeof id === "string" ? id : null;
+      };
       const highlight = (id: string | null) => {
         if (selection) {
           scene.remove(selection);
           selection.dispose();
           selection = null;
         }
-        const group = id ? groups.get(id) : undefined;
-        if (!group) return;
-        selection = new THREE.BoxHelper(group, 0x5980a6);
+        // Markeringen sitter lika gärna på en vägg som på en maskin.
+        const target = id ? (groups.get(id) ?? drawnMeshes.get(id)) : undefined;
+        if (!target) return;
+        selection = new THREE.BoxHelper(target, 0x5980a6);
         scene.add(selection);
+      };
+      const showDraft = (
+        draft: { kind: DrawnKind; zone?: ZoneId; box: Box } | null,
+      ) => {
+        if (draftMesh) {
+          scene.remove(draftMesh);
+          disposeTree(draftMesh);
+          draftMesh = null;
+        }
+        if (!draft) return;
+        draftMesh = draftGhost(THREE, draft.kind, draft.zone, draft.box);
+        scene.add(draftMesh);
+      };
+
+      /**
+       * Ritar en vägg, en port eller en zon på golvet i modellen.
+       *
+       * Geometrin kommer ur lib/draft, samma funktioner som planvyn anropar:
+       * samma raster, samma rätning till axel, samma stängda hörn och samma
+       * namn i ordningen. Vyn står bara för pekaren och för det man ser
+       * medan man drar.
+       */
+      const startDraw = (kind: DrawnKind, event: PointerEvent) => {
+        const start = drawPoint(event.clientX, event.clientY);
+        if (!start) return;
+        // Av innan kamerakontrollen hinner ta pekaren — vi ligger i
+        // capture-fasen på föräldern just för det här.
+        controls.enabled = false;
+        const walls = () =>
+          useConfigStore
+            .getState()
+            .config.drawn.filter((d) => d.kind === "wall");
+        let latest: Box | null = null;
+
+        const move = (e: PointerEvent) => {
+          const now = drawPoint(e.clientX, e.clientY);
+          if (!now) return;
+          const store = useConfigStore.getState();
+          latest = draftPreview(kind, start, now, walls(), store.config.hall);
+          // Zonsorten följer med in i förhandsvisningen: väljer man lageryta
+          // ska det vara en lageryta man drar upp, inte en grå ruta som
+          // byter färg först när man släpper.
+          showDraft({
+            kind,
+            zone: kind === "zone" ? store.zoneKind : undefined,
+            box: latest,
+          });
+        };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          window.removeEventListener("pointercancel", up);
+          controls.enabled = true;
+          showDraft(null);
+          if (!latest) return;
+          const store = useConfigStore.getState();
+          const object = commitDraft(kind, latest, {
+            drawn: store.config.drawn,
+            walls: walls(),
+            hall: store.config.hall,
+            zone: store.zoneKind,
+            t: tRef.current,
+          });
+          if (!object) return;
+          store.addDrawn(object);
+          store.select(object.id);
+          store.setTool("select");
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", up);
+      };
+
+      /** Flyttar en ritad vägg, port eller zon genom att dra i den. */
+      const startDrawnDrag = (
+        object: DrawnObject,
+        event: PointerEvent,
+        mesh: import("three").Mesh,
+      ) => {
+        const start = drawPoint(event.clientX, event.clientY);
+        if (!start) return;
+        controls.enabled = false;
+        const from = mesh.position.clone();
+        let target = { x: object.x, y: object.y };
+
+        const move = (e: PointerEvent) => {
+          const now = drawPoint(e.clientX, e.clientY);
+          if (!now) return;
+          // Läget snappas, inte förflyttningen — samma raster som i planvyn.
+          target = {
+            x: snap(object.x + now.x - start.x),
+            y: snap(object.y + now.y - start.y),
+          };
+          mesh.position.set(
+            from.x + (target.x - object.x) / 1000,
+            from.y,
+            from.z + (target.y - object.y) / 1000,
+          );
+          selection?.update();
+        };
+        const up = () => {
+          window.removeEventListener("pointermove", move);
+          window.removeEventListener("pointerup", up);
+          window.removeEventListener("pointercancel", up);
+          controls.enabled = true;
+          if (target.x !== object.x || target.y !== object.y) {
+            useConfigStore.getState().updateDrawn(object.id, target);
+          }
+        };
+        window.addEventListener("pointermove", move);
+        window.addEventListener("pointerup", up);
+        window.addEventListener("pointercancel", up);
       };
 
       const onPointerDown = (event: PointerEvent) => {
         if (event.button !== 0 || event.target !== renderer.domElement) return;
         const store = useConfigStore.getState();
+
+        // Ett ritverktyg är valt: dra upp objektet direkt på golvet.
+        if (store.tool !== "select" && store.tool !== "measure") {
+          startDraw(store.tool, event);
+          return;
+        }
+
         const id = machineAt(event.clientX, event.clientY);
         const startScreen = { x: event.clientX, y: event.clientY };
 
         if (!id) {
+          // Ingen maskin: kanske en vägg, en port eller en zon.
+          const drawnId = drawnAt(event.clientX, event.clientY);
+          const object = drawnId
+            ? store.config.drawn.find((d) => d.id === drawnId)
+            : undefined;
+          const mesh = drawnId ? drawnMeshes.get(drawnId) : undefined;
+          if (object && mesh) {
+            store.select(object.id);
+            startDrawnDrag(object, event, mesh);
+            return;
+          }
           // Tomt golv: ett klick utan rörelse avmarkerar, ett drag vrider kameran.
           const up = (e: PointerEvent) => {
             window.removeEventListener("pointerup", up);
@@ -414,7 +600,8 @@ export function ModelView() {
       let sel: string | null = null;
       const select = (id: string | null) => {
         sel = id;
-        highlight(id && groups.has(id) ? id : null);
+        // highlight hittar själv rätt låda, maskin som ritat objekt.
+        highlight(id);
       };
 
       const update = async (cfg: Configuration, result: LayoutResult) => {
@@ -422,6 +609,7 @@ export function ModelView() {
         clear(world);
         groups.clear();
         origins.clear();
+        drawnMeshes.clear();
 
         const hallL = cfg.hall.lengthMm / 1000;
         const hallW = cfg.hall.widthMm / 1000;
@@ -507,40 +695,16 @@ export function ModelView() {
 
         // Ritade objekt: väggar, portar och kundens zoner.
         for (const object of cfg.drawn) {
-          const l = object.l / 1000;
-          const w = object.w / 1000;
-          const h = Math.max(object.h, 1) / 1000;
-          // Zonerna tar sin färg ur katalogen, så att en ny sorts zon syns
-          // i modellen med samma färg som i planen utan en rad här.
-          const colour =
-            object.kind === "zone"
-              ? zoneDef(object.zone).tint
-              : object.kind === "door"
-                ? "#5980a6"
-                : "#c8ccd1";
-          const flat = object.kind === "zone";
-          const mesh = new THREE.Mesh(
-            new THREE.BoxGeometry(l, flat ? 0.01 : h, w),
-            new THREE.MeshStandardMaterial({
-              color: colour,
-              roughness: 0.9,
-              transparent: object.kind !== "wall",
-              opacity:
-                object.kind === "wall"
-                  ? 1
-                  : object.kind === "door"
-                    ? 0.35
-                    : 0.55,
-            }),
-          );
-          mesh.position.set(
-            object.x / 1000 + l / 2,
-            flat ? 0.006 : h / 2,
-            object.y / 1000 + w / 2,
-          );
+          const mesh = drawnMesh(THREE, object);
           mesh.receiveShadow = true;
           if (object.kind === "wall") mesh.castShadow = true;
+          // Id:t på lådan gör det ritade valbart också här: ett klick på
+          // väggen man just drog markerar den, och då biter Delete, R och
+          // sidopanelen på den precis som i planen.
+          mesh.userData.drawnId = object.id;
+          drawnMeshes.set(object.id, mesh);
           world.add(mesh);
+          if (object.id === sel) highlight(sel);
         }
 
         const withModel = result.placements.filter(
@@ -621,7 +785,7 @@ export function ModelView() {
           group.add(footprintBox(THREE, placement, false));
           if (placement.instanceId === sel) highlight(sel);
         }
-        if (!sel || !groups.has(sel)) highlight(null);
+        if (!sel || !(groups.has(sel) || drawnMeshes.has(sel))) highlight(null);
 
         /*
          * Kameran ramas in när vyn öppnas och när hallen byter storlek — inte
@@ -743,6 +907,10 @@ export function ModelView() {
 
   const selected =
     layout.placements.find((p) => p.instanceId === selectedId) ?? null;
+  /** Den markerade väggen, porten eller zonen. */
+  const selectedDrawn = config.drawn.find((d) => d.id === selectedId) ?? null;
+  /** Ett ritverktyg är valt: pekaren ritar, den markerar inte. */
+  const drawing = tool !== "select" && tool !== "measure";
 
   return (
     <div
@@ -751,7 +919,11 @@ export function ModelView() {
       onDragLeave={() => api.current?.ghost(null, null)}
       onDrop={onDrop}
     >
-      <div ref={mount} className="h-full w-full" />
+      <div
+        ref={mount}
+        className="h-full w-full"
+        style={drawing ? { cursor: "crosshair" } : undefined}
+      />
 
       <OrbitPanel
         azimuth={azimuth}
@@ -760,7 +932,49 @@ export function ModelView() {
         onZoom={(f) => api.current?.zoom(f)}
       />
 
-      {selected ? (
+      {/*
+        Samma tipsrad som i planen medan ett verktyg är valt, så att man vet
+        vad pekaren gör och hur man kommer ur det.
+      */}
+      {drawing ? (
+        <div className="pointer-events-none absolute left-1/2 top-3 z-20 flex -translate-x-1/2 items-center gap-2 border border-accent bg-white px-3 py-1.5 text-xs shadow-sm">
+          <span className="kicker text-accent">{toolHelp(t, tool).title}</span>
+          <span>{t("model.drawHint")}</span>
+          <kbd className="num border border-divider px-1 text-[10px] text-muted">
+            Esc
+          </kbd>
+        </div>
+      ) : null}
+
+      {!drawing && selectedDrawn ? (
+        <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent/60 bg-white/60 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-white/95">
+          <span className="max-w-[220px] truncate">{selectedDrawn.name}</span>
+          <span className="text-muted">{t("model.dragHint")}</span>
+          <Tip title={t("cad.turn")} shortcut="R">
+            <button
+              onClick={() =>
+                useConfigStore.getState().turnDrawn(selectedDrawn.id)
+              }
+              className="border border-divider px-2 py-0.5 hover:border-accent"
+              aria-label={t("cad.turn")}
+            >
+              ↻
+            </button>
+          </Tip>
+          <button
+            onClick={() =>
+              useConfigStore.getState().removeDrawn(selectedDrawn.id)
+            }
+            className="px-1 text-muted hover:text-danger"
+            aria-label={t("model.removeDrawn")}
+            title={t("model.removeDrawn")}
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
+      {!drawing && selected ? (
         <div className="absolute left-1/2 top-3 z-10 flex -translate-x-1/2 items-center gap-2 border border-accent/60 bg-white/60 px-3 py-1.5 text-xs shadow-sm backdrop-blur-sm transition-colors hover:bg-white/95">
           <span className="max-w-[220px] truncate">
             {selected.machine.name}
@@ -853,6 +1067,80 @@ export function ModelView() {
       </div>
     </div>
   );
+}
+
+/**
+ * Lådan för ett ritat objekt i modellen.
+ *
+ * Samma funktion ritar det som redan finns och det som dras upp just nu, så
+ * att förhandsvisningen har väggens höjd och zonens färg — man ser vad man
+ * håller på att få, inte en grå kloss som byter skepnad när man släpper.
+ */
+function drawnMesh(
+  THREE: typeof import("three"),
+  object: Pick<DrawnObject, "kind" | "zone" | "x" | "y" | "l" | "w" | "h">,
+): import("three").Mesh {
+  const l = object.l / 1000;
+  const w = object.w / 1000;
+  const h = Math.max(object.h, 1) / 1000;
+  // Zonerna tar sin färg ur katalogen, så att en ny sorts zon syns i
+  // modellen med samma färg som i planen utan en rad här.
+  const colour =
+    object.kind === "zone"
+      ? zoneDef(object.zone).tint
+      : object.kind === "door"
+        ? "#5980a6"
+        : "#c8ccd1";
+  const flat = object.kind === "zone";
+  const mesh = new THREE.Mesh(
+    new THREE.BoxGeometry(l, flat ? 0.01 : h, w),
+    new THREE.MeshStandardMaterial({
+      color: colour,
+      roughness: 0.9,
+      transparent: object.kind !== "wall",
+      opacity:
+        object.kind === "wall" ? 1 : object.kind === "door" ? 0.35 : 0.55,
+    }),
+  );
+  mesh.position.set(
+    object.x / 1000 + l / 2,
+    flat ? 0.006 : h / 2,
+    object.y / 1000 + w / 2,
+  );
+  return mesh;
+}
+
+/**
+ * Det som dras upp just nu: objektet som det kommer att se ut, med en
+ * kontur i accentfärgen runt om så att man ser kanterna mot golvet och mot
+ * maskinerna bakom.
+ */
+function draftGhost(
+  THREE: typeof import("three"),
+  kind: DrawnKind,
+  zone: ZoneId | undefined,
+  box: Box,
+): import("three").Object3D {
+  const mesh = drawnMesh(THREE, { ...box, kind, zone, h: draftHeight(kind) });
+  const material = mesh.material as import("three").MeshStandardMaterial;
+  material.transparent = true;
+  material.opacity = kind === "wall" ? 0.6 : 0.45;
+  material.depthWrite = false;
+  mesh.add(
+    new THREE.LineSegments(
+      new THREE.EdgesGeometry(mesh.geometry),
+      new THREE.LineBasicMaterial({ color: 0x5980a6 }),
+    ),
+  );
+  return mesh;
+}
+
+/** Släpper geometrin i en förhandsvisning som tagits ur scenen. */
+function disposeTree(object: import("three").Object3D) {
+  object.traverse((node) => {
+    const mesh = node as import("three").Mesh;
+    mesh.geometry?.dispose();
+  });
 }
 
 /**

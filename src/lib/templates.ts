@@ -1,7 +1,14 @@
 import { translate } from "./i18n/translate";
-import { defaultStartPoint, solveLayout, suggestTruckZone } from "./solver";
+import { solveLayout, suggestTruckZone } from "./solver";
 import { BUILTIN_LIBRARY, type MachineLibrary } from "./library";
-import type { Configuration, Flow, Hall, LineItem, Product } from "./types";
+import {
+  DEMO_DIMENSIONS,
+  DEMO_DRAWN,
+  DEMO_HALL,
+  DEMO_LINE,
+  DEMO_PRODUCT,
+} from "./demoLayout";
+import type { Configuration, Hall, LineItem, Product } from "./types";
 
 let counter = 0;
 export function newInstanceId(machineId: string): string {
@@ -35,17 +42,11 @@ export const DEFAULT_PRODUCT: Product = {
   targetPackagesPerHour: 18,
 };
 
-export const DEFAULT_FLOW: Flow = {
-  truckPickupSide: "left",
-  startPoint: { x: 2000, y: Math.round(DEFAULT_HALL.widthMm / 2) },
-};
-
 function base(projectName: string, machineIds: string[]): Configuration {
   return {
     version: 1,
     projectName,
     hall: { ...DEFAULT_HALL },
-    flow: { ...DEFAULT_FLOW },
     product: { ...DEFAULT_PRODUCT },
     line: machineIds.map((id) => lineItem(id)),
     drawn: [],
@@ -57,9 +58,17 @@ export type Template = {
   name: string;
   description: string;
   machineIds: string[];
-  /** Avvikelser från standardhallen och standardflödet för just denna mall. */
+  /** Avvikelser från standardhallen för just denna mall. */
   hall?: Partial<Hall>;
-  flow?: Partial<Flow>;
+  /**
+   * Sant för en färdigritad anläggning i stället för en maskinlista.
+   *
+   * En vanlig mall läggs ut på rad av solvern och får en hämtzon och en port
+   * på köpet. En demo är tvärtom redan ritad — maskinerna står där någon
+   * ställt dem, och varken positionerna eller de ritade objekten får räknas
+   * om. Den öppnar därför med de anmärkningar ritningen faktiskt ger.
+   */
+  demo?: true;
 };
 
 export const TEMPLATES: Template[] = [
@@ -128,6 +137,15 @@ export const TEMPLATES: Template[] = [
     ],
     hall: { lengthMm: 72000, widthMm: 30000 },
   },
+  {
+    id: "demo",
+    name: "Demoanläggning",
+    description:
+      "En färdigritad anläggning i en hall på 60 × 30 m, med portar, zoner och måttlinjer.",
+    machineIds: DEMO_LINE.map((item) => item.machineId),
+    hall: DEMO_HALL,
+    demo: true,
+  },
 ];
 
 /**
@@ -157,14 +175,35 @@ export function templateConfig(
 ): Configuration {
   const template =
     TEMPLATES.find((tpl) => tpl.id === templateId) ?? TEMPLATES[0];
-  const config = base(
-    t("template.projectName", { name: t(`template.${template.id}.name`) }),
-    template.machineIds,
-  );
+  const projektnamn = t("template.projectName", {
+    name: t(`template.${template.id}.name`),
+  });
+
+  /*
+   * En färdigritad anläggning öppnas som den ritades.
+   *
+   * Inget räknas om: inga positioner läggs ut på rad, ingen hämtzon föreslås
+   * och ingen port sätts i gaveln. Instans-id är det enda som sätts nytt, så
+   * att två öppningar inte delar samma.
+   */
+  if (template.demo) {
+    return {
+      version: 1,
+      projectName: projektnamn,
+      hall: { ...DEMO_HALL },
+      product: { ...DEMO_PRODUCT },
+      line: DEMO_LINE.map((item) => ({
+        ...item,
+        instanceId: newInstanceId(item.machineId),
+        selectedOptions: [...item.selectedOptions],
+      })),
+      drawn: DEMO_DRAWN.map((o) => ({ ...o })),
+      dimensions: DEMO_DIMENSIONS.map((d) => ({ ...d })),
+    };
+  }
+
+  const config = base(projektnamn, template.machineIds);
   Object.assign(config.hall, template.hall ?? {});
-  Object.assign(config.flow, template.flow ?? {});
-  // Startpunkten följer hallen och inmatningsriktningen om mallen ändrat dem.
-  config.flow.startPoint = defaultStartPoint(config);
 
   /*
    * Mallen ritar in en hämtzon vid utlastningen och en port i gaveln, som
@@ -185,11 +224,7 @@ export function templateConfig(
   }
 
   const solved = solveLayout(config, library);
-  const suggestion = suggestTruckZone(
-    solved.lineBounds,
-    "x+",
-    config.flow.truckPickupSide,
-  );
+  const suggestion = suggestTruckZone(solved.lineBounds, "x+");
 
   /*
    * Hämtzonen dras ut till närmaste vägg, och porten sätts mitt för den.

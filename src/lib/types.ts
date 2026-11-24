@@ -16,7 +16,6 @@ import type { ZoneId } from "./zones";
 export type Vec2 = { x: number; y: number };
 export type Dir = "x+" | "x-" | "y+" | "y-";
 export type Rotation = 0 | 90 | 180 | 270;
-export type Side = "right" | "left";
 
 export type MachineCategory =
   | "infeed"
@@ -124,6 +123,19 @@ export type Machine = {
   ports: Port[];
   /** Kan speglas över sin längdaxel för att byta manöversida. */
   mirrorable: boolean;
+  /**
+   * Maskinen byggs in i en transportör i stället för att stå bredvid den.
+   *
+   * En höj- och sänkbar kedjekanal sitter mellan rullarna i rullbanan och
+   * lyfter paketet rakt upp ur den; en paketläggare och ett paketlyft med
+   * fast stativ grenslar banan. I planen ser det ut som att två maskiner
+   * står i varandra, och mätt på fotavtryck är det också precis vad det är —
+   * men det är så de monteras, och R-103 ska inte kalla det en krock.
+   *
+   * Gäller bara mot en vanlig transportör. Två inbyggnadsmaskiner i
+   * varandra är fortfarande ett fel.
+   */
+  mountsInside?: boolean;
   /** Längden styrs av konfigurationen (sista kedjetransportören). */
   parametricLength?: { minMm: number; maxMm: number; pricePerMeter: number };
   /** Högre värde = mer manuellt arbete; styr var pulpeten hamnar. */
@@ -296,30 +308,6 @@ export type DrawnObject = {
   h: number;
 };
 
-export type Flow = {
-  /** "Från vilken sida hämtar trucken färdiga paket" — styr förslaget på truckgata. */
-  truckPickupSide: Side;
-  /** Var den första maskinen läggs när hallen är tom. Kan dras i ritningen. */
-  startPoint: Vec2;
-  /** Varför startpunkten ligger just där. Visas i ritningen och offerten. */
-  startComment?: string;
-  /**
-   * Fler start- och slutpunkter, var och en med sin motivering: "från
-   * hyvleriet", "trucken hämtar vid port B". De är markeringar för den som
-   * läser ritningen och påverkar inte placeringen — utom att en alternativ
-   * start kan göras till den aktiva startpunkten.
-   */
-  markers?: FlowMarker[];
-};
-
-/** En extra start- eller slutpunkt, med kommentar om varför. */
-export type FlowMarker = {
-  id: string;
-  role: "start" | "end";
-  pos: Vec2;
-  comment: string;
-};
-
 export type Hall = {
   lengthMm: number;
   widthMm: number;
@@ -377,7 +365,6 @@ export type Configuration = {
     site?: string;
   };
   hall: Hall;
-  flow: Flow;
   product: Product;
   line: LineItem[];
   drawn: DrawnObject[];
@@ -436,7 +423,6 @@ export type Aisle = { id: string; box: Box; label: string; widthMm: number };
 export type Severity = "error" | "warning" | "info";
 
 export type ConfigPatch =
-  | { kind: "flow"; patch: Partial<Flow>; label: string }
   | { kind: "addMachine"; machineId: string; label: string }
   | { kind: "removeMachine"; instanceId: string; label: string };
 

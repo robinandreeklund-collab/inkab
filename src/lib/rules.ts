@@ -123,11 +123,26 @@ export function runRules(
    */
   const besideByDesign = (a: Placement, b: Placement) => a.aux || b.aux;
 
+  /*
+   * En inbyggnadsmaskin i en transportör är inte en krock.
+   *
+   * En höj- och sänkbar kedjekanal sitter mellan rullarna i rullbanan, en
+   * paketläggare grenslar den. Mätt på fotavtryck går lådorna i varandra,
+   * och det är rätt: det är så de monteras. Undantaget gäller bara mot en
+   * vanlig transportör — två inbyggnadsmaskiner i varandra är fortfarande
+   * ett fel, och det är därför det inte räcker att titta på den ena.
+   */
+  const nestsInside = (a: Placement, b: Placement) =>
+    a.machine.mountsInside === true &&
+    b.machine.category === "transport" &&
+    b.machine.mountsInside !== true;
+
   /* ── R-103 Maskiner överlappar ──────────────────────────────────────── */
   for (let i = 0; i < all.length; i++) {
     for (let j = i + 1; j < all.length; j++) {
       const a = all[i];
       const b = all[j];
+      if (nestsInside(a, b) || nestsInside(b, a)) continue;
       const tolerance = linked(a, b) ? LINKED_TOUCH_MM : TOUCH_TOLERANCE_MM;
       if (!boxesOverlap(a.bbox, b.bbox, tolerance)) continue;
       const area = overlapAreaMm2(a.bbox, b.bbox) / 1e6;
@@ -154,7 +169,11 @@ export function runRules(
         if (
           other.instanceId === p.instanceId ||
           linked(p, other) ||
-          besideByDesign(p, other)
+          besideByDesign(p, other) ||
+          // Transportören som maskinen är inbyggd i står med nödvändighet i
+          // dess servicezon. Att påpeka det är att påpeka monteringen.
+          nestsInside(p, other) ||
+          nestsInside(other, p)
         )
           continue;
         if (!boxesOverlap(box, other.bbox, TOUCH_TOLERANCE_MM)) continue;
@@ -185,7 +204,12 @@ export function runRules(
       if (
         other.instanceId === p.instanceId ||
         linked(p, other) ||
-        besideByDesign(p, other)
+        besideByDesign(p, other) ||
+        // Sitter den ena inbyggd i den andra ligger de med nödvändighet i
+        // varandras maskinzoner. R-103 godtar monteringen; då kan inte den
+        // här regeln anmärka på samma sak från andra hållet.
+        nestsInside(p, other) ||
+        nestsInside(other, p)
       )
         continue;
       if (!boxesOverlap(sides, other.bbox, TOUCH_TOLERANCE_MM)) continue;
@@ -247,39 +271,6 @@ export function runRules(
       instanceIds: [a.instanceId, b.instanceId],
       anchor: mm.at,
     });
-  }
-
-  /* ── R-601 Maskinen är inte kopplad till linjen ─────────────────────── */
-  /*
-   * Med fri placering kan en maskin stå var som helst. Står den så långt från
-   * alla andra att ingen port når fram, går inga paket genom den — oftast en
-   * maskin som dragits in och glömts, eller ett mellanrum som blivit för stort.
-   */
-  if (line.length >= 2) {
-    for (const p of line) {
-      if (p.ports.length === 0) continue;
-      if (
-        connections.some(
-          (c) => c.from === p.instanceId || c.to === p.instanceId,
-        )
-      )
-        continue;
-      if (
-        mismatches.some((mm) => mm.a === p.instanceId || mm.b === p.instanceId)
-      )
-        continue;
-      out.push({
-        code: "R-601",
-        severity: "warning",
-        title: t("rule.loose.t"),
-        detail: t("rule.loose.d", {
-          machine: p.machine.name,
-          reach: m(CONNECT_REACH_MM),
-        }),
-        instanceIds: [p.instanceId],
-        anchor: boxCenter(p.bbox),
-      });
-    }
   }
 
   /* ── R-105 Skyddszon skär truckgatan ────────────────────────────────── */

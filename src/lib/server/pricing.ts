@@ -39,6 +39,14 @@ export type QuoteLine = {
   listPrice?: number;
   optionsPrice?: number;
   rowTotal?: number;
+  /**
+   * Sant när maskinen saknar post i prisboken.
+   *
+   * Raden står kvar i maskinlistan — kunden har valt maskinen och ska se den
+   * — men den räknas inte in i summan, och offerten skriver ut att den inte
+   * är prissatt.
+   */
+  unpriced?: true;
 };
 
 export type PriceResult = {
@@ -94,8 +102,17 @@ export function priceConfiguration(
     if (!machine) return;
     // Texterna på kundens språk; id:n och priser är desamma.
     const text = localizeMachine(machine, locale);
+    /*
+     * En maskin utan prispost föll förut ur offerten helt.
+     *
+     * Den stod i kundens linje, i ritningen och i 3D-vyn, men maskinlistan
+     * hoppade över den och positionsnumren hoppade ett steg — en nyinlagd
+     * maskin syntes aldrig i underlaget. Att utelämna en maskin kunden valt
+     * är värre än att skriva att priset inte är satt: nu står raden kvar utan
+     * belopp, hålls utanför summan, och avgränsningarna säger hur många
+     * rader det gäller.
+     */
     const entry = priceBook.entries[machine.id];
-    if (!entry) return;
 
     const eff = effectiveMachine(
       machine,
@@ -114,8 +131,9 @@ export function priceConfiguration(
     const variant = (text.variants ?? []).find(
       (v) => v.id === (item.variantId ?? text.variants?.[0]?.id),
     );
-    const variantPrice = variant ? entry.variants?.[variant.id] : undefined;
-    const basePrice = variantPrice ?? { list: entry.list, cost: entry.cost };
+    const variantPrice = variant ? entry?.variants?.[variant.id] : undefined;
+    const basePrice =
+      variantPrice ?? (entry ? { list: entry.list, cost: entry.cost } : { list: 0, cost: 0 });
 
     // Parametriska maskiner prissätts per löpmeter ovanpå grundpriset.
     const lengthPrice = machine.parametricLength
@@ -123,7 +141,7 @@ export function priceConfiguration(
       : 0;
 
     const optionsPrice = item.selectedOptions.reduce(
-      (sum, optId) => sum + (entry.options[optId] ?? 0),
+      (sum, optId) => sum + (entry?.options[optId] ?? 0),
       0,
     );
 
@@ -159,12 +177,16 @@ export function priceConfiguration(
     const rowTotal = listPrice + optionsPrice + parametersPrice;
     const factor = priceBook.installFactor[machine.category] ?? 0.12;
 
-    machines += rowTotal;
-    install += Math.round(rowTotal * factor);
-    cost +=
-      basePrice.cost +
-      Math.round(lengthPrice * 0.62) +
-      Math.round((optionsPrice + parametersPrice) * 0.64);
+    // Oprissatta maskiner hålls utanför summan: ett pris som inte finns får
+    // inte räknas som noll kronor.
+    if (entry) {
+      machines += rowTotal;
+      install += Math.round(rowTotal * factor);
+      cost +=
+        basePrice.cost +
+        Math.round(lengthPrice * 0.62) +
+        Math.round((optionsPrice + parametersPrice) * 0.64);
+    }
 
     lines.push({
       instanceId: item.instanceId,
@@ -179,7 +201,10 @@ export function priceConfiguration(
         .filter((n): n is string => !!n),
       parameterLines,
       ...(item.note ? { note: item.note } : {}),
-      ...(showPrices ? { listPrice, optionsPrice: optionsPrice + parametersPrice, rowTotal } : {}),
+      ...(entry ? {} : { unpriced: true as const }),
+      ...(showPrices && entry
+        ? { listPrice, optionsPrice: optionsPrice + parametersPrice, rowTotal }
+        : {}),
     });
   });
 

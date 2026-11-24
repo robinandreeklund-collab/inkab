@@ -42,7 +42,6 @@ type Job = {
 const TOOL_LABEL: Record<string, string> = {
   get_machine_library: "läste maskinbiblioteket",
   get_current_layout: "kontrollerade layouten",
-  set_flow: "satte flödet",
   add_machine: "lade till maskin",
   remove_machine: "tog bort maskin",
   set_hall: "satte hallens mått",

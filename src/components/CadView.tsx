@@ -13,10 +13,14 @@ import {
   snapToWalls,
   WALL_THICKNESS_MM,
 } from "@/lib/walls";
-import { nextName } from "@/lib/drawing";
+import {
+  commitDraft,
+  doorWalls,
+  draftPreview,
+  DRAFT_SNAP_MM,
+} from "@/lib/draft";
 import { zoneDef } from "@/lib/zones";
 import { HALL_LIMITS } from "@/lib/limits";
-import { markerNumber } from "@/lib/flowMarkers";
 import {
   dimensionLength,
   makeDimension,
@@ -32,21 +36,18 @@ import type {
   Dimension,
   DrawnObject,
   DrawnKind,
-  Flow,
   Machine,
-  PlacedPort,
   Placement,
   Vec2,
 } from "@/lib/types";
 import type { Tool, ViewMode } from "@/store/useConfigStore";
-import { DIR_VEC } from "@/lib/geometry";
 import { MACHINE_DRAG_TYPE } from "@/lib/dragTypes";
 import { useT } from "@/lib/i18n";
 
 /** Rutnätets delning i planvyn, mm. */
 const GRID_MM = 1000;
-/** Maskiner snappar till detta raster vid drag, mm. */
-const SNAP_MM = 250;
+/** Maskiner snappar till samma raster som det som ritas, mm. */
+const SNAP_MM = DRAFT_SNAP_MM;
 const PAD_MM = 4000;
 
 type Draft = { kind: Exclude<Tool, "select" | "measure">; box: Box } | null;
@@ -81,68 +82,6 @@ type TipHandlers = (
   onPointerLeave: () => void;
 };
 
-/** Väggar en port kan sitta i: de ritade och hallens egna kanter. */
-const doorWalls = (
-  walls: DrawnObject[],
-  hall: { lengthMm: number; widthMm: number },
-) => [...walls, ...hallWalls(hall)];
-
-/**
- * Väggar och portar låses till närmaste axel så att de alltid blir raka —
- * man drar i grova drag åt det håll man menar och får en ren linje.
- * Truckzoner och no-go-zoner ritas som fria rektanglar.
- */
-function draftBox(
-  kind: Exclude<Tool, "select" | "measure">,
-  from: Vec2,
-  to: Vec2,
-  walls: DrawnObject[] = [],
-): Box {
-  if (kind === "wall" || kind === "door") {
-    // Ändarna dras till befintliga väggar så att linjerna möts där man siktar.
-    from = snapToWalls(from, walls);
-    to = snapToWalls(to, walls);
-    const dx = to.x - from.x;
-    const dy = to.y - from.y;
-    const half = WALL_THICKNESS_MM / 2;
-    return Math.abs(dx) >= Math.abs(dy)
-      ? {
-          x: snap(Math.min(from.x, to.x)),
-          y: snap(from.y) - half,
-          l: Math.max(0, snap(Math.abs(dx))),
-          w: WALL_THICKNESS_MM,
-        }
-      : {
-          x: snap(from.x) - half,
-          y: snap(Math.min(from.y, to.y)),
-          l: WALL_THICKNESS_MM,
-          w: Math.max(0, snap(Math.abs(dy))),
-        };
-  }
-  return {
-    x: snap(Math.min(from.x, to.x)),
-    y: snap(Math.min(from.y, to.y)),
-    l: Math.max(0, snap(Math.abs(to.x - from.x))),
-    w: Math.max(0, snap(Math.abs(to.y - from.y))),
-  };
-}
-
-/**
- * Färdigställer det ritade: väggar får sina hörn stängda, portar sätts in i
- * väggen de ritades på. Utan det blir en port en ruta på golvet och ett hörn
- * ett hål på en halv väggtjocklek.
- */
-function finishDraft(
-  kind: DrawnKind,
-  box: Box,
-  walls: DrawnObject[],
-  hall: { lengthMm: number; widthMm: number },
-): Box {
-  if (kind === "wall") return closeCorners(box, walls);
-  if (kind === "door") return fitDoorToWall(box, doorWalls(walls, hall)) ?? box;
-  return box;
-}
-
 export function CadView() {
   const {
     config,
@@ -151,7 +90,6 @@ export function CadView() {
     tool,
     selectedId,
     showZones,
-    showPorts,
     select,
     moveMachine,
     turnMachine,
@@ -164,8 +102,6 @@ export function CadView() {
     setTool,
     zoneKind,
     mirrorMachine,
-    setStartPoint,
-    updateFlowMarker,
     update,
     addDimension,
     updateDimension,
@@ -278,8 +214,14 @@ export function CadView() {
   /* ── Drag av maskin ──────────────────────────────────────────────────── */
   const startDrag = (placement: Placement, event: React.PointerEvent) => {
     event.stopPropagation();
+    // Med ett ritverktyg i handen ritar man, också ovanpå en maskin. Förut
+    // svalde maskinen trycket och ingenting hände: en truckgata som skulle
+    // dras tvärs över linjen gick inte att börja där den skulle börja.
+    if (tool !== "select") {
+      startGround(event);
+      return;
+    }
     select(placement.instanceId);
-    if (tool !== "select") return;
 
     /*
      * Koordinatsystemet låses vid draget.
@@ -329,8 +271,13 @@ export function CadView() {
   /* ── Drag av ritat objekt ────────────────────────────────────────────── */
   const startDragDrawn = (object: DrawnObject, event: React.PointerEvent) => {
     event.stopPropagation();
+    // Samma sak som för maskinerna: ritverktyget går före. En zon ritas lika
+    // gärna ovanpå en annan.
+    if (tool !== "select") {
+      startGround(event);
+      return;
+    }
     select(object.id);
-    if (tool !== "select") return;
 
     const svg = svgRef.current;
     const ctm = svg?.getScreenCTM();
@@ -395,29 +342,6 @@ export function CadView() {
     };
     const up = () => {
       setFrozen(null);
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-  };
-
-  /* ── Dra startpunkten ────────────────────────────────────────────────── */
-  const dragStartPoint = (
-    which: "start" | { marker: string },
-    event: React.PointerEvent,
-  ) => {
-    event.stopPropagation();
-    if (tool !== "select") return;
-    setHover(null);
-    const move = (e: PointerEvent) => {
-      const p = toWorld(e);
-      if (!p) return;
-      const point = { x: snap(p.x), y: snap(p.y) };
-      if (which === "start") setStartPoint(point);
-      else updateFlowMarker(which.marker, { pos: point });
-    };
-    const up = () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
     };
@@ -591,14 +515,10 @@ export function CadView() {
     const move = (e: PointerEvent) => {
       const now = toWorld(e);
       if (!now) return;
-      const raw = draftBox(kind, start, now, walls);
-      // En port visas där den kommer att hamna — i väggen — redan medan man
-      // drar, så att avstånden till hörnen stämmer med resultatet.
-      const box =
-        kind === "door" && raw.l >= 200 && raw.w >= 100
-          ? (fitDoorToWall(raw, doorWalls(walls, config.hall)) ?? raw)
-          : raw;
-      latest = { kind, box };
+      latest = {
+        kind,
+        box: draftPreview(kind, start, now, walls, config.hall),
+      };
       setDraft(latest);
     };
 
@@ -609,29 +529,19 @@ export function CadView() {
       window.removeEventListener("pointerup", up);
       setDraft(null);
       const current = latest as NonNullable<Draft> | null;
-      if (current && current.box.l >= 200 && current.box.w >= 100) {
-        const box =
-          current.kind === "door"
-            ? current.box
-            : finishDraft(current.kind, current.box, walls, config.hall);
-        const zone = current.kind === "zone" ? zoneKind : undefined;
-        const object: DrawnObject = {
-          id: `${zone ?? current.kind}-${Date.now().toString(36)}`,
-          kind: current.kind,
-          ...(zone ? { zone } : {}),
-          // Namnet kommer ur ordlistan, så zonen heter samma sak som
-          // knappen kunden just tryckte på — på kundens eget språk.
-          name: nextName(current.kind, config.drawn, t, zone),
-          x: Math.round(box.x),
-          y: Math.round(box.y),
-          l: Math.round(box.l),
-          w: Math.round(box.w),
-          h:
-            current.kind === "wall" ? 3000 : current.kind === "door" ? 5000 : 0,
-        };
-        addDrawn(object);
-        setTool("select");
-      }
+      if (!current) return;
+      // Samma funktion som modellvyn anropar: ett objekt ritat i 3D blir
+      // exakt samma låda med exakt samma namn som ett ritat i planen.
+      const object = commitDraft(current.kind, current.box, {
+        drawn: config.drawn,
+        walls,
+        hall: config.hall,
+        zone: zoneKind,
+        t,
+      });
+      if (!object) return;
+      addDrawn(object);
+      setTool("select");
     };
 
     window.addEventListener("pointermove", move);
@@ -843,7 +753,6 @@ export function CadView() {
           onMirror={mirrorMachine}
           mirrorTitle={t("cad.mirror")}
           showZones={showZones}
-          showPorts={showPorts}
           strokeUnit={strokeUnit}
           fillFor={fillFor}
           strokeFor={strokeFor}
@@ -859,13 +768,6 @@ export function CadView() {
         {clearance ? (
           <DoorDimensions clearance={clearance} strokeUnit={strokeUnit} />
         ) : null}
-
-        <FlowMarkers
-          flow={config.flow}
-          strokeUnit={strokeUnit}
-          onDrag={dragStartPoint}
-          tip={tip}
-        />
 
         {dropAt && dragged ? (
           <g pointerEvents="none">
@@ -972,7 +874,6 @@ function Plan2D({
   config,
   layout,
   showZones,
-  showPorts,
   strokeUnit,
   fillFor,
   strokeFor,
@@ -1001,7 +902,6 @@ function Plan2D({
   tool: Tool;
   layout: ReturnType<typeof useConfigStore.getState>["layout"];
   showZones: boolean;
-  showPorts: boolean;
   strokeUnit: number;
   fillFor: (p: Placement) => string;
   strokeFor: (p: Placement) => string;
@@ -1236,18 +1136,6 @@ function Plan2D({
           />
         ) : null;
       })()}
-
-      {showPorts
-        ? layout.placements.flatMap((p) =>
-            p.ports.map((port) => (
-              <FlowArrow
-                key={`${p.instanceId}-${port.id}`}
-                port={port}
-                strokeUnit={strokeUnit}
-              />
-            )),
-          )
-        : null}
 
       {bounds.l > 0 ? (
         <g pointerEvents="none">
@@ -1546,135 +1434,6 @@ function DraftShape({
       >
         {label}
       </text>
-    </g>
-  );
-}
-
-/**
- * Start- och slutpunkter som dragbara markörer i ritningen.
- *
- * Den aktiva startpunkten — där nya maskiner läggs — är fylld. Alternativa
- * starter är ihåliga, och slutpunkterna har ett kryss. Kommentaren, varför
- * punkten ligger där, står under markören och i sin helhet när man håller
- * musen över den. Ingen av dem mäts mot något: med fri placering slutar
- * anläggningen där sista maskinen står, och punkterna är upplysningar till
- * den som läser ritningen.
- */
-function FlowMarkers({
-  flow,
-  strokeUnit,
-  onDrag,
-  tip,
-}: {
-  flow: Flow;
-  strokeUnit: number;
-  onDrag: (
-    which: "start" | { marker: string },
-    event: React.PointerEvent,
-  ) => void;
-  tip: TipHandlers;
-}) {
-  const t = useT();
-  const r = strokeUnit * 9;
-
-  const marker = (
-    key: string,
-    role: "start" | "end",
-    pos: Vec2,
-    label: string,
-    comment: string | undefined,
-    active: boolean,
-    which: "start" | { marker: string },
-  ) => {
-    const colour = role === "start" ? "#5980a6" : "#1d2d3d";
-    const help =
-      role === "end"
-        ? t("points.endHelp")
-        : active
-          ? t("points.startHelp")
-          : t("points.altHelp");
-    const body =
-      (comment ? `“${comment}”\n\n` : "") + help + " " + t("points.drag");
-    return (
-      <g
-        key={key}
-        style={{ cursor: "grab" }}
-        onPointerDown={(e) => onDrag(which, e)}
-        {...tip(label, body)}
-      >
-        <circle
-          cx={pos.x}
-          cy={pos.y}
-          r={r}
-          fill={active ? colour : "#ffffff"}
-          fillOpacity={active ? 0.18 : 0.9}
-          stroke={colour}
-          strokeWidth={strokeUnit * 1.6}
-          strokeDasharray={
-            active || role === "end"
-              ? undefined
-              : `${strokeUnit * 3} ${strokeUnit * 2}`
-          }
-        />
-        {role === "start" ? (
-          <circle cx={pos.x} cy={pos.y} r={strokeUnit * 2.4} fill={colour} />
-        ) : (
-          <path
-            d={`M${pos.x - r} ${pos.y}h${r * 2}M${pos.x} ${pos.y - r}v${r * 2}`}
-            stroke={colour}
-            strokeWidth={strokeUnit * 1.4}
-          />
-        )}
-        <text
-          x={pos.x}
-          y={pos.y - r - strokeUnit * 4}
-          textAnchor="middle"
-          fontSize={strokeUnit * 12}
-          fill={colour}
-          className="num"
-          pointerEvents="none"
-        >
-          {label.toUpperCase()}
-        </text>
-        {comment ? (
-          <text
-            x={pos.x}
-            y={pos.y + r + strokeUnit * 13}
-            textAnchor="middle"
-            fontSize={strokeUnit * 10}
-            fill={colour}
-            fillOpacity="0.8"
-            pointerEvents="none"
-          >
-            {comment.length > 28 ? `${comment.slice(0, 27)}…` : comment}
-          </text>
-        ) : null}
-      </g>
-    );
-  };
-
-  return (
-    <g>
-      {(flow.markers ?? []).map((m) =>
-        marker(
-          m.id,
-          m.role,
-          m.pos,
-          `${t(m.role === "start" ? "points.start" : "points.end")} ${markerNumber(flow, m)}`,
-          m.comment,
-          false,
-          { marker: m.id },
-        ),
-      )}
-      {marker(
-        "start",
-        "start",
-        flow.startPoint,
-        t("points.start"),
-        flow.startComment,
-        true,
-        "start",
-      )}
     </g>
   );
 }
@@ -2008,65 +1767,6 @@ function DimensionLine({
   );
 }
 
-/**
- * Flödespil vid en port: åt vilket håll maskinen tar emot eller lämnar paket.
- *
- * Pilen kopplar ingenting. Portarna var förut anslutningspunkter som en
- * solver matchade mot varandra, och positionen räknades fram ur kedjan; nu
- * står maskinerna där kunden ställt dem och pilen är en upplysning om vad
- * maskinen klarar — in på den här sidan, ut på den där.
- *
- * Ingång och utgång ritas åt samma håll som flödet går. Pilspetsen pekar
- * därför in i maskinen på en ingång och bort från den på en utgång, vilket
- * är precis skillnaden man vill se när man vänder en maskin.
- */
-function FlowArrow({
-  port,
-  strokeUnit,
-}: {
-  port: PlacedPort;
-  strokeUnit: number;
-}) {
-  const v = DIR_VEC[port.dir];
-  const len = strokeUnit * 26;
-  const head = strokeUnit * 9;
-  const inPort = port.role === "in";
-  const color = inPort ? "#5980a6" : "#1d2d3d";
-
-  // Ingången ritas utanför maskinen och pekar in; utgången börjar i porten
-  // och pekar ut. Bägge slutar alltså där paketen är på väg.
-  const tip = inPort
-    ? port.pos
-    : { x: port.pos.x + v.x * len, y: port.pos.y + v.y * len };
-  const tail = inPort
-    ? { x: port.pos.x - v.x * len, y: port.pos.y - v.y * len }
-    : port.pos;
-
-  // Vinkelrätt mot flödet, för pilspetsens vingar.
-  const n = { x: -v.y, y: v.x };
-
-  return (
-    <g pointerEvents="none">
-      <line
-        x1={tail.x}
-        y1={tail.y}
-        x2={tip.x}
-        y2={tip.y}
-        stroke={color}
-        strokeWidth={strokeUnit * 2.5}
-        strokeLinecap="round"
-      />
-      <path
-        d={
-          `M${tip.x} ${tip.y}` +
-          `L${tip.x - v.x * head + n.x * head * 0.6} ${tip.y - v.y * head + n.y * head * 0.6}` +
-          `L${tip.x - v.x * head - n.x * head * 0.6} ${tip.y - v.y * head - n.y * head * 0.6}Z`
-        }
-        fill={color}
-      />
-    </g>
-  );
-}
 
 /**
  * Vridhandtaget på den markerade maskinen.

@@ -76,7 +76,7 @@ describe("storleken på det som skickas", () => {
 
     // Svaret följer med i varje efterföljande runda. Håll det litet.
     expect(tok(executeTool("add_machine", { machineId: "rullbana" }, ctx))).toBeLessThan(500);
-    expect(tok(executeTool("set_flow", { truckPickupSide: "left" }, ctx))).toBeLessThan(500);
+    expect(tok(executeTool("set_hall", { lengthMm: 40000, widthMm: 20000 }, ctx))).toBeLessThan(500);
     expect(tok(executeTool("draw_hall", DRAW_HALL, ctx))).toBeLessThan(700);
   });
 
@@ -134,7 +134,7 @@ describe("en hel körning: rita lokalen och bygg linjen ur en skiss", () => {
       ["add_machine", { machineId: "tsl-enkel" }],
       ["add_machine", { machineId: "lattpress" }],
       ["add_machine", { machineId: "kedjetransportor" }],
-      ["set_flow", { truckPickupSide: "left", infeedFrom: "straight" }],
+      ["set_hall", { lengthMm: 40000, widthMm: 20000 }],
       ["propose_variant", { name: "Från skissen", description: "Linjen enligt skissen." }],
     ]);
 

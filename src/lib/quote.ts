@@ -34,7 +34,6 @@ function fnv1a(input: string): number {
 function signature(config: Configuration): string {
   return JSON.stringify({
     hall: config.hall,
-    flow: config.flow,
     product: config.product,
     line: config.line.map((item) => ({
       machineId: item.machineId,

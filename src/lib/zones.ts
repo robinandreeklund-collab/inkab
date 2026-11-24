@@ -19,6 +19,18 @@ import type { DrawnObject } from "./types";
  *
  * En zon som varken är det ena eller det andra är en ren markering: den
  * syns i planen och följer med offerten, men den klagar aldrig.
+ *
+ * SPÄRRANDE ÄR UNDANTAGET, INTE REGELN. Till en början spärrade allt utom
+ * fundament och egen zon, och det blev fel i praktiken: en serviceyta ritas
+ * runt maskinen den hör till, en operatörsplats läggs över linjen där
+ * operatören faktiskt står, och ett lager ritas där paketen står — ovanpå
+ * transportören. Alla tre är markeringar av var människor och gods finns,
+ * inte påståenden om att ytan ska vara tom. En riktig anläggning gav femton
+ * anmärkningar på zoner som var ritade precis som de var tänkta.
+ *
+ * Kvar som spärrande är de två som verkligen menar det: en spärrad yta,
+ * som kunden ritar just för att hålla den fri, och en elcentral, där en
+ * maskin ovanpå är ett arbetsmiljöproblem och inte en ritningsdetalj.
  */
 
 export type ZoneId =
@@ -76,7 +88,7 @@ export const ZONES: readonly ZoneDefinition[] = [
     stroke: "#b45309",
     tint: "#b45309",
     aisle: false,
-    blocking: true,
+    blocking: false,
   },
   {
     id: "operator",
@@ -85,7 +97,7 @@ export const ZONES: readonly ZoneDefinition[] = [
     stroke: "#5980a6",
     tint: "#5980a6",
     aisle: false,
-    blocking: true,
+    blocking: false,
   },
   {
     id: "service",
@@ -94,7 +106,7 @@ export const ZONES: readonly ZoneDefinition[] = [
     stroke: "#1d2d3d",
     tint: "#1d2d3d",
     aisle: false,
-    blocking: true,
+    blocking: false,
   },
   {
     id: "electrical",

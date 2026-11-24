@@ -3,11 +3,17 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   convertStep,
   emptyResultError,
+  READER_MEMORY_CEILING_MB,
   suggestPorts,
   surveyMeshes,
 } from "@/lib/cad/stepConvert";
 import type { OcctMesh } from "occt-import-js";
-import { deleteModel, listModels, putModel, readModel } from "@/lib/server/store";
+import {
+  deleteModel,
+  listModels,
+  putModel,
+  readModel,
+} from "@/lib/server/store";
 import { applyModelFootprint, applySuggestedPorts } from "@/lib/cad/applyModel";
 import { addYaw, flowFromPicks, snapToEdge } from "@/lib/cad/pickFlow";
 import { collectIssues, machineSchema } from "@/lib/machineSchema";
@@ -28,7 +34,8 @@ import { BUILTIN_MACHINES } from "@/lib/library";
  * som en server utan DATABASE_URL tar.
  */
 
-const SAMPLE = "node_modules/occt-import-js/test/testfiles/cax-if/as1-oc-214.stp";
+const SAMPLE =
+  "node_modules/occt-import-js/test/testfiles/cax-if/as1-oc-214.stp";
 
 describe("convertStep", () => {
   let result: Awaited<ReturnType<typeof convertStep>>;
@@ -67,12 +74,16 @@ describe("convertStep", () => {
   });
 
   it("avvisar något som inte är en STEP", async () => {
-    await expect(convertStep(new TextEncoder().encode("inte en step"))).rejects.toThrow();
+    await expect(
+      convertStep(new TextEncoder().encode("inte en step")),
+    ).rejects.toThrow();
   });
 
   it("säger till när gränsen för smådelar tog bort allt", async () => {
     const step = new Uint8Array(readFileSync(SAMPLE));
-    await expect(convertStep(step, { minPartMm: 100_000 })).rejects.toThrow(/Sänk den/);
+    await expect(convertStep(step, { minPartMm: 100_000 })).rejects.toThrow(
+      /Sänk den/,
+    );
   }, 60_000);
 });
 
@@ -110,8 +121,20 @@ describe("modellagret", () => {
   });
 
   it("filtrerar listan på maskin", async () => {
-    await putModel({ id: "a-1", machineId: "a", name: "a.step", kind: "glb", data });
-    await putModel({ id: "b-1", machineId: "b", name: "b.step", kind: "glb", data });
+    await putModel({
+      id: "a-1",
+      machineId: "a",
+      name: "a.step",
+      kind: "glb",
+      data,
+    });
+    await putModel({
+      id: "b-1",
+      machineId: "b",
+      name: "b.step",
+      kind: "glb",
+      data,
+    });
 
     expect((await listModels("a")).map((m) => m.id)).toEqual(["a-1"]);
     expect((await listModels()).length).toBeGreaterThanOrEqual(2);
@@ -132,7 +155,10 @@ describe("ta över mått ur modellen", () => {
     // Det här var felet: nya mått skrevs in men portarna låg kvar där de var,
     // maskinen bröt mot schemat och Spara gjorde ingenting utan att säga varför.
     const small = { lengthMm: 2000, widthMm: 800, heightMm: 700 };
-    const { machine: applied, movedPorts } = applyModelFootprint(machine, small);
+    const { machine: applied, movedPorts } = applyModelFootprint(
+      machine,
+      small,
+    );
 
     expect(movedPorts.length).toBeGreaterThan(0);
     for (const port of applied.ports) {
@@ -162,13 +188,19 @@ describe("ta över mått ur modellen", () => {
   });
 
   it("rör inga portar när måtten är oförändrade", () => {
-    const { machine: applied, movedPorts } = applyModelFootprint(machine, machine.footprint);
+    const { machine: applied, movedPorts } = applyModelFootprint(
+      machine,
+      machine.footprint,
+    );
     expect(movedPorts).toEqual([]);
     expect(applied.ports).toEqual(machine.ports);
   });
 
   it("markerar måtten som okontrollerade", () => {
-    const { machine: applied } = applyModelFootprint(machine, machine.footprint);
+    const { machine: applied } = applyModelFootprint(
+      machine,
+      machine.footprint,
+    );
     expect(applied.dimensionsVerified).toBe(false);
   });
 
@@ -188,11 +220,16 @@ describe("ta över mått ur modellen", () => {
     const { machine: applied } = applyModelFootprint(machine, tooSmall);
     const parsed = machineSchema.safeParse(applied);
     expect(parsed.success).toBe(false);
-    expect(collectIssues(parsed.error!).map((i) => i.path)).toContain("footprint.heightMm");
+    expect(collectIssues(parsed.error!).map((i) => i.path)).toContain(
+      "footprint.heightMm",
+    );
   });
 
   it("skriver valideringsfelen på svenska", () => {
-    const parsed = machineSchema.safeParse({ ...machine, footprint: { lengthMm: 10, widthMm: 10, heightMm: 10 } });
+    const parsed = machineSchema.safeParse({
+      ...machine,
+      footprint: { lengthMm: 10, widthMm: 10, heightMm: 10 },
+    });
     const messages = collectIssues(parsed.error!).map((i) => i.message);
     expect(messages.join(" ")).toContain("Måste vara minst 100");
     expect(messages.join(" ")).not.toMatch(/must be|greater than/i);
@@ -271,7 +308,9 @@ describe("riktningen mot konverterarens egen upp-axel", () => {
       convertStep(step, { minPartMm: 5, up: "z" }),
       convertStep(step, { minPartMm: 5, up: "y" }),
     ]);
-    expect(orientedFootprint(asZ.footprint, { upAxis: "y" })).toEqual(asY.footprint);
+    expect(orientedFootprint(asZ.footprint, { upAxis: "y" })).toEqual(
+      asY.footprint,
+    );
   }, 60_000);
 });
 
@@ -290,7 +329,11 @@ describe("automatisk riktning", () => {
     // 270° och inte 90°: måtten kan inte skilja dem åt, men 270° lägger
     // längden längs +X i stället för −X efter upprätningen.
     expect(fit.orientation).toEqual({ upAxis: "y", yawDeg: 270 });
-    expect(fit.footprint).toEqual({ lengthMm: 3000, widthMm: 1570, heightMm: 600 });
+    expect(fit.footprint).toEqual({
+      lengthMm: 3000,
+      widthMm: 1570,
+      heightMm: 600,
+    });
     // Avvikelsen är stor i absoluta tal — biblioteket säger 6 m där maskinen
     // är 3 — men formen pekar ändå entydigt ut rätt läge.
     expect(fit.confident).toBe(true);
@@ -307,9 +350,17 @@ describe("automatisk riktning", () => {
   it("reser en modell som ligger ner", () => {
     // Måtten säger 6,0 × 0,7 × 1,8: höjden hamnade på djupledsaxeln.
     const measured = { lengthMm: 6000, widthMm: 700, heightMm: 1800 };
-    const fit = bestOrientation(measured, { lengthMm: 6000, widthMm: 1800, heightMm: 700 });
+    const fit = bestOrientation(measured, {
+      lengthMm: 6000,
+      widthMm: 1800,
+      heightMm: 700,
+    });
     expect(fit.orientation.upAxis).toBe("y");
-    expect(fit.footprint).toEqual({ lengthMm: 6000, widthMm: 1800, heightMm: 700 });
+    expect(fit.footprint).toEqual({
+      lengthMm: 6000,
+      widthMm: 1800,
+      heightMm: 700,
+    });
   });
 
   it("avstår när formen inte skiljer lägena åt", () => {
@@ -336,9 +387,14 @@ describe("rotationen som three.js faktiskt utför", () => {
    *   maskinens bredd  → +X
    * och målet är three.js egna: upp +Y, längd +X, bredd +Z.
    */
-  const apply = (orientation: Parameters<typeof orientationEuler>[0], axis: Vector3) => {
+  const apply = (
+    orientation: Parameters<typeof orientationEuler>[0],
+    axis: Vector3,
+  ) => {
     const e = orientationEuler(orientation);
-    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    const m = new Matrix4().makeRotationFromEuler(
+      new Euler(e.x, e.y, 0, e.order),
+    );
     return axis.clone().applyMatrix4(m);
   };
   const near = (v: Vector3, x: number, y: number, z: number) => {
@@ -408,8 +464,16 @@ describe("riktningen är CAD-systemets, inte maskinens", () => {
   it("visar varför gissningen ur uppskattade mått inte höll", () => {
     // Rullbanan råkade bli rätt, lättpressen fel. Ett verktyg som har rätt
     // ibland är inte ett verktyg man kan lita på.
-    const gissadRullbana = bestOrientation(rullbana, { lengthMm: 6000, widthMm: 1800, heightMm: 700 });
-    const gissadPress = bestOrientation(lattpress, { lengthMm: 2600, widthMm: 3400, heightMm: 2600 });
+    const gissadRullbana = bestOrientation(rullbana, {
+      lengthMm: 6000,
+      widthMm: 1800,
+      heightMm: 700,
+    });
+    const gissadPress = bestOrientation(lattpress, {
+      lengthMm: 2600,
+      widthMm: 3400,
+      heightMm: 2600,
+    });
 
     expect(gissadRullbana.orientation).toEqual(DEFAULT_ORIENTATION);
     expect(gissadPress.orientation).not.toEqual(DEFAULT_ORIENTATION);
@@ -418,7 +482,9 @@ describe("riktningen är CAD-systemets, inte maskinens", () => {
   it("står upprätt i uppritningen för båda", () => {
     // Upp ska vara upp oavsett vilken av maskinerna det gäller.
     const e = orientationEuler(DEFAULT_ORIENTATION);
-    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    const m = new Matrix4().makeRotationFromEuler(
+      new Euler(e.x, e.y, 0, e.order),
+    );
     const up = new Vector3(0, 0, 1).applyMatrix4(m);
     expect(up.y).toBeCloseTo(1, 5);
     // Och flödet, som ligger på glTF:ens Y efter konverteringen, hamnar på X.
@@ -431,12 +497,22 @@ describe("peka ut flödet på modellen", () => {
   const footprint = { lengthMm: 3000, widthMm: 1600 };
 
   /** Vridningen som uppritningen faktiskt gör, för att kontrollera tabellen. */
-  const rotatePlan = (p: { x: number; y: number }, yawDeg: 0 | 90 | 180 | 270, f = footprint) => {
+  const rotatePlan = (
+    p: { x: number; y: number },
+    yawDeg: 0 | 90 | 180 | 270,
+    f = footprint,
+  ) => {
     const e = orientationEuler({ yawDeg });
-    const m = new Matrix4().makeRotationFromEuler(new Euler(e.x, e.y, 0, e.order));
+    const m = new Matrix4().makeRotationFromEuler(
+      new Euler(e.x, e.y, 0, e.order),
+    );
     // Maskinkoordinater → three.js, kring maskinens mitt: x längs längden,
     // z tvärs, båda med noll i centrum.
-    const v = new Vector3(p.x - f.lengthMm / 2, 0, p.y - f.widthMm / 2).applyMatrix4(m);
+    const v = new Vector3(
+      p.x - f.lengthMm / 2,
+      0,
+      p.y - f.widthMm / 2,
+    ).applyMatrix4(m);
     const turned = yawDeg === 90 || yawDeg === 270;
     const width = turned ? f.lengthMm : f.widthMm;
     const length = turned ? f.widthMm : f.lengthMm;
@@ -444,14 +520,22 @@ describe("peka ut flödet på modellen", () => {
   };
 
   it("låter en maskin som redan pekar rätt vara", () => {
-    const pick = flowFromPicks({ x: 0, y: 800 }, { x: 3000, y: 800 }, footprint);
+    const pick = flowFromPicks(
+      { x: 0, y: 800 },
+      { x: 3000, y: 800 },
+      footprint,
+    );
     expect(pick.yawDelta).toBe(0);
     expect(pick.swapsFootprint).toBe(false);
     expect(pick.outPos).toEqual({ x: 3000, y: 800 });
   });
 
   it("vänder en bakvänd maskin ett halvt varv", () => {
-    const pick = flowFromPicks({ x: 3000, y: 500 }, { x: 0, y: 500 }, footprint);
+    const pick = flowFromPicks(
+      { x: 3000, y: 500 },
+      { x: 0, y: 500 },
+      footprint,
+    );
     expect(pick.yawDelta).toBe(180);
     // Inporten hamnar i den nya framkanten.
     expect(pick.inPos).toEqual({ x: 0, y: 1100 });
@@ -459,7 +543,11 @@ describe("peka ut flödet på modellen", () => {
   });
 
   it("vrider ett kvarts varv när flödet går tvärs, och byter mått", () => {
-    const pick = flowFromPicks({ x: 1500, y: 0 }, { x: 1500, y: 1600 }, footprint);
+    const pick = flowFromPicks(
+      { x: 1500, y: 0 },
+      { x: 1500, y: 1600 },
+      footprint,
+    );
     expect(pick.yawDelta).toBe(90);
     expect(pick.swapsFootprint).toBe(true);
     expect(pick.footprint).toEqual({ lengthMm: 1600, widthMm: 3000 });
@@ -468,7 +556,11 @@ describe("peka ut flödet på modellen", () => {
   });
 
   it("vrider åt andra hållet när flödet går motsatt tvärs", () => {
-    const pick = flowFromPicks({ x: 1500, y: 1600 }, { x: 1500, y: 0 }, footprint);
+    const pick = flowFromPicks(
+      { x: 1500, y: 1600 },
+      { x: 1500, y: 0 },
+      footprint,
+    );
     expect(pick.yawDelta).toBe(270);
     expect(pick.inPos.x).toBe(0);
     expect(pick.outPos.x).toBe(1600);
@@ -481,9 +573,18 @@ describe("peka ut flödet på modellen", () => {
      * annars är det bara en tabell någon trodde stämde.
      */
     for (const [inP, outP] of [
-      [{ x: 3000, y: 500 }, { x: 0, y: 500 }],
-      [{ x: 1500, y: 0 }, { x: 1500, y: 1600 }],
-      [{ x: 1500, y: 1600 }, { x: 1500, y: 0 }],
+      [
+        { x: 3000, y: 500 },
+        { x: 0, y: 500 },
+      ],
+      [
+        { x: 1500, y: 0 },
+        { x: 1500, y: 1600 },
+      ],
+      [
+        { x: 1500, y: 1600 },
+        { x: 1500, y: 0 },
+      ],
     ] as const) {
       const pick = flowFromPicks(inP, outP, footprint);
       expect(rotatePlan(inP, pick.yawDelta)).toEqual(pick.inPos);
@@ -500,7 +601,10 @@ describe("peka ut flödet på modellen", () => {
   it("drar porten ut till kortsidan", () => {
     const f = { lengthMm: 1600, widthMm: 3000 };
     expect(snapToEdge({ x: 700, y: 1400 }, f, "in")).toEqual({ x: 0, y: 1400 });
-    expect(snapToEdge({ x: 700, y: 1400 }, f, "out")).toEqual({ x: 1600, y: 1400 });
+    expect(snapToEdge({ x: 700, y: 1400 }, f, "out")).toEqual({
+      x: 1600,
+      y: 1400,
+    });
   });
 });
 
@@ -521,7 +625,11 @@ const mesh = (sizeMm: number, name = "del"): OcctMesh =>
   }) as unknown as OcctMesh;
 
 const withoutGeometry = (): OcctMesh =>
-  ({ name: "tom", attributes: { position: { array: [] } }, index: { array: [] } }) as unknown as OcctMesh;
+  ({
+    name: "tom",
+    attributes: { position: { array: [] } },
+    index: { array: [] },
+  }) as unknown as OcctMesh;
 
 describe("surveyMeshes", () => {
   it("skiljer på små delar och delar utan geometri", () => {
@@ -547,12 +655,20 @@ describe("surveyMeshes", () => {
 
 describe("emptyResultError", () => {
   it("tiger när det finns något att bygga", () => {
-    expect(emptyResultError(surveyMeshes([mesh(400)], 100), 100, 1_000_000)).toBeNull();
+    expect(
+      emptyResultError(surveyMeshes([mesh(400)], 100), 100, 1_000_000),
+    ).toBeNull();
   });
 
   it("pekar på gränsen när delarna faktiskt var för små", () => {
-    const message = emptyResultError(surveyMeshes([mesh(20), mesh(30)], 100), 100, 1_000_000);
-    expect(message).toBe("Alla 2 delar var mindre än gränsen 100 mm. Sänk den.");
+    const message = emptyResultError(
+      surveyMeshes([mesh(20), mesh(30)], 100),
+      100,
+      1_000_000,
+    );
+    expect(message).toBe(
+      "Alla 2 delar var mindre än gränsen 100 mm. Sänk den.",
+    );
   });
 
   it("skyller inte på gränsen när ingen del hade geometri", () => {
@@ -561,8 +677,40 @@ describe("emptyResultError", () => {
 
     expect(message).toContain("2 delar");
     expect(message).toContain("60 MB");
-    expect(message).toContain("step2glb");
     // Det var just det här rådet som skickade folk på en omöjlig jakt.
     expect(message).not.toContain("Sänk den");
+  });
+
+  /*
+   * Minnessiffran skiljer två fel som ser likadana ut: en fil som är för
+   * tung för läsaren, och en fil som inte innehåller några ytor alls. Förr
+   * fick båda rådet "kör om den med mer minne", och för det andra fallet är
+   * det en omöjlig jakt — för det första är det fel, eftersom taket sitter i
+   * WASM-bygget och är detsamma var man än kör.
+   */
+  it("säger att taket är nått, och att en omkörning inte hjälper", () => {
+    const survey = surveyMeshes([withoutGeometry(), withoutGeometry()], 100);
+    const message = emptyResultError(
+      survey,
+      100,
+      66_000_000,
+      READER_MEMORY_CEILING_MB,
+    );
+
+    expect(message).toContain(`${READER_MEMORY_CEILING_MB} MB`);
+    expect(message).toMatch(/hjälper inte/);
+    expect(message).toContain("nativt");
+    expect(message).not.toMatch(/dator med mer minne/);
+  });
+
+  it("pekar på filens innehåll när minnet räckte", () => {
+    const survey = surveyMeshes([withoutGeometry()], 100);
+    const message = emptyResultError(survey, 100, 2_000_000, 48);
+
+    expect(message).toContain("48 MB");
+    expect(message).toMatch(/inga ytor att triangulera/);
+    // Att be någon skaffa mer minne när minnet räckte är att skicka iväg dem
+    // på fel spår.
+    expect(message).not.toMatch(/Minnet tog slut/);
   });
 });
